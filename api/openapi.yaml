@@ -1,0 +1,3481 @@
+openapi: 3.0.3
+info:
+  title: 自动化测试管理平台 API
+  description: |
+    面向服务器 POC 团队的一站式性能测试平台 API 文档。
+    
+    ## 功能模块
+    - 服务器管理：服务器信息录入、分组、状态监控
+    - 脚本中心：测试脚本上传、版本管理、参数配置、输出解析
+    - 测试任务：任务创建、调度、执行、监控
+    - 测试结果：结果解析、判定、对比、趋势分析
+    - 报告中心：报告生成、查看、导出
+    
+    ## 认证方式
+    当前版本暂无用户认证，后续版本将支持 Token 认证。
+    
+  version: 1.0.2
+  contact:
+    name: API Support
+    email: support@example.com
+  
+servers:
+  - url: http://localhost:8080/api/v1
+    description: 开发环境
+  - url: http://test.example.com/api/v1
+    description: 测试环境
+  - url: http://prod.example.com/api/v1
+    description: 生产环境
+
+tags:
+  - name: servers
+    description: 服务器管理
+  - name: server-groups
+    description: 服务器分组管理
+  - name: scripts
+    description: 脚本管理
+  - name: tasks
+    description: 任务管理
+  - name: metrics
+    description: 指标数据
+  - name: reports
+    description: 报告管理
+  - name: results
+    description: 测试结果管理
+  - name: metric-definitions
+    description: 指标定义管理
+  - name: result-rules
+    description: 结果判定规则管理
+  - name: system
+    description: 系统配置
+
+paths:
+  # ============================================================
+  # 服务器分组管理
+  # ============================================================
+  /server-groups:
+    get:
+      tags:
+        - server-groups
+      summary: 获取分组列表
+      operationId: listServerGroups
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ServerGroup'
+    
+    post:
+      tags:
+        - server-groups
+      summary: 创建分组
+      operationId: createServerGroup
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ServerGroupCreate'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/ServerGroup'
+
+  /server-groups/{id}:
+    put:
+      tags:
+        - server-groups
+      summary: 更新分组
+      operationId: updateServerGroup
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ServerGroupCreate'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+    
+    delete:
+      tags:
+        - server-groups
+      summary: 删除分组
+      operationId: deleteServerGroup
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  # ============================================================
+  # 服务器管理
+  # ============================================================
+  /servers:
+    get:
+      tags:
+        - servers
+      summary: 获取服务器列表
+      operationId: listServers
+      parameters:
+        - name: name
+          in: query
+          description: 服务器名称（模糊搜索）
+          schema:
+            type: string
+        - name: status
+          in: query
+          description: 状态筛选
+          schema:
+            type: string
+            enum: [online, offline, maintenance]
+        - name: group_id
+          in: query
+          description: 分组ID
+          schema:
+            type: integer
+            format: int64
+        - name: page
+          in: query
+          description: 页码
+          schema:
+            type: integer
+            default: 1
+        - name: size
+          in: query
+          description: 每页数量
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                      page:
+                        type: integer
+                      size:
+                        type: integer
+                      items:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Server'
+    
+    post:
+      tags:
+        - servers
+      summary: 添加服务器
+      operationId: createServer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ServerCreate'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/Server'
+
+  /servers/{id}:
+    get:
+      tags:
+        - servers
+      summary: 获取服务器详情
+      operationId: getServer
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/Server'
+    
+    put:
+      tags:
+        - servers
+      summary: 更新服务器
+      operationId: updateServer
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ServerCreate'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+    
+    delete:
+      tags:
+        - servers
+      summary: 删除服务器
+      operationId: deleteServer
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /servers/{id}/test:
+    post:
+      tags:
+        - servers
+      summary: 测试连接
+      operationId: testServerConnection
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: 连接成功
+                  data:
+                    type: object
+                    properties:
+                      connected:
+                        type: boolean
+                      latency:
+                        type: integer
+                        description: 连接延迟(ms)
+
+  /servers/{id}/status:
+    get:
+      tags:
+        - servers
+      summary: 获取服务器状态
+      operationId: getServerStatus
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      status:
+                        type: string
+                        enum: [online, offline, maintenance]
+                      lastCheckAt:
+                        type: string
+                        format: date-time
+                      cpuUsage:
+                        type: number
+                      memoryUsage:
+                        type: number
+
+  /servers/{id}/refresh:
+    post:
+      tags:
+        - servers
+      summary: 刷新服务器信息
+      description: 自动识别CPU、内存、磁盘、操作系统等信息
+      operationId: refreshServerInfo
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/Server'
+
+  /servers/import:
+    post:
+      tags:
+        - servers
+      summary: 批量导入服务器
+      operationId: importServers
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: CSV文件
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                        description: 总数
+                      success:
+                        type: integer
+                        description: 成功数
+                      failed:
+                        type: integer
+                        description: 失败数
+                      errors:
+                        type: array
+                        items:
+                          type: string
+
+  # ============================================================
+  # 脚本管理
+  # ============================================================
+  /scripts:
+    get:
+      tags:
+        - scripts
+      summary: 获取脚本列表
+      operationId: listScripts
+      parameters:
+        - name: name
+          in: query
+          description: 脚本名称（模糊搜索）
+          schema:
+            type: string
+        - name: test_category
+          in: query
+          description: 测试类型
+          schema:
+            type: string
+        - name: status
+          in: query
+          description: 状态
+          schema:
+            type: string
+            enum: [enabled, disabled]
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: size
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                      page:
+                        type: integer
+                      size:
+                        type: integer
+                      items:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Script'
+    
+    post:
+      tags:
+        - scripts
+      summary: 上传脚本
+      operationId: createScript
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - name
+                - script_type
+                - test_category
+                - file
+              properties:
+                name:
+                  type: string
+                  description: 脚本名称
+                script_type:
+                  type: string
+                  enum: [shell, python]
+                  description: 脚本类型
+                test_category:
+                  type: string
+                  description: 测试类型
+                description:
+                  type: string
+                  description: 描述
+                file:
+                  type: string
+                  format: binary
+                  description: 脚本文件(.sh/.py/.zip/.tar.gz)
+                entry_file:
+                  type: string
+                  description: 入口文件路径（多文件时必填）
+                lifecycle_mode:
+                  type: string
+                  enum: [simple, full]
+                  default: simple
+                  description: 生命周期模式
+                has_deploy:
+                  type: boolean
+                  default: false
+                  description: 是否包含部署阶段
+                has_cleanup:
+                  type: boolean
+                  default: false
+                  description: 是否包含卸载阶段
+                deploy_entry:
+                  type: string
+                  description: 部署入口文件
+                cleanup_entry:
+                  type: string
+                  description: 卸载入口文件
+                parameters:
+                  type: string
+                  description: 参数定义JSON字符串
+                parse_rules:
+                  type: string
+                  description: 解析规则JSON字符串
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/Script'
+
+  /scripts/{id}:
+    get:
+      tags:
+        - scripts
+      summary: 获取脚本详情
+      operationId: getScript
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/Script'
+    
+    put:
+      tags:
+        - scripts
+      summary: 更新脚本
+      operationId: updateScript
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScriptUpdate'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+    
+    delete:
+      tags:
+        - scripts
+      summary: 删除脚本
+      operationId: deleteScript
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /scripts/{id}/versions:
+    get:
+      tags:
+        - scripts
+      summary: 获取版本列表
+      operationId: listScriptVersions
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: size
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                      items:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/ScriptVersion'
+    
+    post:
+      tags:
+        - scripts
+      summary: 创建新版本
+      operationId: createScriptVersion
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                entry_file:
+                  type: string
+                change_log:
+                  type: string
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/ScriptVersion'
+
+  /scripts/{id}/versions/{version}:
+    get:
+      tags:
+        - scripts
+      summary: 获取指定版本
+      operationId: getScriptVersion
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: version
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/ScriptVersion'
+
+  /scripts/{id}/rollback/{version}:
+    post:
+      tags:
+        - scripts
+      summary: 回退版本
+      operationId: rollbackScriptVersion
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: version
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /scripts/{id}/files:
+    get:
+      tags:
+        - scripts
+      summary: 获取脚本文件列表
+      operationId: listScriptFiles
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: version
+          in: query
+          description: 版本号（可选，默认当前版本）
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        path:
+                          type: string
+                        size:
+                          type: integer
+                        type:
+                          type: string
+                        isEntry:
+                          type: boolean
+
+  /scripts/{id}/files/{path}:
+    get:
+      tags:
+        - scripts
+      summary: 获取文件内容
+      operationId: getScriptFileContent
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: path
+          in: path
+          required: true
+          description: 文件路径
+          schema:
+            type: string
+        - name: version
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      path:
+                        type: string
+                      content:
+                        type: string
+                      size:
+                        type: integer
+
+  /scripts/{id}/export:
+    get:
+      tags:
+        - scripts
+      summary: 导出脚本
+      operationId: exportScript
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: version
+          in: query
+          schema:
+            type: string
+        - name: format
+          in: query
+          schema:
+            type: string
+            enum: [zip, tar.gz]
+            default: zip
+        - name: include_config
+          in: query
+          description: 是否包含配置文件
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+
+  /scripts/categories:
+    get:
+      tags:
+        - scripts
+      summary: 获取测试类型列表
+      operationId: listScriptCategories
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    type: array
+                    items:
+                      type: string
+
+  /scripts/{id}/validate:
+    post:
+      tags:
+        - scripts
+      summary: 校验脚本
+      operationId: validateScript
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      valid:
+                        type: boolean
+                      errors:
+                        type: array
+                        items:
+                          type: string
+
+  /scripts/parse-upload:
+    post:
+      tags:
+        - scripts
+      summary: 解析上传文件
+      description: 上传压缩包后解析文件列表，用于预览
+      operationId: parseUploadFile
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      fileCount:
+                        type: integer
+                      totalSize:
+                        type: integer
+                      files:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            path:
+                              type: string
+                            size:
+                              type: integer
+                            type:
+                              type: string
+                      suggestedEntry:
+                        type: string
+
+  # ============================================================
+  # 任务管理
+  # ============================================================
+  /tasks:
+    get:
+      tags:
+        - tasks
+      summary: 获取任务列表
+      operationId: listTasks
+      parameters:
+        - name: name
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, deploying, running, cleaning, completed, cancelled, failed]
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: size
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                      page:
+                        type: integer
+                      size:
+                        type: integer
+                      items:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Task'
+    
+    post:
+      tags:
+        - tasks
+      summary: 创建任务
+      operationId: createTask
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskCreate'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/Task'
+
+  /tasks/{id}:
+    get:
+      tags:
+        - tasks
+      summary: 获取任务详情
+      operationId: getTask
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/TaskDetail'
+    
+    put:
+      tags:
+        - tasks
+      summary: 更新任务
+      description: 仅限 pending 状态的任务可更新
+      operationId: updateTask
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskCreate'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+    
+    delete:
+      tags:
+        - tasks
+      summary: 删除任务
+      operationId: deleteTask
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /tasks/{id}/execute:
+    post:
+      tags:
+        - tasks
+      summary: 执行任务
+      operationId: executeTask
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /tasks/{id}/cancel:
+    post:
+      tags:
+        - tasks
+      summary: 取消任务
+      operationId: cancelTask
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /tasks/{id}/retry:
+    post:
+      tags:
+        - tasks
+      summary: 重试任务
+      operationId: retryTask
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /tasks/{id}/logs:
+    get:
+      tags:
+        - tasks
+      summary: 获取执行日志
+      operationId: getTaskLogs
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: server_id
+          in: query
+          description: 服务器ID（可选，不传则返回所有服务器日志）
+          schema:
+            type: integer
+            format: int64
+        - name: stage
+          in: query
+          description: 阶段类型
+          schema:
+            type: string
+            enum: [deploy, run, cleanup, all]
+            default: all
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      taskId:
+                        type: integer
+                        format: int64
+                      serverId:
+                        type: integer
+                        format: int64
+                      stage:
+                        type: string
+                      logs:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/LogEntry'
+                      exitCode:
+                        type: integer
+                      duration:
+                        type: integer
+                        description: 执行时长(秒)
+
+  /tasks/{id}/progress:
+    get:
+      tags:
+        - tasks
+      summary: 获取执行进度
+      operationId: getTaskProgress
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      taskId:
+                        type: integer
+                        format: int64
+                      status:
+                        type: string
+                      progress:
+                        type: integer
+                      serverProgress:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            serverId:
+                              type: integer
+                              format: int64
+                            serverName:
+                              type: string
+                            status:
+                              type: string
+                            progress:
+                              type: integer
+
+  # ============================================================
+  # 指标数据
+  # ============================================================
+  /metrics:
+    get:
+      tags:
+        - metrics
+      summary: 查询指标数据
+      operationId: listMetrics
+      parameters:
+        - name: task_id
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: server_id
+          in: query
+          schema:
+            type: integer
+            format: int64
+        - name: metric_type
+          in: query
+          schema:
+            type: string
+        - name: metric_name
+          in: query
+          schema:
+            type: string
+        - name: start_time
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: end_time
+          in: query
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Metric'
+
+  /metrics/summary:
+    get:
+      tags:
+        - metrics
+      summary: 指标统计
+      operationId: getMetricsSummary
+      parameters:
+        - name: task_id
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: server_id
+          in: query
+          schema:
+            type: integer
+            format: int64
+        - name: metric_type
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    additionalProperties:
+                      type: object
+                      properties:
+                        min:
+                          type: number
+                        max:
+                          type: number
+                        avg:
+                          type: number
+
+  /metrics/export:
+    get:
+      tags:
+        - metrics
+      summary: 导出指标数据
+      operationId: exportMetrics
+      parameters:
+        - name: task_id
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: format
+          in: query
+          schema:
+            type: string
+            enum: [csv, json]
+            default: csv
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+
+  # ============================================================
+  # 报告管理
+  # ============================================================
+  /reports:
+    get:
+      tags:
+        - reports
+      summary: 获取报告列表
+      operationId: listReports
+      parameters:
+        - name: task_id
+          in: query
+          schema:
+            type: integer
+            format: int64
+        - name: conclusion
+          in: query
+          schema:
+            type: string
+            enum: [pass, fail, warning]
+        - name: start_date
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: size
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                      items:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Report'
+
+  /reports/{id}:
+    get:
+      tags:
+        - reports
+      summary: 获取报告详情
+      operationId: getReport
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/ReportDetail'
+    
+    delete:
+      tags:
+        - reports
+      summary: 删除报告
+      operationId: deleteReport
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /reports/{id}/download:
+    get:
+      tags:
+        - reports
+      summary: 下载报告
+      operationId: downloadReport
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: format
+          in: query
+          schema:
+            type: string
+            enum: [pdf, html]
+            default: pdf
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+
+  /reports/compare:
+    post:
+      tags:
+        - reports
+      summary: 报告对比
+      operationId: compareReports
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                report_ids:
+                  type: array
+                  items:
+                    type: integer
+                    format: int64
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/ReportComparison'
+
+  /reports/regenerate/{task_id}:
+    post:
+      tags:
+        - reports
+      summary: 重新生成报告
+      operationId: regenerateReport
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/Report'
+
+  # ============================================================
+  # 测试结果管理
+  # ============================================================
+  /results:
+    get:
+      tags:
+        - results
+      summary: 获取结果列表
+      operationId: listResults
+      parameters:
+        - name: task_id
+          in: query
+          schema:
+            type: integer
+            format: int64
+        - name: server_id
+          in: query
+          schema:
+            type: integer
+            format: int64
+        - name: result
+          in: query
+          schema:
+            type: string
+            enum: [pass, fail, warning, error]
+        - name: start_date
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: size
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                      items:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/TestResult'
+
+  /results/{id}:
+    get:
+      tags:
+        - results
+      summary: 获取结果详情
+      operationId: getResult
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/TestResultDetail'
+
+  /results/task/{taskId}:
+    get:
+      tags:
+        - results
+      summary: 获取任务所有结果
+      operationId: getTaskResults
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: server_id
+          in: query
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TestResult'
+
+  /results/{id}/raw:
+    get:
+      tags:
+        - results
+      summary: 获取原始输出
+      operationId: getResultRawOutput
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: type
+          in: query
+          description: 输出类型
+          schema:
+            type: string
+            enum: [stdout, stderr, all]
+            default: all
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      stdout:
+                        type: string
+                      stderr:
+                        type: string
+
+  /results/{id}/files:
+    get:
+      tags:
+        - results
+      summary: 获取输出文件列表
+      operationId: getResultFiles
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                          format: int64
+                        name:
+                          type: string
+                        size:
+                          type: integer
+                        type:
+                          type: string
+
+  /results/{id}/files/{fileId}:
+    get:
+      tags:
+        - results
+      summary: 下载输出文件
+      operationId: downloadResultFile
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: fileId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+
+  /results/compare:
+    post:
+      tags:
+        - results
+      summary: 结果对比
+      operationId: compareResults
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - result_ids
+              properties:
+                result_ids:
+                  type: array
+                  items:
+                    type: integer
+                    format: int64
+                  minItems: 2
+                  maxItems: 5
+                compare_type:
+                  type: string
+                  enum: [time, server, parameter, version]
+                  default: time
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/ResultComparison'
+
+  /results/trend:
+    get:
+      tags:
+        - results
+      summary: 趋势分析
+      operationId: getResultTrend
+      parameters:
+        - name: script_id
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: server_id
+          in: query
+          schema:
+            type: integer
+            format: int64
+        - name: metric_name
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: period
+          in: query
+          description: 时间范围
+          schema:
+            type: string
+            enum: [7d, 30d, 90d]
+            default: 30d
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/TrendAnalysis'
+
+  /results/export:
+    get:
+      tags:
+        - results
+      summary: 导出结果数据
+      operationId: exportResults
+      parameters:
+        - name: task_id
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: format
+          in: query
+          schema:
+            type: string
+            enum: [csv, json, excel]
+            default: csv
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+
+  # ============================================================
+  # 指标定义管理
+  # ============================================================
+  /metric-definitions:
+    get:
+      tags:
+        - metric-definitions
+      summary: 获取指标定义列表
+      operationId: listMetricDefinitions
+      parameters:
+        - name: category
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: size
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                      items:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/MetricDefinition'
+    
+    post:
+      tags:
+        - metric-definitions
+      summary: 创建指标定义
+      operationId: createMetricDefinition
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MetricDefinitionCreate'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/MetricDefinition'
+
+  /metric-definitions/{id}:
+    get:
+      tags:
+        - metric-definitions
+      summary: 获取指标定义详情
+      operationId: getMetricDefinition
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/MetricDefinition'
+    
+    put:
+      tags:
+        - metric-definitions
+      summary: 更新指标定义
+      operationId: updateMetricDefinition
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MetricDefinitionCreate'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+    
+    delete:
+      tags:
+        - metric-definitions
+      summary: 删除指标定义
+      operationId: deleteMetricDefinition
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  # ============================================================
+  # 结果判定规则管理
+  # ============================================================
+  /result-rules:
+    get:
+      tags:
+        - result-rules
+      summary: 获取规则列表
+      operationId: listResultRules
+      parameters:
+        - name: script_id
+          in: query
+          schema:
+            type: integer
+            format: int64
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: size
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                      items:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/ResultRule'
+    
+    post:
+      tags:
+        - result-rules
+      summary: 创建规则
+      operationId: createResultRule
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResultRuleCreate'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/ResultRule'
+
+  /result-rules/{id}:
+    get:
+      tags:
+        - result-rules
+      summary: 获取规则详情
+      operationId: getResultRule
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/ResultRule'
+    
+    put:
+      tags:
+        - result-rules
+      summary: 更新规则
+      operationId: updateResultRule
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResultRuleCreate'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+    
+    delete:
+      tags:
+        - result-rules
+      summary: 删除规则
+      operationId: deleteResultRule
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /result-rules/{id}/test:
+    post:
+      tags:
+        - result-rules
+      summary: 测试规则
+      description: 使用已有结果测试判定规则
+      operationId: testResultRule
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                result_id:
+                  type: integer
+                  format: int64
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      result:
+                        type: string
+                        enum: [pass, fail, warning, error]
+                      overallScore:
+                        type: integer
+                      matchedConditions:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            metric:
+                              type: string
+                            value:
+                              type: number
+                            expected:
+                              type: string
+                            passed:
+                              type: boolean
+
+  # ============================================================
+  # 系统配置
+  # ============================================================
+  /system/config:
+    get:
+      tags:
+        - system
+      summary: 获取系统配置
+      operationId: getSystemConfig
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        key:
+                          type: string
+                        value:
+                          type: string
+                        description:
+                          type: string
+    
+    put:
+      tags:
+        - system
+      summary: 更新系统配置
+      operationId: updateSystemConfig
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                key:
+                  type: string
+                value:
+                  type: string
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /system/storage:
+    get:
+      tags:
+        - system
+      summary: 获取存储信息
+      operationId: getStorageInfo
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      scripts:
+                        type: object
+                        properties:
+                          path:
+                            type: string
+                          used:
+                            type: integer
+                          total:
+                            type: integer
+                      reports:
+                        type: object
+                        properties:
+                          path:
+                            type: string
+                          used:
+                            type: integer
+                          total:
+                            type: integer
+                      temp:
+                        type: object
+                        properties:
+                          path:
+                            type: string
+                          used:
+                            type: integer
+                          total:
+                            type: integer
+
+# ============================================================
+# 组件定义
+# ============================================================
+components:
+  schemas:
+    # 通用响应
+    ApiResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+          example: 0
+        message:
+          type: string
+          example: success
+        data:
+          type: object
+
+    # 服务器分组
+    ServerGroup:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        description:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    ServerGroupCreate:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          maxLength: 100
+        description:
+          type: string
+
+    # 服务器
+    Server:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        host:
+          type: string
+        port:
+          type: integer
+          default: 22
+        username:
+          type: string
+        authType:
+          type: string
+          enum: [password, ssh_key]
+        osType:
+          type: string
+        osVersion:
+          type: string
+        cpuCores:
+          type: integer
+        cpuModel:
+          type: string
+        memorySize:
+          type: string
+        memoryTotalMb:
+          type: integer
+        diskInfo:
+          type: object
+          additionalProperties: true
+        groupId:
+          type: integer
+          format: int64
+        groupName:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        remark:
+          type: string
+        status:
+          type: string
+          enum: [online, offline, maintenance]
+        lastCheckAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    ServerCreate:
+      type: object
+      required:
+        - name
+        - host
+        - port
+        - username
+        - authType
+        - authSecret
+      properties:
+        name:
+          type: string
+          maxLength: 100
+        host:
+          type: string
+          maxLength: 255
+        port:
+          type: integer
+          default: 22
+        username:
+          type: string
+          maxLength: 50
+        authType:
+          type: string
+          enum: [password, ssh_key]
+        authSecret:
+          type: string
+          description: 密码或SSH私钥
+        groupId:
+          type: integer
+          format: int64
+        tags:
+          type: array
+          items:
+            type: string
+        remark:
+          type: string
+
+    # 脚本
+    Script:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        scriptType:
+          type: string
+          enum: [shell, python]
+        testCategory:
+          type: string
+        description:
+          type: string
+        currentVersion:
+          type: string
+        lifecycleMode:
+          type: string
+          enum: [simple, full]
+        hasDeploy:
+          type: boolean
+        hasCleanup:
+          type: boolean
+        deployEntry:
+          type: string
+        cleanupEntry:
+          type: string
+        entryFile:
+          type: string
+        fileList:
+          type: array
+          items:
+            type: object
+            properties:
+              path:
+                type: string
+              size:
+                type: integer
+              isEntry:
+                type: boolean
+        parameters:
+          type: object
+          additionalProperties: true
+        parseRules:
+          type: object
+          additionalProperties: true
+        defaultTimeout:
+          type: integer
+        defaultRetry:
+          type: integer
+        isBuiltin:
+          type: boolean
+        status:
+          type: string
+          enum: [enabled, disabled]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    ScriptUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        parameters:
+          type: object
+          additionalProperties: true
+        parseRules:
+          type: object
+          additionalProperties: true
+        defaultTimeout:
+          type: integer
+        defaultRetry:
+          type: integer
+        status:
+          type: string
+          enum: [enabled, disabled]
+
+    ScriptVersion:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        scriptId:
+          type: integer
+          format: int64
+        version:
+          type: string
+        lifecycleMode:
+          type: string
+          enum: [simple, full]
+        hasDeploy:
+          type: boolean
+        hasCleanup:
+          type: boolean
+        deployEntry:
+          type: string
+        cleanupEntry:
+          type: string
+        entryFile:
+          type: string
+        fileList:
+          type: array
+          items:
+            type: object
+        storagePath:
+          type: string
+        totalSize:
+          type: integer
+          format: int64
+        fileCount:
+          type: integer
+        checksum:
+          type: string
+        changeLog:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    # 任务
+    Task:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        description:
+          type: string
+        scriptId:
+          type: integer
+          format: int64
+        scriptName:
+          type: string
+        scriptVersion:
+          type: string
+        status:
+          type: string
+          enum: [pending, deploying, running, cleaning, completed, cancelled, failed]
+        progress:
+          type: integer
+          minimum: 0
+          maximum: 100
+        createdAt:
+          type: string
+          format: date-time
+        startedAt:
+          type: string
+          format: date-time
+        finishedAt:
+          type: string
+          format: date-time
+
+    TaskCreate:
+      type: object
+      required:
+        - name
+        - scriptId
+        - scriptVersion
+        - serverIds
+        - runParams
+        - executionMode
+      properties:
+        name:
+          type: string
+          maxLength: 200
+        description:
+          type: string
+        scriptId:
+          type: integer
+          format: int64
+        scriptVersion:
+          type: string
+        serverIds:
+          type: array
+          items:
+            type: integer
+            format: int64
+          minItems: 1
+        sharedParams:
+          type: object
+          additionalProperties: true
+        deployParams:
+          type: object
+          additionalProperties: true
+        runParams:
+          type: object
+          additionalProperties: true
+        lifecycleConfig:
+          type: object
+          properties:
+            skipDeploy:
+              type: boolean
+              default: false
+            skipCleanup:
+              type: boolean
+              default: false
+            deployTimeout:
+              type: integer
+              default: 600
+            cleanupTimeout:
+              type: integer
+              default: 300
+        collectEnabled:
+          type: boolean
+          default: true
+        collectConfig:
+          type: object
+          additionalProperties: true
+        executionMode:
+          type: string
+          enum: [immediate, scheduled]
+        scheduledTime:
+          type: string
+          format: date-time
+        parallelMode:
+          type: string
+          enum: [sequential, parallel]
+          default: sequential
+        maxParallel:
+          type: integer
+          default: 1
+        failureStrategy:
+          type: string
+          enum: [continue, stop]
+          default: continue
+
+    TaskDetail:
+      type: object
+      allOf:
+        - $ref: '#/components/schemas/Task'
+        - type: object
+          properties:
+            script:
+              type: object
+              properties:
+                id:
+                  type: integer
+                  format: int64
+                name:
+                  type: string
+                version:
+                  type: string
+                lifecycleMode:
+                  type: string
+                hasDeploy:
+                  type: boolean
+                hasCleanup:
+                  type: boolean
+            lifecycleConfig:
+              type: object
+              properties:
+                skipDeploy:
+                  type: boolean
+                skipCleanup:
+                  type: boolean
+                deployTimeout:
+                  type: integer
+                cleanupTimeout:
+                  type: integer
+            lifecycleSummary:
+              type: object
+              properties:
+                deploy:
+                  $ref: '#/components/schemas/LifecycleStageSummary'
+                run:
+                  $ref: '#/components/schemas/LifecycleStageSummary'
+                cleanup:
+                  $ref: '#/components/schemas/LifecycleStageSummary'
+            sharedParams:
+              type: object
+              additionalProperties: true
+            deployParams:
+              type: object
+              additionalProperties: true
+            runParams:
+              type: object
+              additionalProperties: true
+            servers:
+              type: array
+              items:
+                $ref: '#/components/schemas/TaskServerDetail'
+
+    LifecycleStageSummary:
+      type: object
+      properties:
+        status:
+          type: string
+        startedAt:
+          type: string
+          format: date-time
+        finishedAt:
+          type: string
+          format: date-time
+        duration:
+          type: integer
+          description: 耗时(秒)
+        successCount:
+          type: integer
+        failedCount:
+          type: integer
+
+    TaskServerDetail:
+      type: object
+      properties:
+        serverId:
+          type: integer
+          format: int64
+        serverName:
+          type: string
+        overallStatus:
+          type: string
+        deploy:
+          $ref: '#/components/schemas/StageDetail'
+        run:
+          $ref: '#/components/schemas/StageDetail'
+        cleanup:
+          $ref: '#/components/schemas/StageDetail'
+
+    StageDetail:
+      type: object
+      properties:
+        status:
+          type: string
+        startedAt:
+          type: string
+          format: date-time
+        finishedAt:
+          type: string
+          format: date-time
+        duration:
+          type: integer
+        exitCode:
+          type: integer
+
+    # 日志条目
+    LogEntry:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        level:
+          type: string
+          enum: [DEBUG, INFO, WARN, ERROR]
+        message:
+          type: string
+
+    # 指标
+    Metric:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        taskId:
+          type: integer
+          format: int64
+        serverId:
+          type: integer
+          format: int64
+        timestamp:
+          type: string
+          format: date-time
+        metricType:
+          type: string
+        metricName:
+          type: string
+        value:
+          type: number
+        unit:
+          type: string
+        tags:
+          type: object
+          additionalProperties: true
+
+    # 报告
+    Report:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        taskId:
+          type: integer
+          format: int64
+        taskName:
+          type: string
+        title:
+          type: string
+        summary:
+          type: string
+        conclusion:
+          type: string
+          enum: [pass, fail, warning]
+        fileFormat:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    ReportDetail:
+      type: object
+      allOf:
+        - $ref: '#/components/schemas/Report'
+        - type: object
+          properties:
+            reportData:
+              type: object
+              additionalProperties: true
+
+    ReportComparison:
+      type: object
+      properties:
+        reportIds:
+          type: array
+          items:
+            type: integer
+            format: int64
+        comparisons:
+          type: array
+          items:
+            type: object
+            properties:
+              metric:
+                type: string
+              values:
+                type: array
+                items:
+                  type: number
+              changeRates:
+                type: array
+                items:
+                  type: string
+
+    # 测试结果
+    TestResult:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        taskId:
+          type: integer
+          format: int64
+        taskName:
+          type: string
+        serverId:
+          type: integer
+          format: int64
+        serverName:
+          type: string
+        result:
+          type: string
+          enum: [pass, fail, warning, error]
+        overallScore:
+          type: integer
+          minimum: 0
+          maximum: 100
+        startedAt:
+          type: string
+          format: date-time
+        finishedAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+
+    TestResultDetail:
+      type: object
+      allOf:
+        - $ref: '#/components/schemas/TestResult'
+        - type: object
+          properties:
+            resultReason:
+              type: string
+            metrics:
+              type: object
+              additionalProperties: true
+            rawOutput:
+              type: string
+            rawError:
+              type: string
+            outputFiles:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                    format: int64
+                  name:
+                    type: string
+                  size:
+                    type: integer
+            exitCode:
+              type: integer
+            durationMs:
+              type: integer
+
+    ResultComparison:
+      type: object
+      properties:
+        compareType:
+          type: string
+          enum: [time, server, parameter, version]
+        dimensions:
+          type: array
+          items:
+            type: string
+        metrics:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              displayName:
+                type: string
+              unit:
+                type: string
+              values:
+                type: array
+                items:
+                  type: number
+              changeRates:
+                type: array
+                items:
+                  type: string
+              trend:
+                type: string
+                enum: [increasing, decreasing, stable]
+
+    TrendAnalysis:
+      type: object
+      properties:
+        metric:
+          type: object
+          properties:
+            name:
+              type: string
+            displayName:
+              type: string
+            unit:
+              type: string
+        period:
+          type: string
+        dataPoints:
+          type: array
+          items:
+            type: object
+            properties:
+              date:
+                type: string
+              value:
+                type: number
+              taskId:
+                type: integer
+                format: int64
+        statistics:
+          type: object
+          properties:
+            min:
+              type: number
+            max:
+              type: number
+            avg:
+              type: number
+            stddev:
+              type: number
+        trend:
+          type: object
+          properties:
+            direction:
+              type: string
+              enum: [increasing, decreasing, stable]
+            changeRate:
+              type: number
+        anomalies:
+          type: array
+          items:
+            type: object
+            properties:
+              date:
+                type: string
+              value:
+                type: number
+              expected:
+                type: number
+              deviation:
+                type: number
+
+    # 指标定义
+    MetricDefinition:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        displayName:
+          type: string
+        category:
+          type: string
+        unit:
+          type: string
+        description:
+          type: string
+        baselineConfig:
+          type: object
+          additionalProperties: true
+        comparisonMode:
+          type: string
+          enum: [higher_better, lower_better]
+        applicableCategories:
+          type: array
+          items:
+            type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    MetricDefinitionCreate:
+      type: object
+      required:
+        - name
+        - displayName
+        - category
+      properties:
+        name:
+          type: string
+          maxLength: 100
+        displayName:
+          type: string
+          maxLength: 200
+        category:
+          type: string
+        unit:
+          type: string
+          maxLength: 50
+        description:
+          type: string
+        baselineConfig:
+          type: object
+          additionalProperties: true
+        comparisonMode:
+          type: string
+          enum: [higher_better, lower_better]
+          default: higher_better
+        applicableCategories:
+          type: array
+          items:
+            type: string
+
+    # 结果判定规则
+    ResultRule:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        scriptId:
+          type: integer
+          format: int64
+        scriptName:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        rules:
+          type: object
+          additionalProperties: true
+        priority:
+          type: integer
+        enabled:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    ResultRuleCreate:
+      type: object
+      required:
+        - name
+        - rules
+      properties:
+        scriptId:
+          type: integer
+          format: int64
+        name:
+          type: string
+          maxLength: 100
+        description:
+          type: string
+        rules:
+          type: object
+          additionalProperties: true
+        priority:
+          type: integer
+          default: 0
+        enabled:
+          type: boolean
+          default: true

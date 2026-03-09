@@ -1,0 +1,119 @@
+/* 通用样式 */
+
+// 文本截断
+.text-ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// Flex 布局
+.flex {
+  display: flex;
+}
+
+.flex-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.flex-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.flex-1 {
+  flex: 1;
+}
+
+// 间距
+.mb-10 { margin-bottom: 10px; }
+.mb-20 { margin-bottom: 20px; }
+.mt-10 { margin-top: 10px; }
+.mt-20 { margin-top: 20px; }
+.ml-10 { margin-left: 10px; }
+.mr-10 { margin-right: 10px; }
+
+.p-10 { padding: 10px; }
+.p-20 { padding: 20px; }
+
+// 卡片
+.page-card {
+  background: #fff;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  padding: 20px;
+}
+
+// 页面标题
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+
+  .page-title {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+}
+
+// 搜索栏
+.search-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 16px;
+  background: #fff;
+  border-radius: var(--radius-md);
+}
+
+// 表格容器
+.table-container {
+  background: #fff;
+  border-radius: var(--radius-md);
+  padding: 16px;
+}
+
+// 状态标签颜色
+.status-tag {
+  &.success {
+    --el-tag-bg-color: #e1f3d8;
+    --el-tag-border-color: #c2e7b0;
+    --el-tag-text-color: #67c23a;
+  }
+
+  &.warning {
+    --el-tag-bg-color: #fdf6ec;
+    --el-tag-border-color: #faecd8;
+    --el-tag-text-color: #e6a23c;
+  }
+
+  &.danger {
+    --el-tag-bg-color: #fef0f0;
+    --el-tag-border-color: #fde2e2;
+    --el-tag-text-color: #f56c6c;
+  }
+
+  &.info {
+    --el-tag-bg-color: #f4f4f5;
+    --el-tag-border-color: #e9e9eb;
+    --el-tag-text-color: #909399;
+  }
+}
+
+// NProgress 自定义样式
+#nprogress {
+  .bar {
+    background: var(--primary-color) !important;
+    height: 3px !important;
+  }
+
+  .peg {
+    box-shadow: 0 0 10px var(--primary-color), 0 0 5px var(--primary-color) !important;
+  }
+}

@@ -1,0 +1,50 @@
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Build
+target/
+dist/
+node_modules/
+
+# Logs
+logs/
+*.log
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temp
+*.tmp
+*.temp
+*.swp
+*~
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Java
+*.class
+*.jar
+*.war
+*.ear
+target/
+
+# Database
+*.db
+*.sqlite
+
+# Sensitive
+*.pem
+*.key
+credentials.json
