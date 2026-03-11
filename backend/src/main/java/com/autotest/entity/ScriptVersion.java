@@ -2,6 +2,8 @@ package com.autotest.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
 import com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler;
+import com.autotest.handler.JsonbTypeHandler;
+import com.autotest.handler.JsonbListTypeHandler;
 import lombok.Data;
 
 import java.io.Serializable;
@@ -64,9 +66,9 @@ public class ScriptVersion implements Serializable {
     private String entryFile;
 
     /**
-     * 文件列表（JSON）
+     * 文件列表（JSONB List）
      */
-    @TableField(typeHandler = JacksonTypeHandler.class)
+    @TableField(typeHandler = JsonbListTypeHandler.class)
     private List<Map<String, Object>> fileList;
 
     /**
@@ -90,9 +92,21 @@ public class ScriptVersion implements Serializable {
     private String checksum;
 
     /**
+     * 角色定义列表（JSONB）
+     * 格式: [{"name": "server", "displayName": "被测服务", "entryFunction": "run_server", ...}, ...]
+     */
+    @TableField(typeHandler = JsonbTypeHandler.class)
+    private Map<String, Object> roles;
+
+    /**
      * 变更日志
      */
     private String changeLog;
+
+    /**
+     * 脚本内容
+     */
+    private String content;
 
     /**
      * 创建时间

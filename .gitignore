@@ -48,3 +48,29 @@ target/
 *.pem
 *.key
 credentials.json
+
+# Frontend auto-generated
+frontend/src/auto-imports.d.ts
+frontend/src/components.d.ts
+
+# Test temp files
+frontend/test-results/
+frontend/e2e/
+frontend/playwright.config.ts
+
+# Temp migration files
+backend/temp_migration.sql
+
+# Test data files
+create-script.json
+create-task.json
+test-mysql1.json
+test-task.json
+test_script.sh
+insert_script.sql
+update_script.sql
+
+# Test examples
+test-examples/
+tests/
+scripts/

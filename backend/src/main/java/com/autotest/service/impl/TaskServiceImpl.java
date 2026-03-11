@@ -15,6 +15,7 @@ import com.autotest.mapper.ScriptMapper;
 import com.autotest.mapper.ServerMapper;
 import com.autotest.mapper.TaskMapper;
 import com.autotest.mapper.TaskServerMapper;
+import com.autotest.service.TaskExecutionService;
 import com.autotest.service.TaskService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -24,6 +25,7 @@ import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -40,6 +42,7 @@ public class TaskServiceImpl implements TaskService {
     private final TaskServerMapper taskServerMapper;
     private final ScriptMapper scriptMapper;
     private final ServerMapper serverMapper;
+    private final TaskExecutionService taskExecutionService;
 
     @Override
     public PageResult<Task> listTasks(TaskQueryRequest request) {
@@ -63,8 +66,57 @@ public class TaskServiceImpl implements TaskService {
         // 排序
         wrapper.orderByDesc(Task::getCreatedAt);
         
-        Page<Task> page = taskMapper.selectPage(request.toPage(), wrapper);
+        Page<Task> page = taskMapper.selectPage(request.<Task>toPage(), wrapper);
+        
+        // 填充服务器统计
+        for (Task task : page.getRecords()) {
+            fillTaskStatistics(task);
+        }
+        
         return PageResult.of(page);
+    }
+
+    /**
+     * 填充任务统计数据
+     */
+    private void fillTaskStatistics(Task task) {
+        List<TaskServer> servers = taskServerMapper.selectList(
+            new LambdaQueryWrapper<TaskServer>()
+                .eq(TaskServer::getTaskId, task.getId())
+        );
+        
+        int totalCount = servers.size();
+        int successCount = 0;
+        int failCount = 0;
+        
+        for (TaskServer ts : servers) {
+            // 检查所有阶段的综合状态
+            boolean deploySuccess = "completed".equals(ts.getDeployStatus()) || 
+                                   "skipped".equals(ts.getDeployStatus()) ||
+                                   ts.getDeployStatus() == null;
+            boolean runSuccess = "completed".equals(ts.getRunStatus());
+            boolean cleanupSuccess = "completed".equals(ts.getCleanupStatus()) || 
+                                    "skipped".equals(ts.getCleanupStatus()) ||
+                                    ts.getCleanupStatus() == null;
+            
+            // 只有所有成功的阶段才算成功
+            if (deploySuccess && runSuccess && cleanupSuccess) {
+                successCount++;
+            } else if (ts.getRunStatus() != null || ts.getDeployStatus() != null || ts.getCleanupStatus() != null) {
+                // 有任何执行记录但不是全部成功，则算失败
+                failCount++;
+            }
+        }
+        
+        task.setServerCount(totalCount);
+        task.setSuccessCount(successCount);
+        task.setFailCount(failCount);
+        
+        // 更新任务状态（如果有失败的服务器）
+        if (failCount > 0 && "completed".equals(task.getStatus())) {
+            task.setStatus("completed_with_errors");
+            taskMapper.updateById(task);
+        }
     }
 
     @Override
@@ -129,22 +181,40 @@ public class TaskServiceImpl implements TaskService {
                     progress.setServerId(ts.getServerId());
                     progress.setOverallStatus(ts.getOverallStatus());
                     
+                    // 角色信息
+                    progress.setRole(ts.getRole());
+                    progress.setRoleParams(ts.getRoleParams());
+                    
+                    // 当前执行信息
+                    progress.setCurrentPhase(ts.getCurrentPhase());
+                    progress.setCurrentCommand(ts.getCurrentCommand());
+                    progress.setCommandStartedAt(ts.getCommandStartedAt());
+                    
                     // 部署阶段
                     TaskDetailResponse.StageDetail deploy = new TaskDetailResponse.StageDetail();
                     deploy.setStatus(ts.getDeployStatus());
                     deploy.setExitCode(ts.getDeployExitCode());
+                    deploy.setStartedAt(ts.getDeployStartedAt());
+                    deploy.setFinishedAt(ts.getDeployFinishedAt());
+                    deploy.setOutput(ts.getDeployOutput());
                     progress.setDeploy(deploy);
                     
                     // 执行阶段
                     TaskDetailResponse.StageDetail run = new TaskDetailResponse.StageDetail();
                     run.setStatus(ts.getRunStatus());
-                    run.setExitCode(ts.getRunExitCode());
+                    run.setExitCode(ts.getExitCode());
+                    run.setStartedAt(ts.getStartedAt());
+                    run.setFinishedAt(ts.getFinishedAt());
+                    run.setOutput(ts.getOutput());
                     progress.setRun(run);
                     
                     // 卸载阶段
                     TaskDetailResponse.StageDetail cleanup = new TaskDetailResponse.StageDetail();
                     cleanup.setStatus(ts.getCleanupStatus());
                     cleanup.setExitCode(ts.getCleanupExitCode());
+                    cleanup.setStartedAt(ts.getCleanupStartedAt());
+                    cleanup.setFinishedAt(ts.getCleanupFinishedAt());
+                    cleanup.setOutput(ts.getCleanupOutput());
                     progress.setCleanup(cleanup);
                     
                     // 获取服务器名称
@@ -158,6 +228,23 @@ public class TaskServiceImpl implements TaskService {
                 .collect(Collectors.toList());
         
         response.setServers(servers);
+        
+        // 计算统计信息
+        int totalCount = servers.size();
+        int successCount = 0;
+        int failCount = 0;
+        
+        for (TaskDetailResponse.ServerProgress sp : servers) {
+            if ("completed".equals(sp.getOverallStatus())) {
+                successCount++;
+            } else if ("failed".equals(sp.getOverallStatus())) {
+                failCount++;
+            }
+        }
+        
+        response.setTotalServers(totalCount);
+        response.setSuccessCount(successCount);
+        response.setFailCount(failCount);
         
         return response;
     }
@@ -194,6 +281,7 @@ public class TaskServiceImpl implements TaskService {
         task.setFailureStrategy(request.getFailureStrategy());
         task.setCollectEnabled(request.getCollectEnabled());
         task.setCollectConfig(request.getCollectConfig());
+        task.setRoleExecutionStrategy(request.getRoleExecutionStrategy());
         task.setStatus("pending");
         task.setCreatedAt(LocalDateTime.now());
         task.setUpdatedAt(LocalDateTime.now());
@@ -213,14 +301,45 @@ public class TaskServiceImpl implements TaskService {
         
         taskMapper.insert(task);
         
-        // 创建任务服务器关联
+        // 构建服务器ID到角色配置列表的映射（支持同一服务器多角色）
+        Map<Long, List<Map<String, Object>>> serverRolesMap = new java.util.HashMap<>();
+        if (request.getServerRoles() != null) {
+            for (var src : request.getServerRoles()) {
+                serverRolesMap.computeIfAbsent(src.getServerId(), k -> new java.util.ArrayList<>())
+                    .add(Map.of(
+                        "role", src.getRole() != null ? src.getRole() : "default",
+                        "roleParams", src.getRoleParams() != null ? src.getRoleParams() : Map.of()
+                    ));
+            }
+        }
+        
+        // 创建任务服务器关联（支持同一服务器多角色）
         for (Long serverId : serverIds) {
-            TaskServer taskServer = new TaskServer();
-            taskServer.setTaskId(task.getId());
-            taskServer.setServerId(serverId);
-            taskServer.setOverallStatus("pending");
-            taskServer.setCreatedAt(LocalDateTime.now());
-            taskServerMapper.insert(taskServer);
+            List<Map<String, Object>> roleConfigs = serverRolesMap.get(serverId);
+            if (roleConfigs != null && !roleConfigs.isEmpty()) {
+                // 为每个角色创建一个 TaskServer 记录
+                for (Map<String, Object> roleConfig : roleConfigs) {
+                    TaskServer taskServer = new TaskServer();
+                    taskServer.setTaskId(task.getId());
+                    taskServer.setServerId(serverId);
+                    taskServer.setOverallStatus("pending");
+                    taskServer.setCreatedAt(LocalDateTime.now());
+                    taskServer.setRole((String) roleConfig.get("role"));
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> roleParams = (Map<String, Object>) roleConfig.get("roleParams");
+                    taskServer.setRoleParams(roleParams);
+                    taskServerMapper.insert(taskServer);
+                }
+            } else {
+                // 没有角色配置，使用默认角色
+                TaskServer taskServer = new TaskServer();
+                taskServer.setTaskId(task.getId());
+                taskServer.setServerId(serverId);
+                taskServer.setOverallStatus("pending");
+                taskServer.setCreatedAt(LocalDateTime.now());
+                taskServer.setRole("default");
+                taskServerMapper.insert(taskServer);
+            }
         }
         
         return task;
@@ -267,23 +386,25 @@ public class TaskServiceImpl implements TaskService {
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
     public void executeTask(Long id) {
         Task task = taskMapper.selectById(id);
         if (task == null) {
             throw BusinessException.of("任务不存在");
         }
         
-        if (!"pending".equals(task.getStatus())) {
-            throw BusinessException.of("只有待执行状态的任务可以执行");
+        if (!"pending".equals(task.getStatus()) && !"failed".equals(task.getStatus())) {
+            throw BusinessException.of("只有待执行或失败状态的任务可以执行");
         }
         
-        task.setStatus("running");
-        task.setStartedAt(LocalDateTime.now());
-        task.setUpdatedAt(LocalDateTime.now());
-        taskMapper.updateById(task);
-        
-        // TODO: 异步执行任务
+        // 异步执行任务
+        final Long taskId = id;
+        new Thread(() -> {
+            try {
+                taskExecutionService.executeTask(taskId, null);
+            } catch (Exception e) {
+                log.error("任务执行失败: {}", e.getMessage(), e);
+            }
+        }).start();
     }
 
     @Override
@@ -312,7 +433,8 @@ public class TaskServiceImpl implements TaskService {
             throw BusinessException.of("任务不存在");
         }
         
-        if (!"failed".equals(task.getStatus())) {
+        String status = task.getStatus();
+        if (!"failed".equals(status) && !"completed_with_errors".equals(status)) {
             throw BusinessException.of("只有失败的任务可以重试");
         }
         
@@ -322,7 +444,42 @@ public class TaskServiceImpl implements TaskService {
         task.setUpdatedAt(LocalDateTime.now());
         taskMapper.updateById(task);
         
-        // TODO: 重置任务服务器状态
+        // 重置任务服务器状态
+        LambdaQueryWrapper<TaskServer> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(TaskServer::getTaskId, id);
+        List<TaskServer> taskServers = taskServerMapper.selectList(wrapper);
+        for (TaskServer ts : taskServers) {
+            // 通用状态
+            ts.setOverallStatus("pending");
+            ts.setProgress(0);
+            
+            // 部署阶段
+            ts.setDeployStatus(null);
+            ts.setDeployStartedAt(null);
+            ts.setDeployFinishedAt(null);
+            ts.setDeployExitCode(null);
+            ts.setDeployOutput(null);
+            ts.setDeployError(null);
+            
+            // 执行阶段
+            ts.setRunStatus(null);
+            ts.setStartedAt(null);
+            ts.setFinishedAt(null);
+            ts.setExitCode(null);
+            ts.setOutput(null);
+            ts.setErrorMessage(null);
+            ts.setParsedResult(null);
+            
+            // 清理阶段
+            ts.setCleanupStatus(null);
+            ts.setCleanupStartedAt(null);
+            ts.setCleanupFinishedAt(null);
+            ts.setCleanupExitCode(null);
+            ts.setCleanupOutput(null);
+            ts.setCleanupError(null);
+            
+            taskServerMapper.updateById(ts);
+        }
     }
 
     @Override
@@ -353,5 +510,69 @@ public class TaskServiceImpl implements TaskService {
         LambdaQueryWrapper<TaskServer> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(TaskServer::getTaskId, id);
         return taskServerMapper.selectList(wrapper);
+    }
+    
+    @Override
+    public Map<String, Integer> fixAllTaskStatus() {
+        // 获取所有任务服务器
+        List<TaskServer> allServers = taskServerMapper.selectList(null);
+        
+        int fixedServers = 0;
+        int fixedTasks = 0;
+        
+        for (TaskServer ts : allServers) {
+            String oldStatus = ts.getOverallStatus();
+            
+            // 计算正确的整体状态
+            if ("running".equals(ts.getDeployStatus()) ||
+                "running".equals(ts.getRunStatus()) ||
+                "running".equals(ts.getCleanupStatus())) {
+                ts.setOverallStatus("running");
+            } else if ("failed".equals(ts.getDeployStatus()) ||
+                       "failed".equals(ts.getRunStatus()) ||
+                       "failed".equals(ts.getCleanupStatus())) {
+                ts.setOverallStatus("failed");
+            } else {
+                boolean deployComplete = "completed".equals(ts.getDeployStatus()) || 
+                                        "skipped".equals(ts.getDeployStatus()) ||
+                                        ts.getDeployStatus() == null;
+                boolean runComplete = "completed".equals(ts.getRunStatus()) ||
+                                     "skipped".equals(ts.getRunStatus());
+                boolean cleanupComplete = "completed".equals(ts.getCleanupStatus()) || 
+                                         "skipped".equals(ts.getCleanupStatus()) ||
+                                         ts.getCleanupStatus() == null;
+                
+                if (deployComplete && runComplete && cleanupComplete) {
+                    ts.setOverallStatus("completed");
+                } else {
+                    ts.setOverallStatus("pending");
+                }
+            }
+            
+            if (!ts.getOverallStatus().equals(oldStatus)) {
+                taskServerMapper.updateById(ts);
+                fixedServers++;
+            }
+        }
+        
+        // 更新任务状态
+        List<Task> allTasks = taskMapper.selectList(
+            new LambdaQueryWrapper<Task>().in(Task::getStatus, "completed", "completed_with_errors")
+        );
+        
+        for (Task task : allTasks) {
+            long failCount = allServers.stream()
+                .filter(ts -> ts.getTaskId().equals(task.getId()) && "failed".equals(ts.getOverallStatus()))
+                .count();
+            
+            String expectedStatus = failCount > 0 ? "completed_with_errors" : "completed";
+            if (!expectedStatus.equals(task.getStatus())) {
+                task.setStatus(expectedStatus);
+                taskMapper.updateById(task);
+                fixedTasks++;
+            }
+        }
+        
+        return Map.of("fixedServers", fixedServers, "fixedTasks", fixedTasks);
     }
 }

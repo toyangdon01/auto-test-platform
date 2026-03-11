@@ -1,8 +1,11 @@
 package com.autotest.controller;
 
 import com.autotest.common.ApiResponse;
+import com.autotest.entity.Server;
 import com.autotest.entity.ServerGroup;
 import com.autotest.mapper.ServerGroupMapper;
+import com.autotest.mapper.ServerMapper;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -23,11 +26,27 @@ import java.util.List;
 public class ServerGroupController {
 
     private final ServerGroupMapper serverGroupMapper;
+    private final ServerMapper serverMapper;
 
     @Operation(summary = "获取分组列表")
     @GetMapping
     public ApiResponse<List<ServerGroup>> listGroups() {
-        return ApiResponse.success(serverGroupMapper.selectList(null));
+        List<ServerGroup> groups = serverGroupMapper.selectList(null);
+        
+        // 统计每个分组的服务器数量
+        for (ServerGroup group : groups) {
+            Long count = serverMapper.selectCount(
+                new LambdaQueryWrapper<Server>().eq(Server::getGroupId, group.getId())
+            );
+            group.setServerCount(count.intValue());
+        }
+        
+        // 添加未分组服务器数量（groupId 为 null）
+        Long ungroupedCount = serverMapper.selectCount(
+            new LambdaQueryWrapper<Server>().isNull(Server::getGroupId)
+        );
+        
+        return ApiResponse.success(groups);
     }
 
     @Operation(summary = "创建分组")

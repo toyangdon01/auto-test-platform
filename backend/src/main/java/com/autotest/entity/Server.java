@@ -1,7 +1,8 @@
 package com.autotest.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
-import com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler;
+import com.autotest.handler.JsonbStringListHandler;
+import com.autotest.handler.JsonbTypeHandler;
 import lombok.Data;
 
 import java.io.Serializable;
@@ -74,6 +75,11 @@ public class Server implements Serializable {
     private String cpuModel;
 
     /**
+     * CPU架构
+     */
+    private String cpuArch;
+
+    /**
      * 内存大小（文本展示）
      */
     private String memorySize;
@@ -86,7 +92,7 @@ public class Server implements Serializable {
     /**
      * 磁盘信息（JSON）
      */
-    @TableField(typeHandler = JacksonTypeHandler.class)
+    @TableField(typeHandler = JsonbTypeHandler.class)
     private Map<String, Object> diskInfo;
 
     /**
@@ -97,7 +103,7 @@ public class Server implements Serializable {
     /**
      * 标签（JSON数组）
      */
-    @TableField(typeHandler = JacksonTypeHandler.class)
+    @TableField(typeHandler = JsonbStringListHandler.class)
     private List<String> tags;
 
     /**

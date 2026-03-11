@@ -1,5 +1,6 @@
 package com.autotest.dto.request;
 
+import com.autotest.common.PageRequest;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 

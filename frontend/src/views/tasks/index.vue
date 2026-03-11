@@ -2,10 +2,17 @@
   <div class="page-card">
     <div class="page-header">
       <h3 class="page-title">任务列表</h3>
-      <el-button type="primary" @click="$router.push('/tasks/create')">
-        <el-icon><Plus /></el-icon>
-        创建任务
-      </el-button>
+      <div class="header-actions">
+        <el-switch
+          v-model="autoRefresh"
+          active-text="自动刷新"
+          @change="toggleAutoRefresh"
+        />
+        <el-button type="primary" @click="$router.push('/tasks/create')">
+          <el-icon><Plus /></el-icon>
+          创建任务
+        </el-button>
+      </div>
     </div>
 
     <!-- 搜索栏 -->
@@ -18,10 +25,11 @@
         @keyup.enter="fetchData"
       />
       
-      <el-select v-model="queryParams.status" placeholder="状态" clearable style="width: 120px">
+      <el-select v-model="queryParams.status" placeholder="状态" clearable style="width: 140px">
         <el-option label="待执行" value="pending" />
         <el-option label="执行中" value="running" />
         <el-option label="已完成" value="completed" />
+        <el-option label="部分失败" value="completed_with_errors" />
         <el-option label="失败" value="failed" />
         <el-option label="已取消" value="cancelled" />
       </el-select>
@@ -32,56 +40,110 @@
 
     <!-- 数据表格 -->
     <el-table v-loading="loading" :data="tableData" stripe>
-      <el-table-column prop="name" label="任务名称" min-width="200">
+      <el-table-column prop="name" label="任务名称" min-width="180">
         <template #default="{ row }">
           <el-link type="primary" @click="$router.push(`/tasks/detail/${row.id}`)">
             {{ row.name }}
           </el-link>
         </template>
       </el-table-column>
+      
+      <el-table-column prop="status" label="状态" width="180">
+        <template #default="{ row }">
+          <div class="status-cell">
+            <el-tag :type="getStatusType(row.status)" effect="light">
+              <el-icon v-if="row.status === 'running'" class="is-loading"><Loading /></el-icon>
+              {{ getStatusText(row.status) }}
+            </el-tag>
+            <el-tooltip v-if="row.status === 'failed' || row.status === 'completed_with_errors'" 
+                        :content="getTaskErrorMessage(row)" 
+                        placement="top"
+                        :disabled="!getTaskErrorMessage(row)">
+              <el-icon class="error-icon" @click.stop><Warning /></el-icon>
+            </el-tooltip>
+          </div>
+        </template>
+      </el-table-column>
+
+      <el-table-column label="执行进度" width="200">
+        <template #default="{ row }">
+          <div class="progress-cell">
+            <template v-if="row.status === 'running'">
+              <el-progress
+                :percentage="calculateProgress(row)"
+                :stroke-width="10"
+                :format="progressFormat"
+              />
+              <div class="progress-detail">
+                <span class="success">{{ row.successCount || 0 }} 成功</span>
+                <span class="separator">/</span>
+                <span class="fail">{{ row.failCount || 0 }} 失败</span>
+                <span class="separator">/</span>
+                <span>{{ row.totalServers || 0 }} 台</span>
+              </div>
+            </template>
+            <template v-else-if="row.status === 'completed' || row.status === 'completed_with_errors'">
+              <div class="result-summary">
+                <el-tag type="success" size="small">{{ row.successCount || 0 }} 成功</el-tag>
+                <el-tag v-if="row.failCount > 0" type="danger" size="small">{{ row.failCount }} 失败</el-tag>
+                <el-tag type="info" size="small">{{ row.totalServers }} 台</el-tag>
+              </div>
+            </template>
+            <template v-else>
+              <span class="text-muted">-</span>
+            </template>
+          </div>
+        </template>
+      </el-table-column>
+
       <el-table-column prop="executionMode" label="执行模式" width="100">
         <template #default="{ row }">
-          <el-tag>{{ row.executionMode === 'immediate' ? '立即执行' : '定时执行' }}</el-tag>
+          <el-tag size="small" effect="plain">
+            {{ row.executionMode === 'immediate' ? '立即执行' : '定时执行' }}
+          </el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="status" label="状态" width="100">
+      
+      <el-table-column prop="startedAt" label="开始时间" width="160">
         <template #default="{ row }">
-          <el-tag :type="getStatusType(row.status)">{{ getStatusText(row.status) }}</el-tag>
+          {{ formatTime(row.startedAt) }}
         </template>
       </el-table-column>
-      <el-table-column prop="progress" label="进度" width="150">
+      
+      <el-table-column label="耗时" width="100">
         <template #default="{ row }">
-          <el-progress
-            v-if="row.status === 'running'"
-            :percentage="row.progress || 0"
-            :stroke-width="8"
-          />
+          <span v-if="row.startedAt">
+            {{ calculateDuration(row.startedAt, row.finishedAt) }}
+          </span>
           <span v-else>-</span>
         </template>
       </el-table-column>
-      <el-table-column prop="startedAt" label="开始时间" width="160">
-        <template #default="{ row }">
-          {{ row.startedAt || '-' }}
-        </template>
-      </el-table-column>
-      <el-table-column prop="finishedAt" label="结束时间" width="160">
-        <template #default="{ row }">
-          {{ row.finishedAt || '-' }}
-        </template>
-      </el-table-column>
-      <el-table-column label="操作" width="200" fixed="right">
+      
+      <el-table-column label="操作" width="180" fixed="right">
         <template #default="{ row }">
           <template v-if="row.status === 'pending'">
-            <el-button type="primary" link @click="handleExecute(row)">执行</el-button>
-            <el-button type="danger" link @click="handleDelete(row)">删除</el-button>
+            <el-button type="primary" link @click="handleExecute(row)">
+              <el-icon><VideoPlay /></el-icon>执行
+            </el-button>
+            <el-button type="danger" link @click="handleDelete(row)">
+              <el-icon><Delete /></el-icon>删除
+            </el-button>
           </template>
           <template v-else-if="row.status === 'running'">
-            <el-button type="warning" link @click="handleCancel(row)">取消</el-button>
+            <el-button type="warning" link @click="handleCancel(row)">
+              <el-icon><VideoPause /></el-icon>取消
+            </el-button>
+            <el-button type="primary" link @click="handleDetail(row)">详情</el-button>
           </template>
-          <template v-else-if="row.status === 'failed'">
-            <el-button type="primary" link @click="handleRetry(row)">重试</el-button>
+          <template v-else-if="row.status === 'failed' || row.status === 'completed_with_errors'">
+            <el-button type="primary" link @click="handleRetry(row)">
+              <el-icon><RefreshRight /></el-icon>重试
+            </el-button>
+            <el-button type="primary" link @click="handleDetail(row)">详情</el-button>
           </template>
-          <el-button type="primary" link @click="handleDetail(row)">详情</el-button>
+          <template v-else>
+            <el-button type="primary" link @click="handleDetail(row)">详情</el-button>
+          </template>
         </template>
       </el-table-column>
     </el-table>
@@ -102,16 +164,19 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, onUnmounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus } from '@element-plus/icons-vue'
-import { taskApi, type Task } from '@/api/script'
+import { Plus, Loading, VideoPlay, VideoPause, Delete, RefreshRight, Warning } from '@element-plus/icons-vue'
+import request from '@/utils/request'
+import { formatTime, formatDuration } from '@/utils/format'
 
 const router = useRouter()
 const loading = ref(false)
-const tableData = ref<Task[]>([])
+const tableData = ref<any[]>([])
 const total = ref(0)
+const autoRefresh = ref(true)
+let refreshTimer: ReturnType<typeof setInterval> | null = null
 
 const queryParams = reactive({
   page: 1,
@@ -123,9 +188,14 @@ const queryParams = reactive({
 async function fetchData() {
   loading.value = true
   try {
-    const res = await taskApi.list(queryParams)
+    const res = await request.get('/tasks', { params: queryParams })
     if (res.code === 0) {
-      tableData.value = res.data.items
+      tableData.value = res.data.items.map((task: any) => ({
+        ...task,
+        totalServers: task.serverCount || 0,
+        successCount: task.successCount || 0,
+        failCount: task.failCount || 0,
+      }))
       total.value = res.data.total
     }
   } finally {
@@ -145,6 +215,7 @@ function getStatusType(status: string) {
     pending: 'info',
     running: 'warning',
     completed: 'success',
+    completed_with_errors: 'warning',
     failed: 'danger',
     cancelled: 'info',
   }
@@ -156,57 +227,245 @@ function getStatusText(status: string) {
     pending: '待执行',
     running: '执行中',
     completed: '已完成',
+    completed_with_errors: '部分失败',
     failed: '失败',
     cancelled: '已取消',
   }
   return texts[status] || status
 }
 
-async function handleExecute(row: Task) {
-  await ElMessageBox.confirm('确定要执行该任务吗？', '提示')
-  const res = await taskApi.execute(row.id)
-  if (res.code === 0) {
-    ElMessage.success('任务已开始执行')
-    fetchData()
+function calculateProgress(row: any) {
+  if (!row.totalServers) return 0
+  const completed = (row.successCount || 0) + (row.failCount || 0)
+  return Math.round((completed / row.totalServers) * 100)
+}
+
+function progressFormat(percentage: number) {
+  return `${percentage}%`
+}
+
+function calculateDuration(startedAt: string, finishedAt: string | null) {
+  if (!startedAt) return '-'
+  
+  const start = new Date(startedAt).getTime()
+  const end = finishedAt ? new Date(finishedAt).getTime() : Date.now()
+  return formatDuration(end - start)
+}
+
+async function handleExecute(row: any) {
+  try {
+    await ElMessageBox.confirm('确定要执行该任务吗？', '提示', { type: 'info' })
+    const res = await request.post(`/tasks/${row.id}/execute`)
+    if (res.code === 0) {
+      ElMessage.success('任务已开始执行')
+      fetchData()
+    }
+  } catch (e: any) {
+    if (e !== 'cancel') {
+      ElMessage.error(e.message || '执行失败')
+    }
   }
 }
 
-async function handleCancel(row: Task) {
-  await ElMessageBox.confirm('确定要取消该任务吗？', '提示')
-  const res = await taskApi.cancel(row.id)
-  if (res.code === 0) {
-    ElMessage.success('任务已取消')
-    fetchData()
+async function handleCancel(row: any) {
+  try {
+    await ElMessageBox.confirm('确定要取消该任务吗？', '提示', { type: 'warning' })
+    const res = await request.post(`/tasks/${row.id}/cancel`)
+    if (res.code === 0) {
+      ElMessage.success('任务已取消')
+      fetchData()
+    }
+  } catch (e: any) {
+    if (e !== 'cancel') {
+      ElMessage.error(e.message || '取消失败')
+    }
   }
 }
 
-async function handleRetry(row: Task) {
-  const res = await taskApi.retry(row.id)
-  if (res.code === 0) {
-    ElMessage.success('任务已重新排队')
-    fetchData()
+async function handleRetry(row: any) {
+  try {
+    const res = await request.post(`/tasks/${row.id}/retry`)
+    if (res.code === 0) {
+      ElMessage.success('任务已重新排队')
+      fetchData()
+    }
+  } catch (e: any) {
+    ElMessage.error(e.message || '重试失败')
   }
 }
 
-function handleDetail(row: Task) {
+function handleDetail(row: any) {
   router.push(`/tasks/detail/${row.id}`)
 }
 
-async function handleDelete(row: Task) {
-  await ElMessageBox.confirm('确定要删除该任务吗？', '提示', { type: 'warning' })
-  const res = await taskApi.delete(row.id)
-  if (res.code === 0) {
-    ElMessage.success('删除成功')
-    fetchData()
+async function handleDelete(row: any) {
+  try {
+    await ElMessageBox.confirm('确定要删除该任务吗？', '提示', { type: 'warning' })
+    const res = await request.delete(`/tasks/${row.id}`)
+    if (res.code === 0) {
+      ElMessage.success('删除成功')
+      fetchData()
+    }
+  } catch (e: any) {
+    if (e !== 'cancel') {
+      ElMessage.error(e.message || '删除失败')
+    }
+  }
+}
+
+function toggleAutoRefresh(val: boolean) {
+  if (val) {
+    startAutoRefresh()
+  } else {
+    stopAutoRefresh()
+  }
+}
+
+function startAutoRefresh() {
+  if (refreshTimer) return
+  refreshTimer = setInterval(() => {
+    // 只有当有执行中的任务时才刷新
+    const hasRunning = tableData.value.some(t => t.status === 'running')
+    if (hasRunning) {
+      fetchData()
+    }
+  }, 3000) // 每3秒刷新
+}
+
+function stopAutoRefresh() {
+  if (refreshTimer) {
+    clearInterval(refreshTimer)
+    refreshTimer = null
   }
 }
 
 onMounted(() => {
   fetchData()
+  if (autoRefresh.value) {
+    startAutoRefresh()
+  }
 })
+
+onUnmounted(() => {
+  stopAutoRefresh()
+})
+
+// 获取任务失败原因
+function getTaskErrorMessage(row: any): string {
+  // 如果有服务器详细数据（从详情页获取的），从中提取错误
+  if (row.servers && row.servers.length > 0) {
+    const failedServer = row.servers.find((s: any) => 
+      s.overallStatus === 'failed' || s.deploy?.status === 'failed' || s.run?.status === 'failed' || s.cleanup?.status === 'failed'
+    )
+    
+    if (failedServer) {
+      const phases = ['deploy', 'run', 'cleanup'] as const
+      for (const phase of phases) {
+        const phaseData = failedServer[phase]
+        if (phaseData?.status === 'failed' && phaseData?.output) {
+          const errorLines = phaseData.output.split('\n')
+            .filter((line: string) => line.includes('[ERROR]') || line.includes('error') || line.includes('failed'))
+            .map((line: string) => line.replace(/^\[ERROR\]\s*/, '').trim())
+            .filter((line: string) => line.length > 0)
+          
+          if (errorLines.length > 0) {
+            return `${getPhaseText(phase)}失败: ${errorLines[0]}`
+          }
+          
+          const trimmed = phaseData.output.trim()
+          if (trimmed.length > 50) {
+            return `${getPhaseText(phase)}失败: ${trimmed.substring(0, 50)}...`
+          }
+          return `${getPhaseText(phase)}失败: ${trimmed}`
+        }
+      }
+    }
+  }
+  
+  // 从任务状态判断失败原因
+  if (row.deployStatus === 'failed') {
+    return '部署阶段失败'
+  }
+  if (row.runStatus === 'failed') {
+    return '执行阶段失败'
+  }
+  if (row.cleanupStatus === 'failed') {
+    return '清理阶段失败'
+  }
+  
+  // 根据统计数据提供信息
+  if (row.failCount > 0) {
+    return `${row.failCount} 台服务器执行失败`
+  }
+  
+  return '执行失败，详情请查看日志'
+}
+
+// 获取阶段显示文本
+function getPhaseText(phase: string): string {
+  const texts: Record<string, string> = {
+    deploy: '部署',
+    run: '执行',
+    cleanup: '清理',
+  }
+  return texts[phase] || phase
+}
 </script>
 
 <style lang="scss" scoped>
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.status-cell {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  
+  .el-tag {
+    .el-icon {
+      margin-right: 4px;
+    }
+  }
+  
+  .error-icon {
+    color: #f56c6c;
+    cursor: pointer;
+    font-size: 16px;
+    
+    &:hover {
+      color: #f78989;
+    }
+  }
+}
+
+.progress-cell {
+  .el-progress {
+    margin-bottom: 4px;
+  }
+  
+  .progress-detail {
+    font-size: 12px;
+    color: #909399;
+    
+    .success { color: #67c23a; }
+    .fail { color: #f56c6c; }
+    .separator { margin: 0 4px; }
+  }
+}
+
+.result-summary {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.text-muted {
+  color: #c0c4cc;
+}
+
 .pagination-wrap {
   display: flex;
   justify-content: flex-end;

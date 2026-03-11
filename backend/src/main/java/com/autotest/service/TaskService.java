@@ -6,6 +6,8 @@ import com.autotest.dto.request.TaskQueryRequest;
 import com.autotest.dto.response.TaskDetailResponse;
 import com.autotest.entity.Task;
 
+import java.util.Map;
+
 /**
  * 任务服务接口
  *
@@ -62,4 +64,9 @@ public interface TaskService {
      * 获取任务执行日志
      */
     Object getTaskLogs(Long id, Long serverId, String stage);
+    
+    /**
+     * 修复所有任务状态
+     */
+    Map<String, Integer> fixAllTaskStatus();
 }

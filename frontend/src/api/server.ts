@@ -12,6 +12,7 @@ export interface Server {
   osVersion?: string
   cpuCores?: number
   cpuModel?: string
+  cpuArch?: string
   memorySize?: string
   memoryTotalMb?: number
   diskInfo?: object
@@ -83,6 +84,11 @@ export const serverApi = {
   refresh(id: number) {
     return request.post<Server>(`/servers/${id}/refresh`)
   },
+
+  // 批量导入
+  batchCreate(data: ServerCreateParams[]) {
+    return request.post<{ total: number; success: number; failed: number; errors: string }>('/servers/batch', data)
+  },
 }
 
 // 服务器分组 API
@@ -90,6 +96,7 @@ export interface ServerGroup {
   id: number
   name: string
   description?: string
+  serverCount?: number
   createdAt: string
 }
 

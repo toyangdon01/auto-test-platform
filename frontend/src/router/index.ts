@@ -5,6 +5,9 @@ import NProgress from 'nprogress'
 // 布局组件
 import Layout from '@/layouts/DefaultLayout.vue'
 
+// 不需要登录的页面
+const whiteList = ['/login']
+
 // 路由配置
 const routes: RouteRecordRaw[] = [
   {
@@ -50,6 +53,12 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/servers/import.vue'),
         meta: { title: '批量导入' },
       },
+      {
+        path: 'terminal/:id',
+        name: 'ServerTerminal',
+        component: () => import('@/views/servers/terminal.vue'),
+        meta: { title: '服务器终端', hidden: true },
+      },
     ],
   },
   {
@@ -79,6 +88,20 @@ const routes: RouteRecordRaw[] = [
     ],
   },
   {
+    path: '/resources',
+    component: Layout,
+    redirect: '/resources/list',
+    meta: { title: '资源管理', icon: 'FolderOpened' },
+    children: [
+      {
+        path: 'list',
+        name: 'ResourceList',
+        component: () => import('@/views/resources/index.vue'),
+        meta: { title: '资源文件' },
+      },
+    ],
+  },
+  {
     path: '/tasks',
     component: Layout,
     redirect: '/tasks/list',
@@ -101,6 +124,12 @@ const routes: RouteRecordRaw[] = [
         name: 'TaskDetail',
         component: () => import('@/views/tasks/detail.vue'),
         meta: { title: '任务详情', hidden: true },
+      },
+      {
+        path: 'scheduled',
+        name: 'ScheduledTasks',
+        component: () => import('@/views/tasks/scheduled.vue'),
+        meta: { title: '定时任务' },
       },
     ],
   },
@@ -157,6 +186,20 @@ const routes: RouteRecordRaw[] = [
     ],
   },
   {
+    path: '/analysis',
+    component: Layout,
+    redirect: '/analysis/trend',
+    meta: { title: '数据分析', icon: 'TrendCharts' },
+    children: [
+      {
+        path: 'trend',
+        name: 'TrendAnalysis',
+        component: () => import('@/views/analysis/trend.vue'),
+        meta: { title: '趋势分析' },
+      },
+    ],
+  },
+  {
     path: '/settings',
     component: Layout,
     redirect: '/settings/config',
@@ -203,7 +246,24 @@ router.beforeEach((to, _from, next) => {
   const title = to.meta?.title as string
   document.title = title ? `${title} - 自动化测试平台` : '自动化测试平台'
   
-  next()
+  // 检查登录状态
+  const token = localStorage.getItem('test_platform_token')
+  
+  if (whiteList.includes(to.path)) {
+    // 已登录访问登录页，跳转到首页
+    if (token) {
+      next('/dashboard')
+    } else {
+      next()
+    }
+  } else {
+    // 需要登录的页面
+    if (token) {
+      next()
+    } else {
+      next('/login')
+    }
+  }
 })
 
 router.afterEach(() => {

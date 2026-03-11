@@ -17,18 +17,17 @@ public class SystemConfig implements Serializable {
 
     private static final long serialVersionUID = 1L;
 
-    @TableId(value = "id", type = IdType.AUTO)
-    private Long id;
-
     /**
-     * 配置键
+     * 配置键（主键）
      */
-    private String configKey;
+    @TableId(value = "key", type = IdType.INPUT)
+    private String key;
 
     /**
      * 配置值
      */
-    private String configValue;
+    @TableField("value")
+    private String value;
 
     /**
      * 描述
@@ -36,14 +35,8 @@ public class SystemConfig implements Serializable {
     private String description;
 
     /**
-     * 创建时间
-     */
-    @TableField(fill = FieldFill.INSERT)
-    private LocalDateTime createdAt;
-
-    /**
      * 更新时间
      */
-    @TableField(fill = FieldFill.INSERT_UPDATE)
+    @TableField("updated_at")
     private LocalDateTime updatedAt;
 }

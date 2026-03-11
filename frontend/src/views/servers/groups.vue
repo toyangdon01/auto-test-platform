@@ -9,17 +9,26 @@
     </div>
 
     <el-table v-loading="loading" :data="tableData" stripe>
-      <el-table-column prop="name" label="分组名称" min-width="200" />
-      <el-table-column prop="description" label="描述" min-width="300">
+      <el-table-column prop="name" label="分组名称" min-width="180" />
+      <el-table-column prop="serverCount" label="服务器数量" width="120" align="center">
+        <template #default="{ row }">
+          <el-tag type="info" size="small">{{ row.serverCount || 0 }} 台</el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column prop="description" label="描述" min-width="250">
         <template #default="{ row }">
           {{ row.description || '-' }}
         </template>
       </el-table-column>
-      <el-table-column prop="createdAt" label="创建时间" width="180" />
+      <el-table-column prop="createdAt" label="创建时间" width="180">
+        <template #default="{ row }">
+          {{ formatTime(row.createdAt) }}
+        </template>
+      </el-table-column>
       <el-table-column label="操作" width="150" fixed="right">
         <template #default="{ row }">
           <el-button type="primary" link @click="handleEdit(row)">编辑</el-button>
-          <el-button type="danger" link @click="handleDelete(row)">删除</el-button>
+          <el-button type="danger" link @click="handleDelete(row)" :disabled="row.serverCount > 0">删除</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -61,6 +70,12 @@ const formData = reactive({
 
 const formRules = {
   name: [{ required: true, message: '请输入分组名称', trigger: 'blur' }],
+}
+
+// 格式化时间
+function formatTime(time: string) {
+  if (!time) return '-'
+  return time.replace('T', ' ').substring(0, 19)
 }
 
 async function fetchData() {

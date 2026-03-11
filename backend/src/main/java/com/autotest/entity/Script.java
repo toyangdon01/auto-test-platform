@@ -2,6 +2,8 @@ package com.autotest.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
 import com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler;
+import com.autotest.handler.JsonbTypeHandler;
+import com.autotest.handler.JsonbListTypeHandler;
 import lombok.Data;
 
 import java.io.Serializable;
@@ -79,21 +81,21 @@ public class Script implements Serializable {
     private String entryFile;
 
     /**
-     * 文件列表（JSON）
+     * 文件列表（JSONB List）
      */
-    @TableField(typeHandler = JacksonTypeHandler.class)
+    @TableField(typeHandler = JsonbListTypeHandler.class)
     private List<Map<String, Object>> fileList;
 
     /**
-     * 参数定义（JSON）
+     * 参数定义（JSONB Map）
      */
-    @TableField(typeHandler = JacksonTypeHandler.class)
+    @TableField(typeHandler = JsonbTypeHandler.class)
     private Map<String, Object> parameters;
 
     /**
-     * 解析规则（JSON）
+     * 解析规则（JSONB Map）
      */
-    @TableField(typeHandler = JacksonTypeHandler.class)
+    @TableField(typeHandler = JsonbTypeHandler.class)
     private Map<String, Object> parseRules;
 
     /**
@@ -127,4 +129,36 @@ public class Script implements Serializable {
      */
     @TableField(fill = FieldFill.INSERT_UPDATE)
     private LocalDateTime updatedAt;
+    
+    // ========== 非数据库字段（用于前端传输） ==========
+    
+    /**
+     * 执行脚本内容（在线编辑模式，不存数据库）
+     */
+    @TableField(exist = false)
+    private String runContent;
+    
+    /**
+     * 部署脚本内容（在线编辑模式，不存数据库）
+     */
+    @TableField(exist = false)
+    private String deployContent;
+    
+    /**
+     * 卸载脚本内容（在线编辑模式，不存数据库）
+     */
+    @TableField(exist = false)
+    private String cleanupContent;
+    
+    /**
+     * 角色定义（用于创建时传给 ScriptVersion，不存 scripts 表）
+     */
+    @TableField(exist = false)
+    private Map<String, Object> roles;
+    
+    /**
+     * 临时文件路径（上传时的临时目录，不存数据库）
+     */
+    @TableField(exist = false)
+    private String tempFilePath;
 }

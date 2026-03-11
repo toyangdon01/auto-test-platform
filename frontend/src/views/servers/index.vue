@@ -50,15 +50,20 @@
           {{ row.host }}:{{ row.port }}
         </template>
       </el-table-column>
-      <el-table-column prop="osType" label="操作系统" width="140">
+      <el-table-column prop="status" label="状态" width="100">
         <template #default="{ row }">
-          <span v-if="row.osType">{{ row.osType }} {{ row.osVersion }}</span>
+          <el-tag :type="getStatusType(row.status)">{{ getStatusText(row.status) }}</el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column prop="cpuCores" label="CPU" width="120">
+        <template #default="{ row }">
+          <span v-if="row.cpuCores">{{ row.cpuCores }} 核</span>
           <span v-else class="text-secondary">-</span>
         </template>
       </el-table-column>
-      <el-table-column prop="cpuCores" label="CPU" width="100">
+      <el-table-column prop="cpuArch" label="CPU架构" width="100">
         <template #default="{ row }">
-          <span v-if="row.cpuCores">{{ row.cpuCores }}核</span>
+          <span v-if="row.cpuArch">{{ row.cpuArch }}</span>
           <span v-else class="text-secondary">-</span>
         </template>
       </el-table-column>
@@ -68,19 +73,18 @@
           <span v-else class="text-secondary">-</span>
         </template>
       </el-table-column>
-      <el-table-column prop="status" label="状态" width="100">
-        <template #default="{ row }">
-          <el-tag :type="getStatusType(row.status)">{{ getStatusText(row.status) }}</el-tag>
-        </template>
-      </el-table-column>
       <el-table-column prop="lastCheckAt" label="最后检测" width="160">
         <template #default="{ row }">
-          {{ row.lastCheckAt || '-' }}
+          {{ formatTime(row.lastCheckAt) }}
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="200" fixed="right">
+      <el-table-column label="操作" width="260" fixed="right">
         <template #default="{ row }">
-          <el-button type="primary" link @click="handleTest(row)">测试</el-button>
+          <el-button type="primary" link @click="handleTerminal(row)">
+            <el-icon><Monitor /></el-icon>
+            终端
+          </el-button>
+          <el-button type="primary" link :loading="row.testing" @click="handleTest(row)">测试</el-button>
           <el-button type="primary" link @click="handleEdit(row)">编辑</el-button>
           <el-button type="danger" link @click="handleDelete(row)">删除</el-button>
         </template>
@@ -113,10 +117,22 @@
         :rules="formRules"
         label-width="100px"
       >
-        <el-form-item label="服务器名称" prop="name">
+        <el-form-item prop="name">
+          <template #label>
+            服务器名称
+            <el-tooltip content="服务器的显示名称，便于识别和管理" placement="top">
+              <el-icon class="field-tip-icon"><QuestionFilled /></el-icon>
+            </el-tooltip>
+          </template>
           <el-input v-model="formData.name" placeholder="请输入服务器名称" />
         </el-form-item>
-        <el-form-item label="主机地址" prop="host">
+        <el-form-item prop="host">
+          <template #label>
+            主机地址
+            <el-tooltip content="服务器的 IP 地址或主机名，用于 SSH 连接" placement="top">
+              <el-icon class="field-tip-icon"><QuestionFilled /></el-icon>
+            </el-tooltip>
+          </template>
           <el-input v-model="formData.host" placeholder="IP 或域名" />
         </el-form-item>
         <el-form-item label="SSH端口" prop="port">
@@ -125,13 +141,25 @@
         <el-form-item label="用户名" prop="username">
           <el-input v-model="formData.username" placeholder="SSH 用户名" />
         </el-form-item>
-        <el-form-item label="认证方式" prop="authType">
+        <el-form-item prop="authType">
+          <template #label>
+            认证方式
+            <el-tooltip content="密码认证：使用用户名密码登录；密钥认证：使用 SSH 私钥登录" placement="top">
+              <el-icon class="field-tip-icon"><QuestionFilled /></el-icon>
+            </el-tooltip>
+          </template>
           <el-select v-model="formData.authType" style="width: 100%">
             <el-option label="密码" value="password" />
             <el-option label="密钥" value="key" />
           </el-select>
         </el-form-item>
-        <el-form-item label="认证密钥" prop="authSecret">
+        <el-form-item prop="authSecret">
+          <template #label>
+            认证密钥
+            <el-tooltip content="认证凭据：密码认证时填写密码，密钥认证时填写私钥内容" placement="top">
+              <el-icon class="field-tip-icon"><QuestionFilled /></el-icon>
+            </el-tooltip>
+          </template>
           <el-input
             v-model="formData.authSecret"
             :type="formData.authType === 'password' ? 'password' : 'textarea'"
@@ -176,9 +204,18 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Search } from '@element-plus/icons-vue'
+import { Plus, Search, Monitor, QuestionFilled } from '@element-plus/icons-vue'
 import { serverApi, serverGroupApi, type Server, type ServerGroup, type ServerCreateParams } from '@/api/server'
+import { formatTime } from '@/utils/format'
+
+const router = useRouter()
+
+// 扩展 Server 类型，添加 testing 状态
+interface ServerWithState extends Server {
+  testing?: boolean
+}
 
 // 查询参数
 const queryParams = reactive({
@@ -191,7 +228,7 @@ const queryParams = reactive({
 
 // 数据
 const loading = ref(false)
-const tableData = ref<Server[]>([])
+const tableData = ref<ServerWithState[]>([])
 const total = ref(0)
 const groups = ref<ServerGroup[]>([])
 
@@ -293,6 +330,11 @@ function handleAdd() {
   dialogVisible.value = true
 }
 
+// 打开终端
+function handleTerminal(row: Server) {
+  router.push(`/servers/terminal/${row.id}`)
+}
+
 // 编辑
 function handleEdit(row: Server) {
   dialogTitle.value = '编辑服务器'
@@ -312,16 +354,30 @@ function handleEdit(row: Server) {
 }
 
 // 测试连接
-async function handleTest(row: Server) {
+async function handleTest(row: ServerWithState) {
+  row.testing = true
   try {
     const res = await serverApi.testConnection(row.id)
     if (res.code === 0 && res.data.connected) {
-      ElMessage.success('连接成功')
+      ElMessage.success(`连接成功 (${res.data.responseTime || 0}ms)`)
+      // 刷新服务器信息（获取 CPU、内存等）
+      const refreshRes = await serverApi.refresh(row.id)
+      if (refreshRes.code === 0) {
+        // 更新服务器状态和信息
+        Object.assign(row, refreshRes.data)
+      } else {
+        row.status = 'online'
+        row.lastCheckAt = new Date().toISOString()
+      }
     } else {
-      ElMessage.error('连接失败')
+      ElMessage.error(res.data?.error || '连接失败')
+      row.status = 'error'
     }
-  } catch {
-    ElMessage.error('连接失败')
+  } catch (error: any) {
+    ElMessage.error(error.message || '连接失败')
+    row.status = 'error'
+  } finally {
+    row.testing = false
   }
 }
 
@@ -369,5 +425,18 @@ onMounted(() => {
 
 .text-secondary {
   color: var(--text-secondary);
+}
+
+// 字段 tip 图标样式
+.field-tip-icon {
+  margin-left: 4px;
+  color: var(--el-text-color-secondary);
+  cursor: help;
+  vertical-align: middle;
+  transition: color 0.2s;
+  
+  &:hover {
+    color: var(--el-color-primary);
+  }
 }
 </style>

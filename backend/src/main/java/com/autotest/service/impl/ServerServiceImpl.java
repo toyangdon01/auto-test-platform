@@ -11,6 +11,7 @@ import com.autotest.entity.ServerGroup;
 import com.autotest.exception.BusinessException;
 import com.autotest.mapper.ServerGroupMapper;
 import com.autotest.mapper.ServerMapper;
+import com.autotest.service.SshService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -57,7 +58,7 @@ public class ServerServiceImpl implements ServerService {
         // 排序
         wrapper.orderByDesc(Server::getCreatedAt);
         
-        Page<Server> page = serverMapper.selectPage(request.toPage(), wrapper);
+        Page<Server> page = serverMapper.selectPage(request.<Server>toPage(), wrapper);
         return PageResult.of(page);
     }
 
@@ -158,8 +159,15 @@ public class ServerServiceImpl implements ServerService {
             throw BusinessException.of("服务器不存在");
         }
         
-        // TODO: 实现 SSH 连接测试
-        return false;
+        boolean connected = SshService.testConnection(server);
+        
+        // 更新服务器状态
+        server.setStatus(connected ? "online" : "offline");
+        server.setLastCheckAt(LocalDateTime.now());
+        server.setUpdatedAt(LocalDateTime.now());
+        serverMapper.updateById(server);
+        
+        return connected;
     }
 
     @Override
@@ -169,13 +177,45 @@ public class ServerServiceImpl implements ServerService {
             throw BusinessException.of("服务器不存在");
         }
         
-        // TODO: 实现 SSH 连接并获取系统信息
+        // 测试连接并获取系统信息
+        if (SshService.testConnection(server)) {
+            server.setStatus("online");
+            
+            SshService.ServerInfo info = SshService.getServerInfo(server);
+            server.setOsType("linux");
+            server.setOsVersion(info.getOsInfo());
+            server.setCpuModel(info.getCpuModel());
+            server.setCpuArch(info.getCpuArch());
+            server.setCpuCores(info.getCpuCores());
+            if (info.getMemoryTotalMb() != null) {
+                server.setMemoryTotalMb(info.getMemoryTotalMb().longValue());
+                // 设置可读的内存大小
+                server.setMemorySize(formatMemorySize(info.getMemoryTotalMb()));
+            }
+            // 磁盘信息
+            if (info.getDiskInfo() != null) {
+                server.setDiskInfo(java.util.Collections.singletonMap("root", info.getDiskInfo()));
+            }
+        } else {
+            server.setStatus("offline");
+        }
         
         server.setLastCheckAt(LocalDateTime.now());
         server.setUpdatedAt(LocalDateTime.now());
         serverMapper.updateById(server);
         
         return server;
+    }
+    
+    /**
+     * 格式化内存大小
+     */
+    private String formatMemorySize(Long memoryMb) {
+        if (memoryMb == null) return null;
+        if (memoryMb >= 1024) {
+            return String.format("%.1f GB", memoryMb / 1024.0);
+        }
+        return memoryMb + " MB";
     }
 
     @Override

@@ -49,6 +49,17 @@ public class TaskCreateRequest implements Serializable {
     private List<Long> serverIds;
 
     /**
+     * 服务器角色配置（可选）
+     * 如果不配置，所有服务器使用默认角色
+     */
+    private List<ServerRoleConfig> serverRoles;
+
+    /**
+     * 角色执行策略
+     */
+    private Map<String, Object> roleExecutionStrategy;
+
+    /**
      * 共享参数
      */
     private Map<String, Object> sharedParams;

@@ -117,3 +117,48 @@
     box-shadow: 0 0 10px var(--primary-color), 0 0 5px var(--primary-color) !important;
   }
 }
+
+// Element Plus 子菜单弹出层样式
+.el-menu--vertical {
+  .el-menu--popup {
+    background: #001529;
+    min-width: 180px;
+    
+    .el-menu-item {
+      color: rgba(255, 255, 255, 0.65);
+      background: #001529;
+      
+      &:hover {
+        color: #fff;
+        background: rgba(255, 255, 255, 0.05);
+      }
+      
+      &.is-active {
+        color: #fff;
+        background: var(--primary-color, #1890ff);
+      }
+    }
+  }
+}
+
+// 暗色主题子菜单弹出层
+.el-menu--dark {
+  .el-menu--popup {
+    background: #000c17;
+    
+    .el-menu-item {
+      color: rgba(255, 255, 255, 0.65);
+      background: #000c17;
+      
+      &:hover {
+        color: #fff;
+        background: rgba(255, 255, 255, 0.05);
+      }
+      
+      &.is-active {
+        color: #fff;
+        background: var(--primary-color, #1890ff);
+      }
+    }
+  }
+}

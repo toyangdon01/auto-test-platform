@@ -60,6 +60,21 @@ public class MetricDefinition implements Serializable {
     private String comparisonMode;
 
     /**
+     * 数据类型: string/integer/float/boolean
+     */
+    private String dataType;
+
+    /**
+     * 提取规则（JSON）
+     */
+    private String extractRule;
+
+    /**
+     * 是否启用
+     */
+    private Boolean enabled;
+
+    /**
      * 适用的测试类型（JSON数组）
      */
     @TableField(typeHandler = JacksonTypeHandler.class)
@@ -70,4 +85,10 @@ public class MetricDefinition implements Serializable {
      */
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createdAt;
+
+    /**
+     * 更新时间
+     */
+    @TableField(fill = FieldFill.INSERT_UPDATE)
+    private LocalDateTime updatedAt;
 }

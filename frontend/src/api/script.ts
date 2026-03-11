@@ -1,17 +1,41 @@
 import request, { type PageParams, type PageResult } from '@/utils/request'
 
+// 参数定义
+export interface ParamDefinition {
+  name: string
+  label: string
+  type: 'string' | 'integer' | 'float' | 'boolean' | 'select'
+  required: boolean
+  default?: string | number | boolean
+  unit?: string
+  description?: string
+  options?: Array<{ label: string; value: string }>
+}
+
+export interface ScriptParameters {
+  shared?: ParamDefinition[]
+  deploy?: ParamDefinition[]
+  run?: ParamDefinition[]
+}
+
 // 脚本类型
 export interface Script {
   id: number
   name: string
   description?: string
   testCategory: string
+  scriptType: 'shell' | 'python'
   lifecycleMode: 'simple' | 'full'
   hasDeploy: boolean
   hasCleanup: boolean
   deployEntry?: string
   cleanupEntry?: string
+  entryFile?: string
+  fileList?: Array<{ path: string; size: number }>
+  parameters?: ScriptParameters
+  parseRules?: Record<string, unknown>
   currentVersion: string
+  defaultTimeout?: number
   status: string
   createdAt: string
   updatedAt: string
@@ -44,6 +68,21 @@ export const scriptApi = {
   delete(id: number) {
     return request.delete(`/scripts/${id}`)
   },
+
+  // 获取脚本版本的角色定义
+  getRoles(scriptId: number, version: string) {
+    return request.get<any[]>(`/scripts/${scriptId}/versions/${version}/roles/summary`)
+  },
+
+  // 更新脚本版本的角色定义
+  updateRoles(scriptId: number, version: string, roles: any) {
+    return request.put(`/scripts/${scriptId}/versions/${version}/roles`, roles)
+  },
+
+  // 获取脚本文件列表
+  listFiles(scriptId: number) {
+    return request.get<string[]>(`/scripts/${scriptId}/file-list`)
+  },
 }
 
 // 任务类型
@@ -73,6 +112,11 @@ export interface TaskCreateParams {
   scriptId: number
   scriptVersion: string
   serverIds: number[]
+  serverRoles?: Array<{
+    serverId: number
+    role: string
+    roleParams?: Record<string, any>
+  }>
   sharedParams?: Record<string, unknown>
   deployParams?: Record<string, unknown>
   runParams?: Record<string, unknown>

@@ -53,6 +53,11 @@ public class TaskDetailResponse {
     private LocalDateTime createdAt;
     private LocalDateTime startedAt;
     private LocalDateTime finishedAt;
+    
+    // 统计信息
+    private Integer totalServers;
+    private Integer successCount;
+    private Integer failCount;
 
     @Data
     public static class ScriptInfo {
@@ -94,6 +99,17 @@ public class TaskDetailResponse {
         private Long serverId;
         private String serverName;
         private String overallStatus;
+        private Integer progress;
+        
+        // 角色信息
+        private String role;
+        private Map<String, Object> roleParams;
+        
+        // 当前执行信息
+        private String currentPhase;
+        private String currentCommand;
+        private LocalDateTime commandStartedAt;
+        
         private StageDetail deploy;
         private StageDetail run;
         private StageDetail cleanup;
@@ -106,5 +122,6 @@ public class TaskDetailResponse {
         private LocalDateTime finishedAt;
         private Integer duration;
         private Integer exitCode;
+        private String output;
     }
 }

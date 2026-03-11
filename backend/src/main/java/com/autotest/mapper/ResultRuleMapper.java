@@ -5,9 +5,7 @@ import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import org.apache.ibatis.annotations.Mapper;
 
 /**
- * 结果判定规则 Mapper
- *
- * @author auto-test-platform
+ * 解析规则 Mapper
  */
 @Mapper
 public interface ResultRuleMapper extends BaseMapper<ResultRule> {

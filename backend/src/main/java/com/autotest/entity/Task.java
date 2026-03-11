@@ -1,7 +1,7 @@
 package com.autotest.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
-import com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler;
+import com.autotest.handler.JsonbTypeHandler;
 import lombok.Data;
 
 import java.io.Serializable;
@@ -45,19 +45,26 @@ public class Task implements Serializable {
     /**
      * 共享参数（JSON）
      */
-    @TableField(typeHandler = JacksonTypeHandler.class)
+    @TableField(typeHandler = JsonbTypeHandler.class)
     private Map<String, Object> sharedParams;
+
+    /**
+     * 角色执行策略（JSON）
+     * 格式: {"mode": "ordered", "startupWait": true, "resultRoles": ["client"]}
+     */
+    @TableField(typeHandler = JsonbTypeHandler.class)
+    private Map<String, Object> roleExecutionStrategy;
 
     /**
      * 部署参数（JSON）
      */
-    @TableField(typeHandler = JacksonTypeHandler.class)
+    @TableField(typeHandler = JsonbTypeHandler.class)
     private Map<String, Object> deployParams;
 
     /**
      * 执行参数（JSON）
      */
-    @TableField(typeHandler = JacksonTypeHandler.class)
+    @TableField(typeHandler = JsonbTypeHandler.class)
     private Map<String, Object> runParams;
 
     /**
@@ -148,7 +155,7 @@ public class Task implements Serializable {
     /**
      * 指标采集配置（JSON）
      */
-    @TableField(typeHandler = JacksonTypeHandler.class)
+    @TableField(typeHandler = JsonbTypeHandler.class)
     private Map<String, Object> collectConfig;
 
     /**
@@ -172,4 +179,24 @@ public class Task implements Serializable {
      */
     @TableField(fill = FieldFill.INSERT_UPDATE)
     private LocalDateTime updatedAt;
+
+    // === 非持久化字段（用于展示统计） ===
+
+    /**
+     * 服务器总数
+     */
+    @TableField(exist = false)
+    private Integer serverCount;
+
+    /**
+     * 成功数
+     */
+    @TableField(exist = false)
+    private Integer successCount;
+
+    /**
+     * 失败数
+     */
+    @TableField(exist = false)
+    private Integer failCount;
 }

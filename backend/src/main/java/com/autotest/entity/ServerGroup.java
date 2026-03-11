@@ -41,4 +41,10 @@ public class ServerGroup implements Serializable {
      */
     @TableField(fill = FieldFill.INSERT_UPDATE)
     private LocalDateTime updatedAt;
+
+    /**
+     * 服务器数量（非数据库字段）
+     */
+    @TableField(exist = false)
+    private Integer serverCount;
 }

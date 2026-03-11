@@ -1,7 +1,7 @@
 package com.autotest.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
-import com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler;
+import com.autotest.handler.JsonbTypeHandler;
 import lombok.Data;
 
 import java.io.Serializable;
@@ -45,7 +45,7 @@ public class Report implements Serializable {
     /**
      * 报告数据（JSON）
      */
-    @TableField(typeHandler = JacksonTypeHandler.class)
+    @TableField(typeHandler = JsonbTypeHandler.class)
     private Map<String, Object> reportData;
 
     /**

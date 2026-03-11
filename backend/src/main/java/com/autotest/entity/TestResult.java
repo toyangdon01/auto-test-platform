@@ -1,7 +1,7 @@
 package com.autotest.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
-import com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler;
+import com.autotest.handler.JsonbTypeHandler;
 import lombok.Data;
 
 import java.io.Serializable;
@@ -33,14 +33,9 @@ public class TestResult implements Serializable {
     private Long serverId;
 
     /**
-     * 脚本ID
+     * 任务服务器ID
      */
-    private Long scriptId;
-
-    /**
-     * 脚本版本
-     */
-    private String scriptVersion;
+    private Long taskServerId;
 
     /**
      * 结果: pass/fail/warning/error
@@ -60,26 +55,30 @@ public class TestResult implements Serializable {
     /**
      * 指标数据（JSON）
      */
-    @TableField(typeHandler = JacksonTypeHandler.class)
+    @TableField(typeHandler = JsonbTypeHandler.class)
     private Map<String, Object> metrics;
 
     /**
      * 原始标准输出
      */
-    @TableField(typeHandler = JacksonTypeHandler.class)
     private String rawOutput;
 
     /**
      * 原始错误输出
      */
-    @TableField(typeHandler = JacksonTypeHandler.class)
     private String rawError;
 
     /**
-     * 执行参数（JSON）
+     * 输出文件（JSON）
      */
-    @TableField(typeHandler = JacksonTypeHandler.class)
-    private Map<String, Object> parameters;
+    @TableField(typeHandler = JsonbTypeHandler.class)
+    private Map<String, Object> outputFiles;
+
+    /**
+     * 解析后的结构化数据
+     */
+    @TableField(typeHandler = JsonbTypeHandler.class)
+    private Map<String, Object> parsedData;
 
     /**
      * 退出码
@@ -89,7 +88,7 @@ public class TestResult implements Serializable {
     /**
      * 执行时长（毫秒）
      */
-    private Long durationMs;
+    private Integer durationMs;
 
     /**
      * 开始时间

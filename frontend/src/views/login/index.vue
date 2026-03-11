@@ -53,8 +53,10 @@
 import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import { useAppStore } from '@/stores/app'
 
 const router = useRouter()
+const appStore = useAppStore()
 const formRef = ref()
 const loading = ref(false)
 
@@ -76,6 +78,15 @@ async function handleLogin() {
   // 模拟登录
   setTimeout(() => {
     loading.value = false
+    
+    // 保存登录状态
+    appStore.login('mock_token_12345', {
+      id: 1,
+      username: formData.username,
+      nickname: formData.username === 'admin' ? '管理员' : formData.username,
+      role: 'admin',
+    })
+    
     ElMessage.success('登录成功')
     router.push('/dashboard')
   }, 1000)

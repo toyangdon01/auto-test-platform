@@ -15,14 +15,14 @@
         class="sidebar-menu"
       >
         <template v-for="route in menuRoutes" :key="route.path">
-          <!-- 有子菜单 -->
-          <el-sub-menu v-if="route.children && route.children.length > 1" :index="route.path">
+          <!-- 有子菜单（过滤掉hidden后仍有多个） -->
+          <el-sub-menu v-if="getVisibleChildren(route).length > 1" :index="route.path">
             <template #title>
               <el-icon><component :is="route.meta?.icon" /></el-icon>
               <span>{{ route.meta?.title }}</span>
             </template>
             <el-menu-item
-              v-for="child in route.children"
+              v-for="child in getVisibleChildren(route)"
               :key="child.path"
               :index="`${route.path}/${child.path}`"
             >
@@ -31,7 +31,7 @@
           </el-sub-menu>
           
           <!-- 单个菜单 -->
-          <el-menu-item v-else :index="route.redirect || route.path">
+          <el-menu-item v-else :index="getSingleMenuPath(route)">
             <el-icon><component :is="route.meta?.icon" /></el-icon>
             <span>{{ route.meta?.title }}</span>
           </el-menu-item>
@@ -107,6 +107,21 @@ const menuRoutes = computed(() => {
   return router.options.routes.filter((r) => r.meta?.title && !r.meta?.hidden)
 })
 
+// 获取可见的子路由
+function getVisibleChildren(route: any) {
+  if (!route.children) return []
+  return route.children.filter((child: any) => child.meta?.title && !child.meta?.hidden)
+}
+
+// 获取单个菜单的路径
+function getSingleMenuPath(route: any) {
+  const visibleChildren = getVisibleChildren(route)
+  if (visibleChildren.length === 1) {
+    return `${route.path}/${visibleChildren[0].path}`
+  }
+  return route.redirect || route.path
+}
+
 // 退出登录
 function handleLogout() {
   // TODO: 实现退出逻辑
@@ -176,6 +191,34 @@ function handleLogout() {
   :deep(.el-menu-item.is-active) {
     color: #fff;
     background: var(--primary-color);
+  }
+
+  // 子菜单样式
+  :deep(.el-sub-menu) {
+    .el-menu {
+      background: #000c17;
+    }
+
+    .el-menu-item {
+      color: rgba(255, 255, 255, 0.65);
+      background: #000c17;
+      min-width: 180px;
+
+      &:hover {
+        color: #fff;
+        background: rgba(255, 255, 255, 0.05);
+      }
+
+      &.is-active {
+        color: #fff;
+        background: var(--primary-color);
+      }
+    }
+  }
+
+  // 子菜单标题激活状态
+  :deep(.el-sub-menu.is-active > .el-sub-menu__title) {
+    color: #fff;
   }
 }
 

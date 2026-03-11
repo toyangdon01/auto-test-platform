@@ -37,7 +37,8 @@ public class PageRequest implements Serializable {
     /**
      * 获取 MyBatis-Plus 分页对象
      */
-    public com.baomidou.mybatisplus.extension.plugins.pagination.Page<Object> toPage() {
+    @SuppressWarnings("unchecked")
+    public <T> com.baomidou.mybatisplus.extension.plugins.pagination.Page<T> toPage() {
         return new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(page, size);
     }
 
