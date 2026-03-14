@@ -157,8 +157,28 @@ public class Script implements Serializable {
     private Map<String, Object> roles;
     
     /**
+     * 输出收集配置（用于创建时传给 ScriptVersion，不存 scripts 表）
+     */
+    @TableField(exist = false)
+    private Map<String, Object> outputConfig;
+    
+    /**
+     * 执行步骤配置（用于创建时传给 ScriptVersion，不存 scripts 表）
+     */
+    @TableField(exist = false)
+    private Map<String, Object> steps;
+    
+    /**
      * 临时文件路径（上传时的临时目录，不存数据库）
      */
     @TableField(exist = false)
     private String tempFilePath;
+    
+    public String getTempFilePath() {
+        return tempFilePath;
+    }
+    
+    public void setTempFilePath(String tempFilePath) {
+        this.tempFilePath = tempFilePath;
+    }
 }

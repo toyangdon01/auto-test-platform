@@ -185,6 +185,7 @@ public class TestResultServiceImpl implements TestResultService {
         response.setResultReason(result.getResultReason());
         response.setOverallScore(result.getOverallScore());
         response.setMetrics(result.getMetrics());
+        response.setParsedData(result.getParsedData());
         response.setRawOutput(result.getRawOutput());
         response.setRawError(result.getRawError());
         response.setOutputFiles(result.getOutputFiles());

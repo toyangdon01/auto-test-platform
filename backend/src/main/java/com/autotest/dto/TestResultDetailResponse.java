@@ -39,6 +39,9 @@ public class TestResultDetailResponse {
     private String rawError;
     private Map<String, Object> outputFiles;
 
+    // 解析后的结构化数据
+    private Map<String, Object> parsedData;
+
     // 执行信息
     private Integer exitCode;
     private Integer durationMs;

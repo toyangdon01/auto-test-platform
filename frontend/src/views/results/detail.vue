@@ -45,6 +45,26 @@
         </el-descriptions-item>
       </el-descriptions>
 
+      <!-- 解析结果 -->
+      <template v-if="detail.parsedData && Object.keys(detail.parsedData).length">
+        <el-divider content-position="left">
+          <el-icon><DataLine /></el-icon>
+          解析结果
+        </el-divider>
+
+        <div class="parsed-data">
+          <el-descriptions :column="3" border>
+            <el-descriptions-item 
+              v-for="(value, key) in detail.parsedData" 
+              :key="key"
+              :label="formatParsedKey(key as string)"
+            >
+              <span class="parsed-value">{{ formatParsedValue(value) }}</span>
+            </el-descriptions-item>
+          </el-descriptions>
+        </div>
+      </template>
+
       <!-- 指标数据 -->
       <el-divider content-position="left">
         <el-icon><DataAnalysis /></el-icon>
@@ -117,9 +137,20 @@
               {{ formatFileSize(row.size) }}
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="100">
+          <el-table-column label="操作" width="150">
             <template #default="{ row }">
-              <el-button type="primary" link size="small">下载</el-button>
+              <el-button 
+                v-if="row.storagePath && row.status === 'success'" 
+                type="primary" 
+                link 
+                size="small"
+                @click="downloadFile(row)"
+              >
+                下载
+              </el-button>
+              <span v-else-if="row.status === 'not_found'" class="text-warning">文件不存在</span>
+              <span v-else-if="row.status === 'error'" class="text-danger">{{ row.error || '下载失败' }}</span>
+              <span v-else class="text-muted">不可用</span>
             </template>
           </el-table-column>
         </el-table>
@@ -133,7 +164,9 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
-import { DataAnalysis, Document, Folder } from '@element-plus/icons-vue'
+import { DataAnalysis, Document, Folder, DataLine } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
+import axios from 'axios'
 import request from '@/utils/request'
 
 interface MetricItem {
@@ -157,6 +190,7 @@ interface TestResultDetail {
   overallScore: number
   metrics: Record<string, any>
   metricList: MetricItem[]
+  parsedData: Record<string, any>
   rawOutput: string
   rawError: string
   outputFiles: Record<string, any>
@@ -202,13 +236,43 @@ const scoreClass = computed(() => {
 })
 
 const outputFileList = computed(() => {
-  if (!detail.value?.outputFiles) return []
-  return Object.entries(detail.value.outputFiles).map(([name, info]: [string, any]) => ({
-    name,
-    size: info?.size || 0,
-    path: info?.path || ''
+  if (!detail.value?.outputFiles?.files) return []
+  return detail.value.outputFiles.files.map((file: any) => ({
+    name: file.name || '未知文件',
+    originalPath: file.originalPath || '',
+    storagePath: file.storagePath || '',
+    size: file.size || 0,
+    status: file.status || 'unknown',
+    error: file.error || ''
   }))
 })
+
+// 下载收集的文件
+const downloadFile = async (file: any) => {
+  if (!file.storagePath) {
+    ElMessage.warning('文件路径不存在')
+    return
+  }
+  
+  try {
+    const response = await axios.get(`/api/v1/results/download`, {
+      params: { path: file.storagePath },
+      responseType: 'blob'
+    })
+    
+    const url = window.URL.createObjectURL(new Blob([response.data]))
+    const link = document.createElement('a')
+    link.href = url
+    link.setAttribute('download', file.name.endsWith('.tar.gz') ? file.name : file.name + '.tar.gz')
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    window.URL.revokeObjectURL(url)
+  } catch (error) {
+    console.error('下载失败:', error)
+    ElMessage.error('下载失败')
+  }
+}
 
 const formatDuration = (ms: number | null) => {
   if (ms == null) return '-'
@@ -236,6 +300,27 @@ const formatFileSize = (bytes: number) => {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+}
+
+const formatParsedKey = (key: string) => {
+  if (!key) return ''
+  // 处理特殊键名
+  return key
+    .replace(/"/g, '')
+    .replace(/_/g, ' ')
+    .replace(/([A-Z])/g, ' $1')
+    .trim()
+    .split(' ')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ')
+}
+
+const formatParsedValue = (value: any) => {
+  if (value == null) return '-'
+  if (typeof value === 'object') {
+    return JSON.stringify(value, null, 2)
+  }
+  return String(value)
 }
 
 const fetchDetail = async () => {
@@ -318,5 +403,15 @@ onMounted(() => {
 
 .ml-2 {
   margin-left: 8px;
+}
+
+.parsed-data {
+  margin-bottom: 20px;
+}
+
+.parsed-value {
+  font-family: 'Monaco', 'Menlo', monospace;
+  font-size: 13px;
+  color: #409eff;
 }
 </style>

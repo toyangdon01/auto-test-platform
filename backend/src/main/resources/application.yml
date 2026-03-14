@@ -46,8 +46,8 @@ spring:
   servlet:
     multipart:
       enabled: true
-      max-file-size: 100MB
-      max-request-size: 100MB
+      max-file-size: 20GB
+      max-request-size: 20GB
   
   # Jackson JSON 配置
   jackson:

@@ -93,7 +93,11 @@
             <el-tag :type="getStatusType(row.status)">{{ row.status }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="createdAt" label="创建时间" width="180" />
+        <el-table-column prop="createdAt" label="创建时间" width="180">
+          <template #default="{ row }">
+            {{ formatTime(row.createdAt) }}
+          </template>
+        </el-table-column>
         <el-table-column label="操作" width="100" fixed="right">
           <template #default="{ row }">
             <el-button type="primary" link @click="$router.push(`/tasks/detail/${row.id}`)">
@@ -109,6 +113,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { Monitor, Document, List, CircleCheck, Plus, DataAnalysis } from '@element-plus/icons-vue'
+import axios from 'axios'
 
 // 统计数据
 const stats = ref({
@@ -119,11 +124,10 @@ const stats = ref({
 })
 
 // 最近任务
-const recentTasks = ref([
-  { id: 1, name: 'CPU压力测试', status: 'running', createdAt: '2026-03-09 10:00' },
-  { id: 2, name: '内存带宽测试', status: 'completed', createdAt: '2026-03-09 09:30' },
-  { id: 3, name: '磁盘IO测试', status: 'failed', createdAt: '2026-03-08 16:00' },
-])
+const recentTasks = ref<any[]>([])
+
+// 加载状态
+const loading = ref(false)
 
 // 获取状态标签类型
 function getStatusType(status: string) {
@@ -137,14 +141,40 @@ function getStatusType(status: string) {
   return types[status] || 'info'
 }
 
-onMounted(() => {
-  // TODO: 加载统计数据
-  stats.value = {
-    serverCount: 12,
-    scriptCount: 25,
-    runningTasks: 3,
-    successRate: 95.5,
+// 格式化时间
+function formatTime(time: string) {
+  if (!time) return '-'
+  return time.replace('T', ' ').substring(0, 16)
+}
+
+// 加载统计数据
+async function loadStats() {
+  try {
+    const res = await axios.get('/api/v1/dashboard/stats')
+    if (res.data?.data) {
+      stats.value = res.data.data
+    }
+  } catch (e) {
+    console.error('加载统计数据失败:', e)
   }
+}
+
+// 加载最近任务
+async function loadRecentTasks() {
+  try {
+    const res = await axios.get('/api/v1/dashboard/recent-tasks')
+    if (res.data?.data) {
+      recentTasks.value = res.data.data
+    }
+  } catch (e) {
+    console.error('加载最近任务失败:', e)
+  }
+}
+
+onMounted(async () => {
+  loading.value = true
+  await Promise.all([loadStats(), loadRecentTasks()])
+  loading.value = false
 })
 </script>
 

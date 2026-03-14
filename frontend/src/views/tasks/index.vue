@@ -79,6 +79,8 @@
                 <span class="separator">/</span>
                 <span class="fail">{{ row.failCount || 0 }} 失败</span>
                 <span class="separator">/</span>
+                <span class="running">{{ row.runningCount || 0 }} 执行中</span>
+                <span class="separator">/</span>
                 <span>{{ row.totalServers || 0 }} 台</span>
               </div>
             </template>
@@ -119,7 +121,7 @@
         </template>
       </el-table-column>
       
-      <el-table-column label="操作" width="180" fixed="right">
+      <el-table-column label="操作" width="220" fixed="right">
         <template #default="{ row }">
           <template v-if="row.status === 'pending'">
             <el-button type="primary" link @click="handleExecute(row)">
@@ -135,13 +137,10 @@
             </el-button>
             <el-button type="primary" link @click="handleDetail(row)">详情</el-button>
           </template>
-          <template v-else-if="row.status === 'failed' || row.status === 'completed_with_errors'">
-            <el-button type="primary" link @click="handleRetry(row)">
-              <el-icon><RefreshRight /></el-icon>重试
-            </el-button>
-            <el-button type="primary" link @click="handleDetail(row)">详情</el-button>
-          </template>
           <template v-else>
+            <el-button type="primary" link @click="handleExecute(row)">
+              <el-icon><VideoPlay /></el-icon>再次执行
+            </el-button>
             <el-button type="primary" link @click="handleDetail(row)">详情</el-button>
           </template>
         </template>
@@ -195,6 +194,7 @@ async function fetchData() {
         totalServers: task.serverCount || 0,
         successCount: task.successCount || 0,
         failCount: task.failCount || 0,
+        runningCount: task.runningCount || 0,
       }))
       total.value = res.data.total
     }
@@ -236,7 +236,14 @@ function getStatusText(status: string) {
 
 function calculateProgress(row: any) {
   if (!row.totalServers) return 0
+  // 已完成 = 成功 + 失败，进度 = 已完成 / 总数
   const completed = (row.successCount || 0) + (row.failCount || 0)
+  const running = row.runningCount || 0
+  // 如果有正在执行的，显示 (已完成 + 执行中*0.5) / 总数，模拟进度感
+  if (running > 0) {
+    const estimated = completed + running * 0.5
+    return Math.min(Math.round((estimated / row.totalServers) * 100), 95)
+  }
   return Math.round((completed / row.totalServers) * 100)
 }
 
@@ -253,11 +260,16 @@ function calculateDuration(startedAt: string, finishedAt: string | null) {
 }
 
 async function handleExecute(row: any) {
+  const isReExecute = row.status !== 'pending'
+  const message = isReExecute 
+    ? '确定要再次执行该任务吗？这将重置任务状态并重新执行。' 
+    : '确定要执行该任务吗？'
+  
   try {
-    await ElMessageBox.confirm('确定要执行该任务吗？', '提示', { type: 'info' })
+    await ElMessageBox.confirm(message, '提示', { type: 'info' })
     const res = await request.post(`/tasks/${row.id}/execute`)
     if (res.code === 0) {
-      ElMessage.success('任务已开始执行')
+      ElMessage.success(isReExecute ? '任务已重置并开始执行' : '任务已开始执行')
       fetchData()
     }
   } catch (e: any) {
@@ -452,6 +464,7 @@ function getPhaseText(phase: string): string {
     
     .success { color: #67c23a; }
     .fail { color: #f56c6c; }
+    .running { color: #e6a23c; }
     .separator { margin: 0 4px; }
   }
 }

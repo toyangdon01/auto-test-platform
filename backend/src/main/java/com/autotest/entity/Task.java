@@ -199,4 +199,10 @@ public class Task implements Serializable {
      */
     @TableField(exist = false)
     private Integer failCount;
+
+    /**
+     * 执行中数
+     */
+    @TableField(exist = false)
+    private Integer runningCount;
 }

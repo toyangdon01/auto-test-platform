@@ -59,71 +59,87 @@
         </el-table>
       </div>
 
-      <!-- Step 2: 选择服务器 -->
+      <!-- Step 2: 选择服务器（按步骤分配） -->
       <div v-show="currentStep === 1" class="step-panel">
-        <!-- 如果脚本定义了角色，显示角色配置 -->
-        <div v-if="scriptRoles.length > 0" class="role-info">
-          <el-alert type="info" :closable="false" show-icon>
+        <div v-if="scriptSteps.length === 0" class="no-steps">
+          <el-empty description="脚本未定义执行步骤">
+            <el-button type="primary" @click="currentStep = 0">返回选择脚本</el-button>
+          </el-empty>
+        </div>
+        
+        <div v-else class="step-server-assignment">
+          <el-alert type="info" :closable="false" show-icon class="step-tip">
             <template #title>
-              该脚本定义了 <strong>{{ scriptRoles.length }}</strong> 个角色，请为服务器分配角色
+              该脚本定义了 <strong>{{ scriptSteps.length }}</strong> 个执行步骤，请为每个步骤选择执行服务器
             </template>
           </el-alert>
-        </div>
-
-        <el-transfer
-          v-model="selectedServers"
-          :data="servers"
-          :titles="['可选服务器', '已选服务器']"
-          :props="{ key: 'id', label: 'name' }"
-          filterable
-          filter-placeholder="搜索服务器"
-        />
-
-        <!-- 角色分配表格 -->
-        <div v-if="scriptRoles.length > 0 && selectedServers.length > 0" class="role-assignment">
-          <el-divider content-position="left">角色分配</el-divider>
-          <el-table :data="serverRoleConfigs" border size="small">
-            <el-table-column prop="serverName" label="服务器" width="200" />
-            <el-table-column label="角色" width="180">
-              <template #default="{ row }">
-                <el-select v-model="row.role" placeholder="选择角色" @change="onRoleChange(row)">
-                  <el-option
-                    v-for="role in scriptRoles"
-                    :key="role.name"
-                    :label="role.displayName || role.name"
-                    :value="role.name"
-                  />
-                </el-select>
-              </template>
-            </el-table-column>
-            <el-table-column label="角色参数">
-              <template #default="{ row }">
-                <div v-if="row.roleParams && Object.keys(row.roleParams).length > 0" class="role-params">
-                  <div v-for="(param, key) in getRoleParamDefs(row.role)" :key="key" class="param-item">
-                    <span class="param-label">{{ param.displayName || param.name }}:</span>
-                    <el-input
-                      v-if="param.type === 'string'"
-                      v-model="row.roleParams[param.name]"
-                      size="small"
-                      style="width: 150px"
-                    />
-                    <el-input-number
-                      v-else-if="param.type === 'number'"
-                      v-model="row.roleParams[param.name]"
-                      size="small"
-                      style="width: 150px"
-                    />
-                    <el-switch
-                      v-else-if="param.type === 'boolean'"
-                      v-model="row.roleParams[param.name]"
-                      size="small"
-                    />
+          
+          <div class="steps-list">
+            <div v-for="(step, index) in scriptSteps" :key="step.name" class="step-card">
+              <div class="step-header">
+                <div class="step-index">{{ index + 1 }}</div>
+                <div class="step-title">{{ step.displayName || step.name }}</div>
+                <div class="step-deps" v-if="step.dependsOn?.length">
+                  <el-tag size="small" type="info">依赖: {{ step.dependsOn.join(', ') }}</el-tag>
+                </div>
+              </div>
+              
+              <div class="step-content">
+                <div class="step-row">
+                  <div class="field-label">执行服务器</div>
+                  <el-select 
+                    v-model="stepServerConfigs[index].serverId" 
+                    placeholder="请选择服务器"
+                    filterable
+                    style="width: 280px"
+                    @change="(val) => onStepServerChange(index, val)"
+                  >
+                    <el-option
+                      v-for="server in servers"
+                      :key="server.id"
+                      :label="`${server.name} (${server.host})`"
+                      :value="server.id"
+                    >
+                      <span>{{ server.name }}</span>
+                      <span style="color: #999; margin-left: 10px;">{{ server.host }}</span>
+                    </el-option>
+                  </el-select>
+                </div>
+                
+                <!-- 步骤参数 -->
+                <div v-if="step.params?.length" class="step-params">
+                  <div class="field-label">步骤参数</div>
+                  <div class="params-grid">
+                    <div v-for="param in step.params" :key="param.name" class="param-item">
+                      <span class="param-label">{{ param.displayName || param.name }}</span>
+                      <el-input
+                        v-if="param.type === 'string' || !param.type"
+                        v-model="stepServerConfigs[index].stepParams[param.name]"
+                        size="small"
+                        :placeholder="param.defaultValue?.toString() || param.default?.toString()"
+                        :type="param.type === 'password' ? 'password' : 'text'"
+                      />
+                      <el-input-number
+                        v-else-if="param.type === 'number'"
+                        v-model="stepServerConfigs[index].stepParams[param.name]"
+                        size="small"
+                        :placeholder="param.defaultValue || param.default"
+                      />
+                      <el-switch
+                        v-else-if="param.type === 'boolean'"
+                        v-model="stepServerConfigs[index].stepParams[param.name]"
+                        size="small"
+                      />
+                    </div>
                   </div>
                 </div>
-                <span v-else class="no-params">无参数</span>
-              </template>
-            </el-table-column>
-          </el-table>
+              </div>
+            </div>
+          </div>
+          
+          <div class="selected-summary" v-if="assignedServerCount > 0">
+            <el-tag type="success">已分配 {{ assignedServerCount }}/{{ scriptSteps.length }} 个步骤</el-tag>
+          </div>
         </div>
       </div>
 
@@ -263,27 +279,33 @@ const currentStep = ref(0)
 const scripts = ref<Script[]>([])
 const servers = ref<Server[]>([])
 const selectedScript = ref<Script | null>(null)
-const selectedServers = ref<number[]>([])
 const preselectedScript = ref(false)  // 是否从脚本中心预选
 
-// 角色相关
-interface RoleDefinition {
+// 步骤相关
+interface StepDefinition {
   name: string
   displayName: string
-  params: { name: string; displayName: string; type: string; default: string }[]
+  params: { name: string; displayName: string; type: string; defaultValue?: any; default?: any; required?: boolean }[]
   dependsOn: string[]
   resultCollector: boolean
 }
 
-interface ServerRoleConfig {
-  serverId: number
+// 步骤-服务器配置（每个步骤选择一台服务器）
+interface StepServerConfig {
+  stepName: string
+  displayName: string
+  serverId: number | null
   serverName: string
-  role: string
-  roleParams: Record<string, any>
+  stepParams: Record<string, any>
 }
 
-const scriptRoles = ref<RoleDefinition[]>([])
-const serverRoleConfigs = ref<ServerRoleConfig[]>([])
+const scriptSteps = ref<StepDefinition[]>([])
+const stepServerConfigs = ref<StepServerConfig[]>([])
+
+// 已分配服务器的步骤数量
+const assignedServerCount = computed(() => {
+  return stepServerConfigs.value.filter(c => c.serverId).length
+})
 
 const formData = reactive({
   name: '',
@@ -305,7 +327,13 @@ const formRules = {
 
 const canNext = computed(() => {
   if (currentStep.value === 0) return !!selectedScript.value
-  if (currentStep.value === 1) return selectedServers.value.length > 0
+  if (currentStep.value === 1) {
+    // 检查所有步骤是否都已分配服务器
+    if (scriptSteps.value.length > 0) {
+      return stepServerConfigs.value.every(c => c.serverId)
+    }
+    return true
+  }
   return true
 })
 
@@ -335,101 +363,170 @@ function handleScriptSelect(row: Script | null) {
   selectedScript.value = row
   formData.name = row ? `${row.name}-${new Date().toISOString().slice(0, 10)}` : ''
   
-  // 加载脚本角色定义
+  // 加载脚本的步骤定义（从 script.steps 字段获取）
   if (row) {
-    loadScriptRoles(row.id, row.currentVersion)
+    loadScriptSteps(row)
   }
 }
 
-// 加载脚本角色定义
-async function loadScriptRoles(scriptId: number, version: string) {
+// 加载脚本步骤定义
+async function loadScriptSteps(script: Script) {
   try {
-    const res = await scriptApi.getRoles(scriptId, version)
-    if (res.code === 0 && res.data && Array.isArray(res.data)) {
-      scriptRoles.value = res.data
-    } else {
-      scriptRoles.value = []
+    // 先尝试从脚本对象中获取 steps（需要完整加载）
+    const res = await scriptApi.get(script.id)
+    if (res.code === 0 && res.data) {
+      const stepsData = (res.data as any).steps || {}
+      
+      // 将 steps 对象转换为数组
+      const steps: StepDefinition[] = []
+      for (const [stepName, stepConfig] of Object.entries(stepsData)) {
+        const config = stepConfig as any
+        steps.push({
+          name: stepName,
+          displayName: config.displayName || stepName,
+          params: config.params || [],
+          dependsOn: config.dependsOn || [],
+          resultCollector: config.resultCollector !== false
+        })
+      }
+      
+      scriptSteps.value = steps
+      
+      // 初始化每个步骤的服务器配置
+      stepServerConfigs.value = scriptSteps.value.map(step => ({
+        stepName: step.name,
+        displayName: step.displayName || step.name,
+        serverId: null,
+        serverName: '',
+        stepParams: {}
+      }))
+      
+      // 设置默认参数值
+      stepServerConfigs.value.forEach(config => {
+        const step = scriptSteps.value.find(s => s.name === config.stepName)
+        if (step?.params) {
+          step.params.forEach(p => {
+            config.stepParams[p.name] = p.defaultValue !== undefined ? p.defaultValue : p.default
+          })
+        }
+      })
+      
+      // 如果没有步骤定义，创建一个默认步骤
+      if (scriptSteps.value.length === 0) {
+        scriptSteps.value = [{
+          name: 'default',
+          displayName: '执行脚本',
+          params: [],
+          dependsOn: [],
+          resultCollector: true
+        }]
+        stepServerConfigs.value = [{
+          stepName: 'default',
+          displayName: '执行脚本',
+          serverId: null,
+          serverName: '',
+          stepParams: {}
+        }]
+      }
     }
   } catch (e) {
-    scriptRoles.value = []
+    console.error('加载脚本步骤失败', e)
+    // 创建默认步骤
+    scriptSteps.value = [{
+      name: 'default',
+      displayName: '执行脚本',
+      params: [],
+      dependsOn: [],
+      resultCollector: true
+    }]
+    stepServerConfigs.value = [{
+      stepName: 'default',
+      displayName: '执行脚本',
+      serverId: null,
+      serverName: '',
+      stepParams: {}
+    }]
   }
 }
 
-// 获取角色参数定义
-function getRoleParamDefs(roleName: string) {
-  const role = scriptRoles.value.find(r => r.name === roleName)
-  return role?.params || []
-}
-
-// 当角色变化时
-function onRoleChange(row: ServerRoleConfig) {
-  const role = scriptRoles.value.find(r => r.name === row.role)
-  if (role && role.params) {
-    // 初始化参数默认值
-    row.roleParams = {}
-    role.params.forEach(p => {
-      row.roleParams[p.name] = p.default
-    })
-  } else {
-    row.roleParams = {}
+// 当步骤选择服务器时
+function onStepServerChange(stepIndex: number, serverId: number) {
+  const server = servers.value.find(s => s.id === serverId)
+  if (server) {
+    stepServerConfigs.value[stepIndex].serverName = server.name
   }
 }
-
-// 监听服务器选择变化
-watch(selectedServers, (newVal) => {
-  // 更新角色配置列表
-  const existingIds = new Set(serverRoleConfigs.value.map(c => c.serverId))
-  
-  // 添加新选中的服务器
-  newVal.forEach(serverId => {
-    if (!existingIds.has(serverId)) {
-      const server = servers.value.find(s => s.id === serverId)
-      serverRoleConfigs.value.push({
-        serverId,
-        serverName: server?.name || `服务器${serverId}`,
-        role: 'default',
-        roleParams: {}
-      })
-    }
-  })
-  
-  // 移除取消选择的服务器
-  serverRoleConfigs.value = serverRoleConfigs.value.filter(c => newVal.includes(c.serverId))
-})
 
 async function fetchScripts() {
-  const res = await scriptApi.list({ page: 1, size: 100 })
-  if (res.code === 0) {
-    scripts.value = res.data.items
+  try {
+    const res = await scriptApi.list()
+    if (res.code === 0) {
+      scripts.value = Array.isArray(res.data) ? res.data : (res.data.items || res.data.records || [])
+    }
+  } catch (e) {
+    console.error('加载脚本列表失败', e)
   }
 }
 
 async function fetchServers() {
-  const res = await serverApi.list({ page: 1, size: 100 })
-  if (res.code === 0) {
-    servers.value = res.data.items
+  try {
+    const res = await serverApi.list()
+    if (res.code === 0) {
+      servers.value = Array.isArray(res.data) ? res.data : (res.data.items || res.data.records || [])
+    }
+  } catch (e) {
+    console.error('加载服务器列表失败', e)
   }
 }
 
 async function handleSubmit() {
   await formRef.value.validate()
   
-  // 构建服务器角色配置
-  const serverRoles = selectedServers.value.map(serverId => {
-    const config = serverRoleConfigs.value.find(c => c.serverId === serverId)
-    return {
-      serverId,
-      role: config?.role || 'default',
-      roleParams: config?.roleParams || {}
+  // 检查所有步骤是否都已分配服务器
+  if (scriptSteps.value.length > 0) {
+    const unassignedSteps = stepServerConfigs.value.filter(c => !c.serverId)
+    if (unassignedSteps.length > 0) {
+      ElMessage.error(`请为步骤 "${unassignedSteps[0].displayName}" 选择服务器`)
+      return
+    }
+  }
+  
+  // 构建步骤-服务器映射
+  const stepServerMapping: Record<string, number[]> = {}
+  stepServerConfigs.value.forEach(config => {
+    if (!stepServerMapping[config.stepName]) {
+      stepServerMapping[config.stepName] = []
+    }
+    if (config.serverId && !stepServerMapping[config.stepName].includes(config.serverId)) {
+      stepServerMapping[config.stepName].push(config.serverId)
     }
   })
+  
+  // 构建步骤参数映射
+  const stepParams: Record<string, Record<string, any>> = {}
+  stepServerConfigs.value.forEach(config => {
+    if (config.serverId && Object.keys(config.stepParams).length > 0) {
+      if (!stepParams[config.stepName]) {
+        stepParams[config.stepName] = config.stepParams
+      }
+    }
+  })
+  
+  // 获取所有选中的服务器ID
+  const allServerIds = [...new Set(stepServerConfigs.value.map(c => c.serverId!).filter(Boolean))]
+  
+  if (allServerIds.length === 0) {
+    ElMessage.error('请选择至少一台服务器')
+    return
+  }
   
   const data = {
     name: formData.name,
     scriptId: selectedScript.value!.id,
     scriptVersion: selectedScript.value!.currentVersion,
-    serverIds: selectedServers.value,
-    serverRoles,
+    serverIds: allServerIds,
+    stepServerMapping,
+    stepParams,
     executionMode: formData.executionMode,
     scheduledTime: formData.scheduledTime,
     parallelMode: formData.parallelMode,
@@ -458,7 +555,9 @@ onMounted(() => {
       if (res.code === 0) {
         selectedScript.value = res.data
         formData.name = `${res.data.name}-${new Date().toISOString().slice(0, 10)}`
-        preselectedScript.value = true  // 标记为预选脚本
+        preselectedScript.value = true
+        // 加载步骤定义
+        loadScriptSteps(res.data)
       }
     })
   }
@@ -560,5 +659,108 @@ onMounted(() => {
 .unit {
   margin-left: 8px;
   color: var(--text-secondary);
+}
+
+// 步骤服务器分配样式
+.step-server-assignment {
+  .step-tip {
+    margin-bottom: 20px;
+  }
+  
+  .steps-list {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  
+  .step-card {
+    border: 1px solid var(--el-border-color);
+    border-radius: 8px;
+    overflow: hidden;
+    
+    .step-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 16px;
+      background: var(--el-fill-color-light);
+      border-bottom: 1px solid var(--el-border-color);
+      
+      .step-index {
+        width: 28px;
+        height: 28px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--el-color-primary);
+        color: white;
+        border-radius: 50%;
+        font-size: 14px;
+        font-weight: 600;
+      }
+      
+      .step-title {
+        font-weight: 600;
+        font-size: 15px;
+      }
+      
+      .step-deps {
+        margin-left: auto;
+      }
+    }
+    
+    .step-content {
+      padding: 16px;
+      
+      .step-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        
+        .field-label {
+          flex-shrink: 0;
+          width: 80px;
+          color: var(--el-text-color-regular);
+          font-size: 14px;
+        }
+      }
+      
+      .step-params {
+        margin-top: 12px;
+        
+        .field-label {
+          color: var(--el-text-color-regular);
+          font-size: 14px;
+          margin-bottom: 8px;
+        }
+        
+        .params-grid {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 12px;
+        }
+        
+        .param-item {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          
+          .param-label {
+            font-size: 13px;
+            color: var(--el-text-color-secondary);
+          }
+        }
+      }
+    }
+  }
+  
+  .selected-summary {
+    margin-top: 16px;
+    text-align: center;
+  }
+}
+
+.no-steps {
+  padding: 40px;
 }
 </style>

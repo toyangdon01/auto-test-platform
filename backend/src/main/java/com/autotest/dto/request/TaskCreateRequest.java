@@ -55,6 +55,31 @@ public class TaskCreateRequest implements Serializable {
     private List<ServerRoleConfig> serverRoles;
 
     /**
+     * 角色-服务器映射（新版格式）
+     * 格式: { "server": [1, 2], "client": [1] }
+     * 表示步骤 deploy 在服务器 1,2 上执行，步骤 test 在服务器 1 上执行
+     * 兼容旧格式 roleServerMapping
+     */
+    private Map<String, List<Long>> stepServerMapping;
+    
+    /**
+     * 步骤服务器映射（旧字段，兼容）
+     */
+    private Map<String, List<Long>> roleServerMapping;
+
+    /**
+     * 步骤参数
+     * 格式: { "step_1": { "MYSQL_PORT": 3306 }, "step_2": { "WAREHOUSES": 10 } }
+     * 兼容旧格式 roleParams
+     */
+    private Map<String, Map<String, Object>> stepParams;
+    
+    /**
+     * 步骤参数（旧字段，兼容）
+     */
+    private Map<String, Map<String, Object>> roleParams;
+
+    /**
      * 角色执行策略
      */
     private Map<String, Object> roleExecutionStrategy;

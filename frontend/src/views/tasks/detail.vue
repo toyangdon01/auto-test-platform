@@ -43,8 +43,8 @@
           </el-tag>
         </el-descriptions-item>
         <el-descriptions-item label="并发模式">
-          <el-tag size="small" effect="plain">
-            {{ task?.parallelMode === 'parallel' ? '并行' : '顺序' }}
+          <el-tag size="small" effect="plain" :type="getParallelModeType()">
+            {{ getParallelModeText() }}
           </el-tag>
         </el-descriptions-item>
         <el-descriptions-item label="创建时间">{{ formatTime(task?.createdAt) }}</el-descriptions-item>
@@ -52,6 +52,35 @@
         <el-descriptions-item label="结束时间">{{ formatTime(task?.finishedAt) }}</el-descriptions-item>
         <el-descriptions-item label="总耗时">{{ calculateDuration(task?.startedAt, task?.finishedAt) }}</el-descriptions-item>
       </el-descriptions>
+    </div>
+
+    <!-- 执行层级可视化 -->
+    <div class="page-card mt-20" v-if="executionLevels.length > 0">
+      <h4 class="section-title">执行顺序</h4>
+      <div class="execution-levels">
+        <div v-for="(level, index) in executionLevels" :key="index" class="level-row">
+          <div class="level-badge">
+            <span class="level-num">第{{ index + 1 }}层</span>
+            <span class="level-mode">{{ level.roles.length > 1 ? '并行' : '串行' }}</span>
+          </div>
+          <div class="level-roles">
+            <el-tag 
+              v-for="role in level.roles" 
+              :key="role.name" 
+              :type="role.status === 'completed' ? 'success' : role.status === 'failed' ? 'danger' : 'info'"
+              effect="light"
+              class="role-tag"
+            >
+              <el-icon v-if="role.status === 'running'" class="is-loading"><Loading /></el-icon>
+              {{ role.displayName || role.name }}
+              <span v-if="role.duration" class="role-duration">({{ role.duration }}s)</span>
+            </el-tag>
+          </div>
+          <div v-if="index < executionLevels.length - 1" class="level-arrow">
+            <el-icon><ArrowDown /></el-icon>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- 执行进度概览 -->
@@ -93,6 +122,91 @@
       </div>
     </div>
 
+    <!-- 步骤执行详情 -->
+    <div class="page-card mt-20" v-if="taskSteps.length > 0">
+      <h4 class="section-title">步骤执行详情</h4>
+      <el-table :data="taskSteps" stripe>
+        <el-table-column prop="stepName" label="步骤" width="120">
+          <template #default="{ row }">
+            <div class="step-name">
+              <span class="step-label">{{ row.displayName || row.stepName }}</span>
+              <span class="step-id text-muted" v-if="row.displayName">{{ row.stepName }}</span>
+            </div>
+          </template>
+        </el-table-column>
+        
+        <el-table-column prop="serverName" label="执行服务器" width="180">
+          <template #default="{ row }">
+            <div class="server-info">
+              <el-icon><Monitor /></el-icon>
+              <span>{{ row.serverName || `Server-${row.serverId}` }}</span>
+            </div>
+          </template>
+        </el-table-column>
+        
+        <el-table-column label="状态" width="100">
+          <template #default="{ row }">
+            <el-tag :type="getStepStatusType(row.status)" size="small" effect="light">
+              <el-icon v-if="row.status === 'running'" class="is-loading"><Loading /></el-icon>
+              <el-icon v-else-if="row.status === 'success'"><CircleCheck /></el-icon>
+              <el-icon v-else-if="row.status === 'failed'"><CircleClose /></el-icon>
+              <el-icon v-else-if="row.status === 'skipped'"><Warning /></el-icon>
+              <el-icon v-else><Clock /></el-icon>
+              {{ getStepStatusText(row.status) }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        
+        <el-table-column label="退出码" width="80" align="center">
+          <template #default="{ row }">
+            <el-tag v-if="row.exitCode !== null && row.exitCode !== undefined" 
+                    :type="row.exitCode === 0 ? 'success' : 'danger'" 
+                    size="small">
+              {{ row.exitCode }}
+            </el-tag>
+            <span v-else class="text-muted">-</span>
+          </template>
+        </el-table-column>
+        
+        <el-table-column label="开始时间" width="160">
+          <template #default="{ row }">
+            {{ formatTime(row.startedAt) }}
+          </template>
+        </el-table-column>
+        
+        <el-table-column label="结束时间" width="160">
+          <template #default="{ row }">
+            {{ formatTime(row.finishedAt) }}
+          </template>
+        </el-table-column>
+        
+        <el-table-column label="耗时" width="100">
+          <template #default="{ row }">
+            {{ calculateDuration(row.startedAt, row.finishedAt) }}
+          </template>
+        </el-table-column>
+        
+        <el-table-column label="依赖" min-width="120">
+          <template #default="{ row }">
+            <template v-if="row.dependsOn">
+              <el-tag v-for="dep in row.dependsOn.split(',')" :key="dep" size="small" type="info" effect="plain" class="mr-4">
+                {{ dep.trim() }}
+              </el-tag>
+            </template>
+            <span v-else class="text-muted">-</span>
+          </template>
+        </el-table-column>
+        
+        <el-table-column label="操作" width="80" fixed="right">
+          <template #default="{ row }">
+            <el-button type="primary" link @click="showStepDetail(row)" :disabled="!row.output">
+              <el-icon><Document /></el-icon>详情
+            </el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+    </div>
+
     <!-- 正在执行的命令 -->
     <div class="page-card mt-20" v-if="task?.status === 'running'">
       <h4 class="section-title">正在执行的命令</h4>
@@ -122,107 +236,6 @@
           </div>
         </div>
       </div>
-    </div>
-
-    <!-- 服务器执行详情 -->
-    <div class="page-card mt-20">
-      <h4 class="section-title">服务器执行详情</h4>
-      <el-table :data="serverList" stripe>
-        <el-table-column prop="serverName" label="服务器" min-width="180">
-          <template #default="{ row }">
-            <div class="server-info">
-              <el-icon><Monitor /></el-icon>
-              <span>{{ row.serverName || `Server-${row.serverId}` }}</span>
-            </div>
-          </template>
-        </el-table-column>
-        
-        <el-table-column label="角色" width="120">
-          <template #default="{ row }">
-            <el-tag v-if="row.role && row.role !== 'default'" size="small" type="info">
-              {{ row.role }}
-            </el-tag>
-            <span v-else class="text-muted">-</span>
-          </template>
-        </el-table-column>
-        
-        <el-table-column label="执行状态" width="120">
-          <template #default="{ row }">
-            <el-tag :type="getRunStatusType(row.overallStatus)" size="small" effect="light">
-              <el-icon v-if="row.overallStatus === 'running'" class="is-loading"><Loading /></el-icon>
-              {{ getRunStatusText(row.overallStatus) }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        
-        <el-table-column label="失败原因" min-width="200">
-          <template #default="{ row }">
-            <template v-if="row.overallStatus === 'failed'">
-              <div class="error-message">
-                <template v-if="row.deploy?.status === 'failed'">
-                  <div class="error-phase">部署阶段失败:</div>
-                  <div class="error-detail">{{ getErrorMessage(row.deploy?.output) }}</div>
-                </template>
-                <template v-else-if="row.run?.status === 'failed'">
-                  <div class="error-phase">执行阶段失败:</div>
-                  <div class="error-detail">{{ getErrorMessage(row.run?.output) }}</div>
-                </template>
-                <template v-else-if="row.cleanup?.status === 'failed'">
-                  <div class="error-phase">清理阶段失败:</div>
-                  <div class="error-detail">{{ getErrorMessage(row.cleanup?.output) }}</div>
-                </template>
-                <template v-else>
-                  <span class="text-muted">未知错误</span>
-                </template>
-              </div>
-            </template>
-            <span v-else class="text-muted">-</span>
-          </template>
-        </el-table-column>
-        
-        <el-table-column label="退出码" width="80" align="center">
-          <template #default="{ row }">
-            <el-tag v-if="row.run?.exitCode !== null && row.run?.exitCode !== undefined" 
-                    :type="row.run.exitCode === 0 ? 'success' : 'danger'" 
-                    size="small">
-              {{ row.run.exitCode }}
-            </el-tag>
-            <span v-else class="text-muted">-</span>
-          </template>
-        </el-table-column>
-        
-        <el-table-column label="开始时间" width="160">
-          <template #default="{ row }">
-            {{ formatTime(row.run?.startedAt) }}
-          </template>
-        </el-table-column>
-        
-        <el-table-column label="结束时间" width="160">
-          <template #default="{ row }">
-            {{ formatTime(row.run?.finishedAt) }}
-          </template>
-        </el-table-column>
-        
-        <el-table-column label="耗时" width="100">
-          <template #default="{ row }">
-            {{ calculateDuration(row.run?.startedAt, row.run?.finishedAt) }}
-          </template>
-        </el-table-column>
-        
-        <el-table-column label="操作" width="220" fixed="right">
-          <template #default="{ row }">
-            <el-button type="primary" link @click="openTerminal(row)">
-              <el-icon><Monitor /></el-icon>终端
-            </el-button>
-            <el-button type="primary" link @click="showLogs(row)">
-              <el-icon><Document /></el-icon>日志
-            </el-button>
-            <el-button type="primary" link @click="showResult(row)" v-if="row.run?.status === 'completed'">
-              <el-icon><DataAnalysis /></el-icon>结果
-            </el-button>
-          </template>
-        </el-table-column>
-      </el-table>
     </div>
 
     <!-- 执行日志弹窗 -->
@@ -284,6 +297,54 @@
         </el-table>
       </div>
     </el-dialog>
+    
+    <!-- 步骤详情弹窗 -->
+    <el-dialog v-model="stepDetailVisible" title="步骤执行详情" width="800px" destroy-on-close>
+      <template v-if="currentStep">
+        <el-descriptions :column="2" border size="small" class="mb-20">
+          <el-descriptions-item label="步骤名称">{{ currentStep.displayName || currentStep.stepName }}</el-descriptions-item>
+          <el-descriptions-item label="步骤标识">{{ currentStep.stepName }}</el-descriptions-item>
+          <el-descriptions-item label="执行服务器">{{ currentStep.serverName || `Server-${currentStep.serverId}` }}</el-descriptions-item>
+          <el-descriptions-item label="执行脚本">{{ currentStep.script }}</el-descriptions-item>
+          <el-descriptions-item label="状态">
+            <el-tag :type="getStepStatusType(currentStep.status)" size="small">
+              {{ getStepStatusText(currentStep.status) }}
+            </el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="退出码">
+            <el-tag v-if="currentStep.exitCode !== null && currentStep.exitCode !== undefined" 
+                    :type="currentStep.exitCode === 0 ? 'success' : 'danger'" size="small">
+              {{ currentStep.exitCode }}
+            </el-tag>
+            <span v-else>-</span>
+          </el-descriptions-item>
+          <el-descriptions-item label="开始时间">{{ formatTime(currentStep.startedAt) }}</el-descriptions-item>
+          <el-descriptions-item label="结束时间">{{ formatTime(currentStep.finishedAt) }}</el-descriptions-item>
+          <el-descriptions-item label="依赖步骤" :span="2">
+            <template v-if="currentStep.dependsOn">
+              <el-tag v-for="dep in currentStep.dependsOn.split(',')" :key="dep" size="small" type="info" class="mr-4">
+                {{ dep.trim() }}
+              </el-tag>
+            </template>
+            <span v-else>无</span>
+          </el-descriptions-item>
+        </el-descriptions>
+        
+        <div v-if="currentStep.errorMessage" class="mb-20">
+          <h4 class="section-title">错误信息</h4>
+          <el-alert type="error" :closable="false" show-icon>
+            <pre class="error-text">{{ currentStep.errorMessage }}</pre>
+          </el-alert>
+        </div>
+        
+        <div v-if="currentStep.output">
+          <h4 class="section-title">执行输出</h4>
+          <div class="output-box">
+            <pre class="output-content">{{ currentStep.output }}</pre>
+          </div>
+        </div>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -293,9 +354,11 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { 
   VideoPlay, VideoPause, RefreshRight, Refresh, Loading,
-  Monitor, Document, DataAnalysis, CopyDocument
+  Monitor, Document, DataAnalysis, CopyDocument, ArrowDown,
+  CircleCheck, CircleClose, Clock, Warning
 } from '@element-plus/icons-vue'
 import request from '@/utils/request'
+import { taskApi, type TaskStep } from '@/api/task'
 import axios from 'axios'
 
 const route = useRoute()
@@ -304,12 +367,15 @@ const taskId = Number(route.params.id)
 
 const task = ref<any>(null)
 const serverList = ref<any[]>([])
+const taskSteps = ref<TaskStep[]>([])
 const logDialogVisible = ref(false)
 const resultDialogVisible = ref(false)
+const stepDetailVisible = ref(false)
 const currentServer = ref<any>(null)
 const currentLogs = ref('')
 const currentResult = ref<any>(null)
 const currentLogPhase = ref<'deploy' | 'run' | 'cleanup' | 'all'>('all')
+const currentStep = ref<TaskStep | null>(null)
 
 let pollTimer: ReturnType<typeof setInterval> | null = null
 
@@ -323,6 +389,61 @@ const overallProgress = computed(() => {
   if (serverList.value.length === 0) return 0
   const completed = successCount.value + failCount.value
   return Math.round((completed / serverList.value.length) * 100)
+})
+
+// 计算执行层级（根据角色依赖关系）
+const executionLevels = computed(() => {
+  if (!task.value?.servers || task.value.servers.length <= 1) return []
+  
+  // 按角色分组，计算每个角色的开始时间和状态
+  const roleMap = new Map<string, { name: string; displayName: string; startedAt: string; finishedAt: string; status: string; duration: number }>()
+  
+  task.value.servers.forEach((s: any) => {
+    if (s.role && !roleMap.has(s.role)) {
+      const startTime = s.run?.startedAt ? new Date(s.run.startedAt).getTime() : 0
+      const endTime = s.run?.finishedAt ? new Date(s.run.finishedAt).getTime() : 0
+      const duration = startTime && endTime ? Math.round((endTime - startTime) / 1000) : 0
+      
+      roleMap.set(s.role, {
+        name: s.role,
+        displayName: s.roleName || s.role,
+        startedAt: s.run?.startedAt || '',
+        finishedAt: s.run?.finishedAt || '',
+        status: s.run?.status || 'pending',
+        duration
+      })
+    }
+  })
+  
+  if (roleMap.size <= 1) return []
+  
+  // 按开始时间分组（同一秒开始的视为同一层）
+  const roles = Array.from(roleMap.values())
+  roles.sort((a, b) => new Date(a.startedAt).getTime() - new Date(b.startedAt).getTime())
+  
+  // 按开始时间分组
+  const levels: { roles: typeof roles }[] = []
+  let currentLevel: typeof roles = []
+  let lastStartTime = 0
+  
+  roles.forEach(role => {
+    const startTime = new Date(role.startedAt).getTime()
+    // 如果开始时间相差小于2秒，视为同一层
+    if (currentLevel.length === 0 || Math.abs(startTime - lastStartTime) < 2000) {
+      currentLevel.push(role)
+      lastStartTime = startTime
+    } else {
+      levels.push({ roles: currentLevel })
+      currentLevel = [role]
+      lastStartTime = startTime
+    }
+  })
+  
+  if (currentLevel.length > 0) {
+    levels.push({ roles: currentLevel })
+  }
+  
+  return levels
 })
 
 const metricsList = computed(() => {
@@ -342,8 +463,21 @@ async function fetchDetail() {
       task.value = res.data
       serverList.value = res.data.servers || []
     }
+    // 获取步骤数据
+    await fetchSteps()
   } catch (e: any) {
     ElMessage.error('获取任务详情失败')
+  }
+}
+
+async function fetchSteps() {
+  try {
+    const res = await taskApi.getSteps(taskId)
+    if (res.code === 0) {
+      taskSteps.value = res.data || []
+    }
+  } catch (e: any) {
+    console.error('获取步骤数据失败', e)
   }
 }
 
@@ -371,6 +505,68 @@ function getStatusText(status?: string) {
   return texts[status || ''] || status || '-'
 }
 
+function getStepStatusType(status?: string) {
+  const types: Record<string, string> = {
+    pending: 'info',
+    waiting: 'info',
+    running: 'warning',
+    success: 'success',
+    failed: 'danger',
+    skipped: 'warning'
+  }
+  return types[status || ''] || 'info'
+}
+
+function getStepStatusText(status?: string) {
+  const texts: Record<string, string> = {
+    pending: '待执行',
+    waiting: '等待中',
+    running: '执行中',
+    success: '成功',
+    failed: '失败',
+    skipped: '已跳过'
+  }
+  return texts[status || ''] || status || '未知'
+}
+
+function showStepDetail(step: TaskStep) {
+  currentStep.value = step
+  stepDetailVisible.value = true
+}
+
+// 获取并发模式显示文本
+function getParallelModeText(): string {
+  // 如果有多个执行层级，说明有依赖调度
+  if (executionLevels.value.length > 1) {
+    // 检查是否有并行层级
+    const hasParallelLevel = executionLevels.value.some(level => level.roles.length > 1)
+    if (hasParallelLevel) {
+      return '智能并行'  // 有依赖且同层有并行
+    }
+    return '依赖调度'  // 有依赖分层执行，但每层单角色
+  }
+  // 单层多角色 = 纯并行
+  if (executionLevels.value.length === 1 && executionLevels.value[0]?.roles.length > 1) {
+    return '并行'
+  }
+  // 单角色或顺序执行
+  if (task.value?.parallelMode === 'parallel') {
+    return '并行'
+  }
+  return '顺序'
+}
+
+// 获取并发模式标签类型
+function getParallelModeType(): string {
+  if (executionLevels.value.length > 1) {
+    return 'success'  // 依赖调度或智能并行
+  }
+  if (executionLevels.value.length === 1 && executionLevels.value[0]?.roles.length > 1) {
+    return 'success'  // 并行
+  }
+  return ''
+}
+
 function getRunStatusType(status?: string) {
   const types: Record<string, string> = {
     pending: 'info',
@@ -391,6 +587,16 @@ function getRunStatusText(status?: string) {
     error: '错误',
   }
   return texts[status || ''] || status || '-'
+}
+
+// 计算服务器的实际执行状态（优先使用 run.status）
+function getServerRunStatus(server: any): string {
+  // 优先使用 run.status
+  if (server.run?.status) {
+    return server.run.status
+  }
+  // 回退到 overallStatus
+  return server.overallStatus || 'pending'
 }
 
 function getPhaseText(phase?: string) {
@@ -670,6 +876,77 @@ function getErrorMessage(output: string | null): string {
   gap: 8px;
 }
 
+// 执行层级可视化
+.execution-levels {
+  padding: 8px 0;
+  
+  .level-row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 8px 0;
+    
+    .level-badge {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-width: 70px;
+      
+      .level-num {
+        font-size: 13px;
+        font-weight: 600;
+        color: #303133;
+      }
+      
+      .level-mode {
+        font-size: 11px;
+        color: #909399;
+        margin-top: 2px;
+      }
+    }
+    
+    .level-roles {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      flex: 1;
+      
+      .role-tag {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        
+        .role-duration {
+          font-size: 11px;
+          opacity: 0.8;
+        }
+      }
+    }
+    
+    .level-arrow {
+      position: absolute;
+      left: 35px;
+      margin-top: 20px;
+      color: #c0c4cc;
+    }
+  }
+  
+  .level-row:not(:last-child) {
+    position: relative;
+    padding-bottom: 24px;
+    
+    &::after {
+      content: '';
+      position: absolute;
+      left: 35px;
+      top: 40px;
+      width: 1px;
+      height: calc(100% - 40px);
+      background: #e4e7ed;
+    }
+  }
+}
+
 .progress-overview {
   .progress-stats {
     display: flex;
@@ -843,5 +1120,51 @@ function getErrorMessage(output: string | null): string {
   text-align: center;
   padding: 12px;
   font-size: 13px;
+}
+
+// 步骤名称样式
+.step-name {
+  .step-label {
+    display: block;
+    font-weight: 500;
+  }
+  .step-id {
+    display: block;
+    font-size: 12px;
+    margin-top: 2px;
+  }
+}
+
+// 错误文本
+.error-text {
+  margin: 0;
+  font-size: 13px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+// 输出框
+.output-box {
+  background: #1e1e1e;
+  border-radius: 6px;
+  overflow: hidden;
+  
+  .output-content {
+    padding: 16px;
+    margin: 0;
+    color: #d4d4d4;
+    font-family: 'Consolas', 'Fira Code', monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+    max-height: 400px;
+    overflow-y: auto;
+  }
+}
+
+.mr-4 {
+  margin-right: 4px;
 }
 </style>

@@ -99,6 +99,20 @@ public class ScriptVersion implements Serializable {
     private Map<String, Object> roles;
 
     /**
+     * 输出收集配置（JSONB）
+     * 格式: {"collectEnabled": true, "collectRules": [...]}
+     */
+    @TableField(typeHandler = JsonbTypeHandler.class)
+    private Map<String, Object> outputConfig;
+
+    /**
+     * 执行步骤配置（JSONB）
+     * 格式: {"step_1": {"displayName": "...", "script": "...", "dependsOn": [], ...}, ...}
+     */
+    @TableField(typeHandler = JsonbTypeHandler.class)
+    private Map<String, Object> steps;
+
+    /**
      * 变更日志
      */
     private String changeLog;

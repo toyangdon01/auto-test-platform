@@ -13,6 +13,13 @@ import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.FileSystemResource;
+import org.springframework.core.io.Resource;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.io.IOException;
@@ -36,6 +43,9 @@ public class TestResultController {
 
     private final TestResultService testResultService;
     private final ResultCompareService resultCompareService;
+
+    @Value("${autotest.storage.results-path}")
+    private String resultsPath;
 
     @GetMapping
     @Operation(summary = "分页查询测试结果")
@@ -204,5 +214,39 @@ public class TestResultController {
             return "\"" + str.replace("\"", "\"\"") + "\"";
         }
         return str;
+    }
+
+    @GetMapping("/download")
+    @Operation(summary = "下载收集的文件")
+    public ResponseEntity<Resource> downloadFile(
+            @Parameter(description = "文件存储路径") @RequestParam String path,
+            HttpServletResponse response) {
+        
+        // 安全检查：防止路径遍历攻击
+        if (path.contains("..") || path.startsWith("/") || path.contains(":")) {
+            return ResponseEntity.badRequest().build();
+        }
+
+        // 构建完整路径
+        java.nio.file.Path filePath = java.nio.file.Paths.get(resultsPath, path).normalize();
+        
+        // 检查文件是否存在且在允许的目录内
+        if (!filePath.startsWith(resultsPath)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+
+        java.io.File file = filePath.toFile();
+        if (!file.exists() || !file.isFile()) {
+            return ResponseEntity.notFound().build();
+        }
+
+        // 设置响应头
+        String fileName = file.getName();
+        Resource resource = new FileSystemResource(file);
+        
+        return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + fileName + "\"")
+                .body(resource);
     }
 }

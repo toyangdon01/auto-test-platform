@@ -6,8 +6,10 @@ import com.autotest.dto.request.TaskCreateRequest;
 import com.autotest.dto.request.TaskQueryRequest;
 import com.autotest.dto.response.TaskDetailResponse;
 import com.autotest.entity.Task;
+import com.autotest.entity.TaskStep;
 import com.autotest.entity.Metric;
 import com.autotest.mapper.MetricMapper;
+import com.autotest.mapper.TaskStepMapper;
 import com.autotest.service.TaskService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import io.swagger.v3.oas.annotations.Operation;
@@ -37,6 +39,7 @@ public class TaskController {
 
     private final TaskService taskService;
     private final MetricMapper metricMapper;
+    private final TaskStepMapper taskStepMapper;
 
     @Operation(summary = "获取任务列表")
     @GetMapping
@@ -103,6 +106,12 @@ public class TaskController {
             @RequestParam(required = false) Long serverId,
             @RequestParam(defaultValue = "all") String stage) {
         return ApiResponse.success(taskService.getTaskLogs(id, serverId, stage));
+    }
+    
+    @Operation(summary = "获取任务步骤")
+    @GetMapping("/{id}/steps")
+    public ApiResponse<List<TaskStep>> getTaskSteps(@PathVariable Long id) {
+        return ApiResponse.success(taskStepMapper.findByTaskIdWithServer(id));
     }
     
     @Operation(summary = "修复任务状态")

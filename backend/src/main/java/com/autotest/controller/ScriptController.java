@@ -80,15 +80,23 @@ public class ScriptController {
             return ApiResponse.success(null);
         }
         
-        // 查询当前版本的角色定义
+        // 查询当前版本的角色定义和输出配置
         if (script.getCurrentVersion() != null) {
             ScriptVersion version = scriptVersionMapper.selectOne(
                 new LambdaQueryWrapper<ScriptVersion>()
                     .eq(ScriptVersion::getScriptId, id)
                     .eq(ScriptVersion::getVersion, script.getCurrentVersion())
             );
-            if (version != null && version.getRoles() != null) {
-                script.setRoles(version.getRoles());
+            if (version != null) {
+                if (version.getRoles() != null) {
+                    script.setRoles(version.getRoles());
+                }
+                if (version.getOutputConfig() != null) {
+                    script.setOutputConfig(version.getOutputConfig());
+                }
+                if (version.getSteps() != null) {
+                    script.setSteps(version.getSteps());
+                }
             }
         }
         
@@ -142,10 +150,67 @@ public class ScriptController {
         script.setCurrentVersion("v1.0.0");
         script.setCreatedAt(LocalDateTime.now());
         script.setUpdatedAt(LocalDateTime.now());
+        
         // 确保 fileList 不为 null，避免数据库非空约束错误
         if (script.getFileList() == null) {
             script.setFileList(new ArrayList<>());
         }
+        
+        // 从角色配置中提取入口脚本（新版简化逻辑）
+        if (script.getRoles() != null && !script.getRoles().isEmpty()) {
+            // 角色配置格式: { "default": { "entryScript": "main.sh", ... }, ... }
+            try {
+                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                Map<String, Object> rolesMap = mapper.convertValue(script.getRoles(), Map.class);
+                
+                // 优先从 default 角色获取入口脚本
+                if (rolesMap.containsKey("default")) {
+                    Object defaultRole = rolesMap.get("default");
+                    if (defaultRole instanceof Map) {
+                        Map<?, ?> defaultRoleMap = (Map<?, ?>) defaultRole;
+                        if (defaultRoleMap.containsKey("entryScript")) {
+                            String entryScript = (String) defaultRoleMap.get("entryScript");
+                            if (entryScript != null && !entryScript.isEmpty()) {
+                                script.setEntryFile(entryScript);
+                            }
+                        }
+                        if (defaultRoleMap.containsKey("deployScript")) {
+                            String deployScript = (String) defaultRoleMap.get("deployScript");
+                            if (deployScript != null && !deployScript.isEmpty()) {
+                                script.setDeployEntry(deployScript);
+                                script.setHasDeploy(true);
+                            }
+                        }
+                        if (defaultRoleMap.containsKey("cleanupScript")) {
+                            String cleanupScript = (String) defaultRoleMap.get("cleanupScript");
+                            if (cleanupScript != null && !cleanupScript.isEmpty()) {
+                                script.setCleanupEntry(cleanupScript);
+                                script.setHasCleanup(true);
+                            }
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("解析角色配置失败: {}", e.getMessage());
+            }
+        }
+        
+        // 如果仍没有入口文件，尝试从 fileList 中找 main.sh
+        if (script.getEntryFile() == null || script.getEntryFile().isEmpty()) {
+            if (script.getFileList() != null) {
+                for (Object fileObj : script.getFileList()) {
+                    if (fileObj instanceof Map) {
+                        Map<?, ?> file = (Map<?, ?>) fileObj;
+                        String path = (String) file.get("path");
+                        if (path != null && path.equals("main.sh")) {
+                            script.setEntryFile("main.sh");
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        
         // 根据入口文件自动设置脚本类型
         if (script.getScriptType() == null || script.getScriptType().isEmpty()) {
             String entryFile = script.getEntryFile();
@@ -161,6 +226,12 @@ public class ScriptController {
                 script.setScriptType("shell"); // 默认 shell
             }
         }
+        
+        // 设置生命周期模式（新版统一用 simple）
+        if (script.getLifecycleMode() == null || script.getLifecycleMode().isEmpty()) {
+            script.setLifecycleMode("simple");
+        }
+        
         scriptMapper.insert(script);
         
         // 处理上传的临时文件（从 tempFilePath 复制到脚本目录）
@@ -177,6 +248,13 @@ public class ScriptController {
             saveScriptContentFromEditor(script);
         } catch (IOException e) {
             log.warn("保存脚本内容失败: {}", e.getMessage());
+        }
+        
+        // 从临时目录复制文件到脚本目录
+        try {
+            copyFromTempToScriptDir(script);
+        } catch (IOException e) {
+            log.warn("复制临时文件失败: {}", e.getMessage());
         }
         
         // 创建初始版本记录，包含角色定义
@@ -206,6 +284,16 @@ public class ScriptController {
         // 保存角色定义
         if (script.getRoles() != null && !script.getRoles().isEmpty()) {
             version.setRoles(script.getRoles());
+        }
+        
+        // 保存输出收集配置
+        if (script.getOutputConfig() != null && !script.getOutputConfig().isEmpty()) {
+            version.setOutputConfig(script.getOutputConfig());
+        }
+        
+        // 保存执行步骤配置
+        if (script.getSteps() != null && !script.getSteps().isEmpty()) {
+            version.setSteps(script.getSteps());
         }
         
         scriptVersionMapper.insert(version);
@@ -249,12 +337,32 @@ public class ScriptController {
                 }
             }
             log.info("解压脚本文件: {} -> {}", tempPath, targetPath);
+        } else if (Files.isDirectory(tempFile)) {
+            // 临时目录，递归复制所有文件
+            Files.walk(tempFile)
+                .filter(path -> !Files.isDirectory(path))
+                .forEach(path -> {
+                    try {
+                        Path relativePath = tempFile.relativize(path);
+                        Path targetFile = targetDir.resolve(relativePath.toString());
+                        Files.createDirectories(targetFile.getParent());
+                        Files.copy(path, targetFile, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                    } catch (IOException e) {
+                        log.error("复制文件失败: {}", path, e);
+                    }
+                });
+            log.info("复制临时目录: {} -> {}", tempPath, targetPath);
         } else {
             // 单文件，直接复制
             Path targetFile = targetDir.resolve(tempFile.getFileName().toString());
             Files.copy(tempFile, targetFile, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
             log.info("复制脚本文件: {} -> {}", tempPath, targetFile);
         }
+        
+        // 扫描目标目录，生成文件列表
+        List<Map<String, Object>> actualFileList = scanScriptDirectory(targetDir);
+        script.setFileList(actualFileList);
+        log.info("更新文件列表: {} 个文件", actualFileList.size());
         
         // 清理临时文件
         try {
@@ -267,6 +375,34 @@ public class ScriptController {
         } catch (Exception e) {
             log.debug("清理临时文件失败: {}", e.getMessage());
         }
+    }
+    
+    /**
+     * 扫描脚本目录生成文件列表
+     */
+    private List<Map<String, Object>> scanScriptDirectory(Path scriptDir) throws IOException {
+        List<Map<String, Object>> fileList = new ArrayList<>();
+        
+        if (!Files.exists(scriptDir)) {
+            return fileList;
+        }
+        
+        Files.walk(scriptDir)
+            .filter(path -> !Files.isDirectory(path))
+            .forEach(path -> {
+                try {
+                    Path relativePath = scriptDir.relativize(path);
+                    Map<String, Object> fileInfo = new HashMap<>();
+                    fileInfo.put("path", relativePath.toString().replace("\\", "/"));
+                    fileInfo.put("name", path.getFileName().toString());
+                    fileInfo.put("size", Files.size(path));
+                    fileList.add(fileInfo);
+                } catch (IOException e) {
+                    log.warn("读取文件信息失败: {}", path);
+                }
+            });
+        
+        return fileList;
     }
     
     /**
@@ -403,6 +539,16 @@ public class ScriptController {
                 if (script.getRoles() != null && !script.getRoles().isEmpty()) {
                     version.setRoles(script.getRoles());
                     log.info("更新脚本角色定义: scriptId={}, version={}", id, version.getVersion());
+                }
+                // 更新输出收集配置
+                if (script.getOutputConfig() != null && !script.getOutputConfig().isEmpty()) {
+                    version.setOutputConfig(script.getOutputConfig());
+                    log.info("更新输出收集配置: scriptId={}, version={}", id, version.getVersion());
+                }
+                // 更新执行步骤配置
+                if (script.getSteps() != null && !script.getSteps().isEmpty()) {
+                    version.setSteps(script.getSteps());
+                    log.info("更新执行步骤配置: scriptId={}, version={}", id, version.getVersion());
                 }
                 scriptVersionMapper.updateById(version);
             }
@@ -591,6 +737,30 @@ public class ScriptController {
                 info.put("dependsOn", role.get("dependsOn"));
                 info.put("resultCollector", role.get("resultCollector"));
                 summary.add(info);
+            }
+        } else {
+            // 新格式：直接以角色名为 key
+            for (Map.Entry<String, Object> entry : roles.entrySet()) {
+                String roleName = entry.getKey();
+                if (entry.getValue() instanceof Map) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> roleData = (Map<String, Object>) entry.getValue();
+                    Map<String, Object> info = new LinkedHashMap<>();
+                    info.put("name", roleName);
+                    info.put("displayName", roleData.get("displayName"));
+                    info.put("description", roleData.get("description"));
+                    info.put("params", roleData.get("params"));
+                    info.put("dependsOn", roleData.get("dependsOn"));
+                    info.put("resultCollector", roleData.get("resultCollector"));
+                    // 新版脚本选择字段
+                    info.put("entryScript", roleData.get("entryScript"));
+                    info.put("deployScript", roleData.get("deployScript"));
+                    info.put("cleanupScript", roleData.get("cleanupScript"));
+                    // 兼容旧字段
+                    info.put("entryFunction", roleData.get("entryFunction"));
+                    info.put("startupProbe", roleData.get("startupProbe"));
+                    summary.add(info);
+                }
             }
         }
         

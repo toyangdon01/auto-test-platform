@@ -52,6 +52,13 @@ public class SshService {
     }
 
     /**
+     * 执行远程命令（返回详细结果）
+     */
+    public static ExecuteResult executeCommandWithResult(Server server, String command) {
+        return executeCommand(server, command, null, EXEC_TIMEOUT);
+    }
+
+    /**
      * 执行远程命令（带实时输出）
      *
      * @param server      服务器信息
@@ -256,6 +263,46 @@ public class SshService {
                 channel.mkdir(currentPath.toString());
             } catch (SftpException e) {
                 // 目录可能已存在
+            }
+        }
+    }
+
+    /**
+     * 从远程服务器下载文件
+     */
+    public static boolean downloadFile(Server server, String remotePath, String localPath) {
+        Session session = null;
+        ChannelSftp channel = null;
+        try {
+            JSch jsch = new JSch();
+            session = createSession(jsch, server);
+            session.setTimeout(DEFAULT_TIMEOUT);
+            session.connect();
+
+            channel = (ChannelSftp) session.openChannel("sftp");
+            channel.connect();
+            
+            // 创建本地目录
+            File localFile = new File(localPath);
+            if (!localFile.getParentFile().exists()) {
+                localFile.getParentFile().mkdirs();
+            }
+            
+            // 下载文件
+            OutputStream outputStream = new FileOutputStream(localPath);
+            channel.get(remotePath, outputStream);
+            outputStream.close();
+            
+            return true;
+        } catch (Exception e) {
+            System.err.println("[SSH] Download failed: " + e.getMessage());
+            return false;
+        } finally {
+            if (channel != null) {
+                channel.disconnect();
+            }
+            if (session != null) {
+                session.disconnect();
             }
         }
     }
