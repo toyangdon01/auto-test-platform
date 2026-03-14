@@ -50,7 +50,7 @@ public class TaskExecutionService {
      * 执行任务（基于步骤执行）
      */
     @SuppressWarnings("unchecked")
-    public Map<String, Object> executeTask(Long taskId, Consumer<String> logCallback) {
+    public Map<String, Object> executeTask(Long taskId, Map<String, Map<String, Object>> stepParams) {
         Map<String, Object> result = new LinkedHashMap<>();
 
         Task task = taskMapper.selectById(taskId);
@@ -70,7 +70,7 @@ public class TaskExecutionService {
         task.setStartedAt(LocalDateTime.now());
         taskMapper.updateById(task);
 
-        ExecutionContext context = new ExecutionContext(taskId, logCallback);
+        ExecutionContext context = new ExecutionContext(taskId, null);
         runningTasks.put(taskId, context);
 
         try {
@@ -103,7 +103,7 @@ public class TaskExecutionService {
             int successCount;
             
             if (stepsConfig != null && !stepsConfig.isEmpty()) {
-                successCount = executeSteps(context, task, taskServers, script, scriptVersion, stepsConfig);
+                successCount = executeSteps(context, task, taskServers, script, scriptVersion, stepsConfig, stepParams);
             } else {
                 successCount = executeDefaultStep(context, task, taskServers, script, scriptVersion);
             }
@@ -173,7 +173,8 @@ public class TaskExecutionService {
      */
     @SuppressWarnings("unchecked")
     private int executeSteps(ExecutionContext context, Task task, List<TaskServer> taskServers,
-                              Script script, ScriptVersion scriptVersion, Map<String, Object> stepsConfig) {
+                              Script script, ScriptVersion scriptVersion, Map<String, Object> stepsConfig,
+                              Map<String, Map<String, Object>> stepParams) {
         
         context.log("========== 步骤执行阶段 ==========");
         
@@ -216,7 +217,7 @@ public class TaskExecutionService {
         context.log("[INFO] 步骤数量: " + stepsConfig.size());
         
         // 初始化 TaskStep 记录
-        initTaskSteps(task, taskServers, dag);
+        initTaskSteps(task, taskServers, dag, stepParams);
         
         ExecutorService executor = Executors.newFixedThreadPool(Math.max(4, taskServers.size()));
         // 跟踪每个服务器的失败步骤数
@@ -292,14 +293,29 @@ public class TaskExecutionService {
     /**
      * 初始化任务步骤记录
      */
-    private void initTaskSteps(Task task, List<TaskServer> taskServers, StepDAG dag) {
+    @SuppressWarnings("unchecked")
+    private void initTaskSteps(Task task, List<TaskServer> taskServers, StepDAG dag, 
+                                Map<String, Map<String, Object>> stepParams) {
         // 先删除旧的步骤记录（支持再次执行）
         LambdaQueryWrapper<TaskStep> deleteWrapper = new LambdaQueryWrapper<>();
         deleteWrapper.eq(TaskStep::getTaskId, task.getId());
         taskStepMapper.delete(deleteWrapper);
         
+        // 获取共享参数
+        Map<String, Object> sharedParams = task.getSharedParams() != null ? task.getSharedParams() : new HashMap<>();
+        
         for (String stepName : dag.getAllStepNames()) {
             StepDAG.StepConfig config = dag.getStepConfig(stepName);
+            
+            // 合并参数：共享参数 + 步骤参数（步骤参数覆盖共享参数）
+            Map<String, Object> mergedParams = new HashMap<>();
+            if (sharedParams != null) {
+                mergedParams.putAll(sharedParams);
+            }
+            // 添加步骤特定参数
+            if (stepParams != null && stepParams.get(stepName) != null) {
+                mergedParams.putAll(stepParams.get(stepName));
+            }
             
             for (TaskServer taskServer : taskServers) {
                 TaskStep taskStep = new TaskStep();
@@ -310,7 +326,7 @@ public class TaskExecutionService {
                 taskStep.setScript(config.getScript());
                 taskStep.setDependsOn(config.getDependsOn() != null && !config.getDependsOn().isEmpty() ? 
                     String.join(",", config.getDependsOn()) : null);
-                taskStep.setParams(config.getParams());
+                taskStep.setParams(mergedParams.isEmpty() ? null : mergedParams);
                 taskStep.setResultCollector(config.isResultCollector());
                 taskStep.setStartupProbe(config.getStartupProbe());
                 taskStep.setStatus("pending");
@@ -681,9 +697,8 @@ public class TaskExecutionService {
         TaskServer taskServer = taskServerMapper.selectOne(wrapper);
         
         if (taskServer != null) {
-            taskServer.setRunStatus(stepSuccess ? "completed" : "failed");
             taskServer.setOverallStatus(stepSuccess ? "completed" : "failed");
-            taskServer.setFinishedAt(LocalDateTime.now());
+            taskServer.setProgress(100);
             taskServerMapper.updateById(taskServer);
         }
     }

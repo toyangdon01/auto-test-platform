@@ -11,12 +11,14 @@ import com.autotest.entity.ScriptVersion;
 import com.autotest.entity.Server;
 import com.autotest.entity.Task;
 import com.autotest.entity.TaskServer;
+import com.autotest.entity.TaskStep;
 import com.autotest.exception.BusinessException;
 import com.autotest.mapper.ScriptMapper;
 import com.autotest.mapper.ScriptVersionMapper;
 import com.autotest.mapper.ServerMapper;
 import com.autotest.mapper.TaskMapper;
 import com.autotest.mapper.TaskServerMapper;
+import com.autotest.mapper.TaskStepMapper;
 import com.autotest.service.TaskExecutionService;
 import com.autotest.service.TaskService;
 import lombok.RequiredArgsConstructor;
@@ -42,6 +44,7 @@ public class TaskServiceImpl implements TaskService {
 
     private final TaskMapper taskMapper;
     private final TaskServerMapper taskServerMapper;
+    private final TaskStepMapper taskStepMapper;
     private final ScriptMapper scriptMapper;
     private final ScriptVersionMapper scriptVersionMapper;
     private final ServerMapper serverMapper;
@@ -168,43 +171,15 @@ public class TaskServiceImpl implements TaskService {
                     
                     // 角色信息
                     progress.setRole(ts.getRole());
-                    progress.setRoleParams(ts.getRoleParams());
                     
                     // 当前执行信息
                     progress.setCurrentPhase(ts.getCurrentPhase());
                     progress.setCurrentCommand(ts.getCurrentCommand());
                     progress.setCommandStartedAt(ts.getCommandStartedAt());
                     
-                    // 部署阶段
-                    TaskDetailResponse.StageDetail deploy = new TaskDetailResponse.StageDetail();
-                    deploy.setStatus(ts.getDeployStatus());
-                    deploy.setExitCode(ts.getDeployExitCode());
-                    deploy.setStartedAt(ts.getDeployStartedAt());
-                    deploy.setFinishedAt(ts.getDeployFinishedAt());
-                    deploy.setOutput(ts.getDeployOutput());
-                    progress.setDeploy(deploy);
-                    
-                    // 执行阶段
-                    TaskDetailResponse.StageDetail run = new TaskDetailResponse.StageDetail();
-                    run.setStatus(ts.getRunStatus());
-                    run.setExitCode(ts.getExitCode());
-                    run.setStartedAt(ts.getStartedAt());
-                    run.setFinishedAt(ts.getFinishedAt());
-                    run.setOutput(ts.getOutput());
-                    progress.setRun(run);
-                    
-                    // 卸载阶段
-                    TaskDetailResponse.StageDetail cleanup = new TaskDetailResponse.StageDetail();
-                    cleanup.setStatus(ts.getCleanupStatus());
-                    cleanup.setExitCode(ts.getCleanupExitCode());
-                    cleanup.setStartedAt(ts.getCleanupStartedAt());
-                    cleanup.setFinishedAt(ts.getCleanupFinishedAt());
-                    cleanup.setOutput(ts.getCleanupOutput());
-                    progress.setCleanup(cleanup);
-                    
-                    // 计算 overallStatus（根据各阶段状态）
-                    String overallStatus = calculateOverallStatus(ts);
-                    progress.setOverallStatus(overallStatus);
+                    // 整体状态
+                    progress.setOverallStatus(ts.getOverallStatus());
+                    progress.setProgress(ts.getProgress());
                     
                     // 获取服务器名称
                     Server server = serverMapper.selectById(ts.getServerId());
@@ -240,53 +215,11 @@ public class TaskServiceImpl implements TaskService {
     
     /**
      * 计算 TaskServer 的整体状态
-     * 根据各阶段（deploy/run/cleanup）的状态和退出码判断
+     * 步骤执行模式下，状态由 TaskExecutionService 更新
      */
     private String calculateOverallStatus(TaskServer ts) {
-        // 检查是否有任何阶段正在运行
-        if ("running".equals(ts.getDeployStatus()) || "running".equals(ts.getRunStatus()) || "running".equals(ts.getCleanupStatus())) {
-            return "running";
-        }
-        
-        // 检查 run 阶段状态（主要判断依据）
-        if ("completed".equals(ts.getRunStatus())) {
-            // run 完成，检查退出码
-            Integer exitCode = ts.getExitCode();
-            if (exitCode != null && exitCode == 0) {
-                // run 成功，检查其他阶段
-                boolean deployOk = ts.getDeployStatus() == null || 
-                                   "completed".equals(ts.getDeployStatus()) || 
-                                   "skipped".equals(ts.getDeployStatus()) ||
-                                   "pending".equals(ts.getDeployStatus());
-                boolean cleanupOk = ts.getCleanupStatus() == null || 
-                                    "completed".equals(ts.getCleanupStatus()) || 
-                                    "skipped".equals(ts.getCleanupStatus()) ||
-                                    "pending".equals(ts.getCleanupStatus());
-                
-                if (deployOk && cleanupOk) {
-                    return "completed";
-                }
-            }
-            // run 完成但退出码非0，视为失败
-            return "failed";
-        }
-        
-        // run 阶段失败
-        if ("failed".equals(ts.getRunStatus())) {
-            return "failed";
-        }
-        
-        // deploy 阶段失败
-        if ("failed".equals(ts.getDeployStatus())) {
-            return "failed";
-        }
-        
-        // cleanup 阶段失败（但 run 成功）
-        if ("failed".equals(ts.getCleanupStatus())) {
-            return "completed";  // run 成功，cleanup 失败不影响整体成功
-        }
-        
-        // 默认返回数据库中的状态
+        // 直接返回 TaskServer 的 overallStatus 字段
+        // 步骤执行模式下，状态由 TaskExecutionService 根据步骤执行情况更新
         return ts.getOverallStatus() != null ? ts.getOverallStatus() : "pending";
     }
 
@@ -314,6 +247,7 @@ public class TaskServiceImpl implements TaskService {
         task.setScriptId(request.getScriptId());
         task.setScriptVersion(request.getScriptVersion());
         task.setSharedParams(request.getSharedParams());
+        task.setStepParams(request.getStepParams());
         task.setExecutionMode(request.getExecutionMode());
         task.setParallelMode(request.getParallelMode());
         task.setMaxParallel(request.getMaxParallel());
@@ -419,11 +353,14 @@ public class TaskServiceImpl implements TaskService {
             resetTaskForReExecution(id);
         }
         
+        // 获取步骤参数
+        final Map<String, Map<String, Object>> stepParams = task.getStepParams();
+        
         // 异步执行任务
         final Long taskId = id;
         new Thread(() -> {
             try {
-                taskExecutionService.executeTask(taskId, null);
+                taskExecutionService.executeTask(taskId, stepParams);
             } catch (Exception e) {
                 log.error("任务执行失败: {}", e.getMessage(), e);
             }
@@ -449,37 +386,16 @@ public class TaskServiceImpl implements TaskService {
         List<TaskServer> taskServers = taskServerMapper.selectList(wrapper);
         
         for (TaskServer ts : taskServers) {
-            // 通用状态
             ts.setOverallStatus("pending");
             ts.setProgress(0);
-            
-            // 部署阶段
-            ts.setDeployStatus(null);
-            ts.setDeployStartedAt(null);
-            ts.setDeployFinishedAt(null);
-            ts.setDeployExitCode(null);
-            ts.setDeployOutput(null);
-            ts.setDeployError(null);
-            
-            // 执行阶段
-            ts.setRunStatus(null);
-            ts.setStartedAt(null);
-            ts.setFinishedAt(null);
-            ts.setExitCode(null);
-            ts.setOutput(null);
-            ts.setErrorMessage(null);
-            ts.setParsedResult(null);
-            
-            // 清理阶段
-            ts.setCleanupStatus(null);
-            ts.setCleanupStartedAt(null);
-            ts.setCleanupFinishedAt(null);
-            ts.setCleanupExitCode(null);
-            ts.setCleanupOutput(null);
-            ts.setCleanupError(null);
-            
+            ts.setCurrentPhase(null);
+            ts.setCurrentCommand(null);
+            ts.setCommandStartedAt(null);
             taskServerMapper.updateById(ts);
         }
+        
+        // 删除旧的步骤记录
+        taskStepMapper.delete(new LambdaQueryWrapper<TaskStep>().eq(TaskStep::getTaskId, taskId));
         
         log.info("任务 {} 已重置，准备重新执行", taskId);
     }
@@ -526,37 +442,16 @@ public class TaskServiceImpl implements TaskService {
         wrapper.eq(TaskServer::getTaskId, id);
         List<TaskServer> taskServers = taskServerMapper.selectList(wrapper);
         for (TaskServer ts : taskServers) {
-            // 通用状态
             ts.setOverallStatus("pending");
             ts.setProgress(0);
-            
-            // 部署阶段
-            ts.setDeployStatus(null);
-            ts.setDeployStartedAt(null);
-            ts.setDeployFinishedAt(null);
-            ts.setDeployExitCode(null);
-            ts.setDeployOutput(null);
-            ts.setDeployError(null);
-            
-            // 执行阶段
-            ts.setRunStatus(null);
-            ts.setStartedAt(null);
-            ts.setFinishedAt(null);
-            ts.setExitCode(null);
-            ts.setOutput(null);
-            ts.setErrorMessage(null);
-            ts.setParsedResult(null);
-            
-            // 清理阶段
-            ts.setCleanupStatus(null);
-            ts.setCleanupStartedAt(null);
-            ts.setCleanupFinishedAt(null);
-            ts.setCleanupExitCode(null);
-            ts.setCleanupOutput(null);
-            ts.setCleanupError(null);
-            
+            ts.setCurrentPhase(null);
+            ts.setCurrentCommand(null);
+            ts.setCommandStartedAt(null);
             taskServerMapper.updateById(ts);
         }
+        
+        // 重置任务步骤状态
+        taskStepMapper.delete(new LambdaQueryWrapper<TaskStep>().eq(TaskStep::getTaskId, id));
     }
 
     @Override
@@ -591,65 +486,9 @@ public class TaskServiceImpl implements TaskService {
     
     @Override
     public Map<String, Integer> fixAllTaskStatus() {
-        // 获取所有任务服务器
-        List<TaskServer> allServers = taskServerMapper.selectList(null);
-        
-        int fixedServers = 0;
+        // 步骤执行模式下，状态由 TaskExecutionService 管理
+        // 此方法主要用于修复异常中断的任务状态
         int fixedTasks = 0;
-        
-        for (TaskServer ts : allServers) {
-            String oldStatus = ts.getOverallStatus();
-            
-            // 计算正确的整体状态
-            if ("running".equals(ts.getDeployStatus()) ||
-                "running".equals(ts.getRunStatus()) ||
-                "running".equals(ts.getCleanupStatus())) {
-                ts.setOverallStatus("running");
-            } else if ("failed".equals(ts.getDeployStatus()) ||
-                       "failed".equals(ts.getRunStatus()) ||
-                       "failed".equals(ts.getCleanupStatus())) {
-                ts.setOverallStatus("failed");
-            } else {
-                boolean deployComplete = "completed".equals(ts.getDeployStatus()) || 
-                                        "skipped".equals(ts.getDeployStatus()) ||
-                                        ts.getDeployStatus() == null;
-                boolean runComplete = "completed".equals(ts.getRunStatus()) ||
-                                     "skipped".equals(ts.getRunStatus());
-                boolean cleanupComplete = "completed".equals(ts.getCleanupStatus()) || 
-                                         "skipped".equals(ts.getCleanupStatus()) ||
-                                         ts.getCleanupStatus() == null;
-                
-                if (deployComplete && runComplete && cleanupComplete) {
-                    ts.setOverallStatus("completed");
-                } else {
-                    ts.setOverallStatus("pending");
-                }
-            }
-            
-            if (!ts.getOverallStatus().equals(oldStatus)) {
-                taskServerMapper.updateById(ts);
-                fixedServers++;
-            }
-        }
-        
-        // 更新任务状态
-        List<Task> allTasks = taskMapper.selectList(
-            new LambdaQueryWrapper<Task>().in(Task::getStatus, "completed", "completed_with_errors")
-        );
-        
-        for (Task task : allTasks) {
-            long failCount = allServers.stream()
-                .filter(ts -> ts.getTaskId().equals(task.getId()) && "failed".equals(ts.getOverallStatus()))
-                .count();
-            
-            String expectedStatus = failCount > 0 ? "completed_with_errors" : "completed";
-            if (!expectedStatus.equals(task.getStatus())) {
-                task.setStatus(expectedStatus);
-                taskMapper.updateById(task);
-                fixedTasks++;
-            }
-        }
-        
-        return Map.of("fixedServers", fixedServers, "fixedTasks", fixedTasks);
+        return Map.of("fixedTasks", fixedTasks);
     }
 }

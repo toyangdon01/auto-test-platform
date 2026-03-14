@@ -369,6 +369,13 @@ async function loadScript() {
       stepsData.value = {}
     }
     
+    // 加载共享参数定义
+    if (res.data.parameters && Array.isArray(res.data.parameters)) {
+      formData.runParams = res.data.parameters
+    } else {
+      formData.runParams = []
+    }
+    
     // 加载输出收集配置
     if (res.data.outputConfig) {
       outputCollectData.value = res.data.outputConfig

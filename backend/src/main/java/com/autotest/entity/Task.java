@@ -49,41 +49,18 @@ public class Task implements Serializable {
     private Map<String, Object> sharedParams;
 
     /**
+     * 步骤参数（JSONB）
+     * 格式: {stepName: {paramName: paramValue}}
+     */
+    @TableField(typeHandler = JsonbTypeHandler.class)
+    private Map<String, Map<String, Object>> stepParams;
+
+    /**
      * 角色执行策略（JSON）
      * 格式: {"mode": "ordered", "startupWait": true, "resultRoles": ["client"]}
      */
     @TableField(typeHandler = JsonbTypeHandler.class)
     private Map<String, Object> roleExecutionStrategy;
-
-    /**
-     * 部署状态
-     */
-    private String deployStatus;
-
-    /**
-     * 卸载状态
-     */
-    private String cleanupStatus;
-
-    /**
-     * 部署开始时间
-     */
-    private LocalDateTime deployStartedAt;
-
-    /**
-     * 部署结束时间
-     */
-    private LocalDateTime deployFinishedAt;
-
-    /**
-     * 卸载开始时间
-     */
-    private LocalDateTime cleanupStartedAt;
-
-    /**
-     * 卸载结束时间
-     */
-    private LocalDateTime cleanupFinishedAt;
 
     /**
      * 任务状态

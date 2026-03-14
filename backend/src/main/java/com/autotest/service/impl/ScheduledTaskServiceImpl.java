@@ -168,7 +168,7 @@ public class ScheduledTaskServiceImpl implements ScheduledTaskService {
             }
 
             // 执行测试任务
-            taskExecutionService.executeTask(task.getId(), log::info);
+            taskExecutionService.executeTask(task.getId(), task.getStepParams());
 
             // 更新执行次数
             scheduledTask.setRunCount(scheduledTask.getRunCount() + 1);
