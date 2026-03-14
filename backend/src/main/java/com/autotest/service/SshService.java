@@ -188,11 +188,7 @@ public class SshService {
             int lastSlash = remotePath.lastIndexOf('/');
             if (lastSlash > 0) {
                 String dir = remotePath.substring(0, lastSlash);
-                try {
-                    channel.mkdir(dir);
-                } catch (SftpException e) {
-                    // 目录可能已存在
-                }
+                createRemoteDirs(channel, dir);
             }
             
             // 上传文件

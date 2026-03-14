@@ -500,7 +500,12 @@ public class TaskExecutionService {
      */
     private void uploadResources(ExecutionContext context, Task task, List<TaskServer> taskServers, Script script) {
         List<ScriptResource> resources = scriptResourceMapper.findByScriptIdWithResource(script.getId());
-        if (resources.isEmpty()) return;
+        if (resources == null || resources.isEmpty()) {
+            return;
+        }
+        
+        // 任务工作目录
+        String workDir = "/tmp/test_platform/task_" + task.getId();
         
         context.log("========== 资源上传阶段 ==========");
         for (TaskServer taskServer : taskServers) {
@@ -514,7 +519,8 @@ public class TaskExecutionService {
                     if (rf == null) continue;
                     
                     String localPath = Paths.get(scriptsPath.replace("scripts", "resources"), rf.getStoragePath()).toString();
-                    String targetPath = sr.getTargetPath() + "/" + rf.getName();
+                    // target_path 是相对于任务工作目录的路径
+                    String targetPath = workDir + "/" + sr.getTargetPath();
                     
                     context.log("  上传: " + rf.getName() + " -> " + targetPath);
                     SshService.uploadFile(server, localPath, targetPath);
