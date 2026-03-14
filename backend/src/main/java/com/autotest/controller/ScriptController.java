@@ -97,6 +97,9 @@ public class ScriptController {
                 if (version.getSteps() != null) {
                     script.setSteps(version.getSteps());
                 }
+                if (version.getParameters() != null) {
+                    script.setParameters(version.getParameters());
+                }
             }
         }
         
@@ -294,6 +297,11 @@ public class ScriptController {
         // 保存执行步骤配置
         if (script.getSteps() != null && !script.getSteps().isEmpty()) {
             version.setSteps(script.getSteps());
+        }
+        
+        // 保存共享参数定义
+        if (script.getParameters() != null && !script.getParameters().isEmpty()) {
+            version.setParameters(script.getParameters());
         }
         
         scriptVersionMapper.insert(version);
@@ -549,6 +557,11 @@ public class ScriptController {
                 if (script.getSteps() != null && !script.getSteps().isEmpty()) {
                     version.setSteps(script.getSteps());
                     log.info("更新执行步骤配置: scriptId={}, version={}", id, version.getVersion());
+                }
+                // 更新共享参数定义
+                if (script.getParameters() != null && !script.getParameters().isEmpty()) {
+                    version.setParameters(script.getParameters());
+                    log.info("更新共享参数定义: scriptId={}, version={}", id, version.getVersion());
                 }
                 scriptVersionMapper.updateById(version);
             }

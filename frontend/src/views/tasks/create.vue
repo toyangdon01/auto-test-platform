@@ -140,20 +140,29 @@
       <!-- Step 3: 配置参数 -->
       <div v-show="currentStep === 2" class="step-panel">
         <el-form :model="formData" label-width="120px">
-          <el-divider content-position="left">共享参数</el-divider>
-          <el-row :gutter="20">
-            <el-col :span="12">
-              <el-form-item label="测试时长">
-                <el-input-number v-model="formData.duration" :min="1" :max="3600" />
-                <span class="unit">秒</span>
-              </el-form-item>
-            </el-col>
-            <el-col :span="12">
-              <el-form-item label="并发数">
-                <el-input-number v-model="formData.concurrency" :min="1" :max="100" />
-              </el-form-item>
-            </el-col>
-          </el-row>
+          <template v-if="scriptParameters.length > 0">
+            <el-divider content-position="left">共享参数</el-divider>
+            <el-row :gutter="20">
+              <el-col :span="12" v-for="param in scriptParameters" :key="param.name">
+                <el-form-item :label="param.displayName || param.name">
+                  <el-input
+                    v-if="param.type === 'string' || !param.type"
+                    v-model="formData.sharedParams[param.name]"
+                    :placeholder="'默认: ' + param.default"
+                  />
+                  <el-input-number
+                    v-else-if="param.type === 'number'"
+                    v-model="formData.sharedParams[param.name]"
+                  />
+                  <el-switch
+                    v-else-if="param.type === 'boolean'"
+                    v-model="formData.sharedParams[param.name]"
+                  />
+                </el-form-item>
+              </el-col>
+            </el-row>
+          </template>
+          <el-empty v-else description="该脚本未定义共享参数" />
         </el-form>
       </div>
 
@@ -284,6 +293,7 @@ interface StepServerConfig {
 
 const scriptSteps = ref<StepDefinition[]>([])
 const stepServerConfigs = ref<StepServerConfig[]>([])
+const scriptParameters = ref<{ name: string; displayName?: string; type?: string; default?: any }[]>([])
 
 // 已分配服务器的步骤数量
 const assignedServerCount = computed(() => {
@@ -298,9 +308,8 @@ const formData = reactive({
   maxParallel: 1,
   failureStrategy: 'continue' as 'continue' | 'stop',
   collectEnabled: true,
-  duration: 60,
-  concurrency: 1,
-  deployDir: '/tmp/test',
+  // 共享参数值（动态）
+  sharedParams: {} as Record<string, any>,
 })
 
 const formRules = {
@@ -391,6 +400,17 @@ async function loadScriptSteps(script: Script) {
           step.params.forEach(p => {
             config.stepParams[p.name] = p.defaultValue !== undefined ? p.defaultValue : p.default
           })
+        }
+      })
+      
+      // 加载共享参数定义
+      const parametersData = (res.data as any).parameters || []
+      scriptParameters.value = parametersData
+      
+      // 设置共享参数默认值
+      parametersData.forEach((p: any) => {
+        if (p.default !== undefined) {
+          formData.sharedParams[p.name] = p.default
         }
       })
       
@@ -516,7 +536,7 @@ async function handleSubmit() {
     maxParallel: formData.maxParallel,
     failureStrategy: formData.failureStrategy,
     collectEnabled: formData.collectEnabled,
-    sharedParams: { duration: formData.duration, concurrency: formData.concurrency },
+    sharedParams: formData.sharedParams,
     deployParams: { deployDir: formData.deployDir },
   }
   

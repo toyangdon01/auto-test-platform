@@ -113,6 +113,14 @@ public class ScriptVersion implements Serializable {
     private Map<String, Object> steps;
 
     /**
+     * 执行参数定义（JSONB）
+     * 共享参数，传递给所有执行步骤
+     * 格式: [{"name": "DURATION", "displayName": "测试时长", "type": "number", "default": 60}, ...]
+     */
+    @TableField(typeHandler = JsonbListTypeHandler.class)
+    private java.util.List<Map<String, Object>> parameters;
+
+    /**
      * 变更日志
      */
     private String changeLog;

@@ -288,13 +288,15 @@ function addParam() {
 
 async function handleSave(andRun: boolean) {
   await formRef.value.validate()
-  
+
   const data: any = {
     name: formData.name,
     description: formData.description,
     testCategory: formData.testCategory,
     fileList: uploadedFiles.value,
     tempFilePath: tempFilePath.value,
+    // 执行参数（共享参数）
+    parameters: formData.runParams.filter((p: any) => p.name),
     // 执行步骤
     steps: stepsData.value,
     // 输出收集配置

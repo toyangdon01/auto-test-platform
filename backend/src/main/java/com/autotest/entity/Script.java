@@ -163,6 +163,12 @@ public class Script implements Serializable {
     private Map<String, Object> steps;
     
     /**
+     * 共享参数定义（用于创建时传给 ScriptVersion，不存 scripts 表）
+     */
+    @TableField(exist = false)
+    private java.util.List<Map<String, Object>> parameters;
+    
+    /**
      * 临时文件路径（上传时的临时目录，不存数据库）
      */
     @TableField(exist = false)
