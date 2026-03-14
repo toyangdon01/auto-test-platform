@@ -133,10 +133,7 @@ public class TaskServiceImpl implements TaskService {
         response.setScriptId(task.getScriptId());
         response.setScriptVersion(task.getScriptVersion());
         response.setStatus(task.getStatus());
-        response.setLifecycleMode(task.getSkipDeploy() ? "simple" : "full");
         response.setSharedParams(task.getSharedParams());
-        response.setDeployParams(task.getDeployParams());
-        response.setRunParams(task.getRunParams());
         response.setExecutionMode(task.getExecutionMode());
         response.setScheduledTime(task.getScheduledTime());
         response.setParallelMode(task.getParallelMode());
@@ -156,19 +153,8 @@ public class TaskServiceImpl implements TaskService {
             scriptInfo.setId(script.getId());
             scriptInfo.setName(script.getName());
             scriptInfo.setVersion(task.getScriptVersion());
-            scriptInfo.setLifecycleMode(script.getLifecycleMode());
-            scriptInfo.setHasDeploy(script.getHasDeploy());
-            scriptInfo.setHasCleanup(script.getHasCleanup());
             response.setScript(scriptInfo);
         }
-        
-        // 获取生命周期配置
-        TaskDetailResponse.LifecycleConfig lifecycleConfig = new TaskDetailResponse.LifecycleConfig();
-        lifecycleConfig.setSkipDeploy(task.getSkipDeploy());
-        lifecycleConfig.setSkipCleanup(task.getSkipCleanup());
-        lifecycleConfig.setDeployTimeout(task.getDeployTimeout());
-        lifecycleConfig.setCleanupTimeout(task.getCleanupTimeout());
-        response.setLifecycleConfig(lifecycleConfig);
         
         // 获取服务器执行状态
         LambdaQueryWrapper<TaskServer> tsWrapper = new LambdaQueryWrapper<>();
@@ -328,8 +314,6 @@ public class TaskServiceImpl implements TaskService {
         task.setScriptId(request.getScriptId());
         task.setScriptVersion(request.getScriptVersion());
         task.setSharedParams(request.getSharedParams());
-        task.setDeployParams(request.getDeployParams());
-        task.setRunParams(request.getRunParams());
         task.setExecutionMode(request.getExecutionMode());
         task.setParallelMode(request.getParallelMode());
         task.setMaxParallel(request.getMaxParallel());
@@ -358,14 +342,6 @@ public class TaskServiceImpl implements TaskService {
         task.setCreatedAt(LocalDateTime.now());
         task.setUpdatedAt(LocalDateTime.now());
         
-        // 生命周期配置
-        if (request.getLifecycleConfig() != null) {
-            task.setSkipDeploy(request.getLifecycleConfig().getSkipDeploy());
-            task.setSkipCleanup(request.getLifecycleConfig().getSkipCleanup());
-            task.setDeployTimeout(request.getLifecycleConfig().getDeployTimeout());
-            task.setCleanupTimeout(request.getLifecycleConfig().getCleanupTimeout());
-        }
-        
         // 定时执行时间
         if ("scheduled".equals(request.getExecutionMode()) && StringUtils.hasText(request.getScheduledTime())) {
             task.setScheduledTime(LocalDateTime.parse(request.getScheduledTime()));
@@ -373,68 +349,15 @@ public class TaskServiceImpl implements TaskService {
         
         taskMapper.insert(task);
         
-        // 构建服务器ID到角色配置列表的映射（支持同一服务器多角色）
-        Map<Long, List<Map<String, Object>>> serverRolesMap = new java.util.HashMap<>();
-        
-        // 方式1：使用 serverRoles 字段（旧格式）
-        if (request.getServerRoles() != null) {
-            for (var src : request.getServerRoles()) {
-                serverRolesMap.computeIfAbsent(src.getServerId(), k -> new java.util.ArrayList<>())
-                    .add(Map.of(
-                        "role", src.getRole() != null ? src.getRole() : "default",
-                        "roleParams", src.getRoleParams() != null ? src.getRoleParams() : Map.of()
-                    ));
-            }
-        }
-        // 方式2：使用 roleServerMapping 字段（新格式）
-        else if (request.getRoleServerMapping() != null && !request.getRoleServerMapping().isEmpty()) {
-            Map<String, Map<String, Object>> roleParamsMap = request.getRoleParams() != null ? request.getRoleParams() : Map.of();
-            
-            for (Map.Entry<String, List<Long>> entry : request.getRoleServerMapping().entrySet()) {
-                String roleName = entry.getKey();
-                List<Long> serverIdsForRole = entry.getValue();
-                Map<String, Object> paramsForRole = roleParamsMap.getOrDefault(roleName, Map.of());
-                
-                for (Long serverId : serverIdsForRole) {
-                    serverRolesMap.computeIfAbsent(serverId, k -> new java.util.ArrayList<>())
-                        .add(Map.of(
-                            "role", roleName,
-                            "roleParams", paramsForRole
-                        ));
-                }
-            }
-            log.info("使用 roleServerMapping 创建任务: mapping={}, params={}", request.getRoleServerMapping(), roleParamsMap);
-        }
-        
-        // 创建任务服务器关联（支持同一服务器多角色）
+        // 创建任务服务器关联
         for (Long serverId : serverIds) {
-            List<Map<String, Object>> roleConfigs = serverRolesMap.get(serverId);
-            if (roleConfigs != null && !roleConfigs.isEmpty()) {
-                // 为每个角色创建一个 TaskServer 记录
-                for (Map<String, Object> roleConfig : roleConfigs) {
-                    TaskServer taskServer = new TaskServer();
-                    taskServer.setTaskId(task.getId());
-                    taskServer.setServerId(serverId);
-                    taskServer.setOverallStatus("pending");
-                    taskServer.setCreatedAt(LocalDateTime.now());
-                    taskServer.setRole((String) roleConfig.get("role"));
-                    @SuppressWarnings("unchecked")
-                    Map<String, Object> roleParams = (Map<String, Object>) roleConfig.get("roleParams");
-                    taskServer.setRoleParams(roleParams);
-                    taskServerMapper.insert(taskServer);
-                    log.info("创建 TaskServer: taskId={}, serverId={}, role={}", task.getId(), serverId, roleConfig.get("role"));
-                }
-            } else {
-                // 没有角色配置，使用默认角色
-                TaskServer taskServer = new TaskServer();
-                taskServer.setTaskId(task.getId());
-                taskServer.setServerId(serverId);
-                taskServer.setOverallStatus("pending");
-                taskServer.setCreatedAt(LocalDateTime.now());
-                taskServer.setRole("default");
-                taskServerMapper.insert(taskServer);
-                log.info("创建 TaskServer (默认): taskId={}, serverId={}", task.getId(), serverId);
-            }
+            TaskServer taskServer = new TaskServer();
+            taskServer.setTaskId(task.getId());
+            taskServer.setServerId(serverId);
+            taskServer.setOverallStatus("pending");
+            taskServer.setCreatedAt(LocalDateTime.now());
+            taskServer.setRole("default");
+            taskServerMapper.insert(taskServer);
         }
         
         return task;
@@ -455,8 +378,6 @@ public class TaskServiceImpl implements TaskService {
         task.setName(request.getName());
         task.setDescription(request.getDescription());
         task.setSharedParams(request.getSharedParams());
-        task.setDeployParams(request.getDeployParams());
-        task.setRunParams(request.getRunParams());
         task.setUpdatedAt(LocalDateTime.now());
         
         taskMapper.updateById(task);

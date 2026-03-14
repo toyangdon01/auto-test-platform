@@ -23,7 +23,6 @@
           </el-alert>
           <div class="script-detail">
             <p><strong>测试类型:</strong> {{ getCategoryText(selectedScript?.testCategory) }}</p>
-            <p><strong>生命周期:</strong> {{ selectedScript?.lifecycleMode === 'full' ? '完整模式' : '简单模式' }}</p>
             <p><strong>版本:</strong> {{ selectedScript?.currentVersion }}</p>
           </div>
           <div class="preselected-actions">
@@ -48,11 +47,6 @@
           <el-table-column prop="testCategory" label="测试类型" width="120">
             <template #default="{ row }">
               <el-tag>{{ getCategoryText(row.testCategory) }}</el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column prop="lifecycleMode" label="生命周期" width="100">
-            <template #default="{ row }">
-              {{ row.lifecycleMode === 'full' ? '完整' : '简单' }}
             </template>
           </el-table-column>
           <el-table-column prop="currentVersion" label="版本" width="100" />
@@ -160,17 +154,6 @@
               </el-form-item>
             </el-col>
           </el-row>
-
-          <template v-if="selectedScript?.lifecycleMode === 'full'">
-            <el-divider content-position="left">部署参数</el-divider>
-            <el-row :gutter="20">
-              <el-col :span="12">
-                <el-form-item label="部署目录">
-                  <el-input v-model="formData.deployDir" placeholder="/tmp/test" />
-                </el-form-item>
-              </el-col>
-            </el-row>
-          </template>
         </el-form>
       </div>
 

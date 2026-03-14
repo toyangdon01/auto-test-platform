@@ -87,12 +87,6 @@ public class Script implements Serializable {
     private List<Map<String, Object>> fileList;
 
     /**
-     * 参数定义（JSONB Map）
-     */
-    @TableField(typeHandler = JsonbTypeHandler.class)
-    private Map<String, Object> parameters;
-
-    /**
      * 解析规则（JSONB Map）
      */
     @TableField(typeHandler = JsonbTypeHandler.class)

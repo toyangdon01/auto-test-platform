@@ -41,13 +41,6 @@
           <el-tag>{{ getCategoryText(row.testCategory) }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="lifecycleMode" label="生命周期" width="100">
-        <template #default="{ row }">
-          <el-tag :type="row.lifecycleMode === 'full' ? 'success' : 'info'">
-            {{ row.lifecycleMode === 'full' ? '完整' : '简单' }}
-          </el-tag>
-        </template>
-      </el-table-column>
       <!-- 版本功能暂时隐藏 -->
       <!-- <el-table-column prop="currentVersion" label="当前版本" width="100" /> -->
       <el-table-column prop="status" label="状态" width="100">
@@ -69,7 +62,6 @@
           <el-button type="primary" link @click="handleEdit(row)">编辑</el-button>
           <!-- 版本功能暂时隐藏 -->
           <!-- <el-button type="primary" link @click="handleVersions(row)">版本</el-button> -->
-          <el-button type="primary" link @click="handleParams(row)">参数</el-button>
           <el-button type="primary" link @click="handleParseRules(row)">解析</el-button>
           <el-button type="primary" link @click="handleExport(row)">导出</el-button>
           <el-button type="danger" link @click="handleDelete(row)">删除</el-button>
@@ -96,13 +88,6 @@
       :script="currentScript"
       @refresh="fetchData"
     /> -->
-
-    <!-- 参数配置弹窗 -->
-    <ParamConfig
-      v-model="paramDialogVisible"
-      :script="currentScript"
-      @refresh="fetchData"
-    />
 
     <!-- 解析规则配置弹窗 -->
     <ParseRuleConfig
@@ -134,27 +119,13 @@
         <el-descriptions-item label="脚本类型">
           {{ detailScript.scriptType === 'shell' ? 'Shell' : 'Python' }}
         </el-descriptions-item>
-        <el-descriptions-item label="生命周期">
-          <el-tag :type="detailScript.lifecycleMode === 'full' ? 'success' : 'info'">
-            {{ detailScript.lifecycleMode === 'full' ? '完整模式' : '简单模式' }}
-          </el-tag>
-        </el-descriptions-item>
         <el-descriptions-item label="状态">
           <el-tag :type="detailScript.status === 'enabled' ? 'success' : 'info'">
             {{ detailScript.status === 'enabled' ? '启用' : '禁用' }}
           </el-tag>
         </el-descriptions-item>
-        <el-descriptions-item label="入口文件">
-          {{ detailScript.entryFile || '-' }}
-        </el-descriptions-item>
         <el-descriptions-item label="默认超时">
           {{ detailScript.defaultTimeout ? detailScript.defaultTimeout + ' 秒' : '-' }}
-        </el-descriptions-item>
-        <el-descriptions-item label="部署入口" v-if="detailScript.lifecycleMode === 'full'">
-          {{ detailScript.deployEntry || '-' }}
-        </el-descriptions-item>
-        <el-descriptions-item label="清理入口" v-if="detailScript.lifecycleMode === 'full'">
-          {{ detailScript.cleanupEntry || '-' }}
         </el-descriptions-item>
         <el-descriptions-item label="描述" :span="2">
           {{ detailScript.description || '-' }}
@@ -167,103 +138,59 @@
         </el-descriptions-item>
       </el-descriptions>
 
-      <!-- 角色配置 -->
-      <div v-if="detailScript?.roles?.roles?.length" style="margin-top: 20px;">
+      <!-- 步骤定义 -->
+      <div v-if="detailScript?.steps && Object.keys(detailScript.steps).length" style="margin-top: 20px;">
         <h4 style="margin-bottom: 15px;">
-          <el-icon style="vertical-align: middle; margin-right: 5px;"><User /></el-icon>
-          角色配置 ({{ detailScript.roles.roles.length }} 个角色)
+          <el-icon style="vertical-align: middle; margin-right: 5px;"><List /></el-icon>
+          步骤定义 ({{ Object.keys(detailScript.steps).length }} 个步骤)
         </h4>
-        <el-collapse accordion>
-          <el-collapse-item 
-            v-for="(role, index) in detailScript.roles.roles" 
-            :key="role.name"
-            :name="index"
-          >
-            <template #title>
-              <div style="display: flex; align-items: center; gap: 10px;">
-                <el-tag type="primary">{{ role.displayName || role.name }}</el-tag>
-                <span style="color: #909399; font-size: 13px;">{{ role.name }}</span>
-                <el-tag v-if="role.resultCollector" type="success" size="small">结果收集</el-tag>
-                <el-tag v-if="role.dependsOn?.length" type="warning" size="small">
-                  依赖: {{ role.dependsOn.join(', ') }}
-                </el-tag>
+        <el-table :data="getStepsArray(detailScript.steps)" size="small" border>
+          <el-table-column prop="displayName" label="步骤名称" width="150">
+            <template #default="{ row }">
+              <div>
+                <div style="font-weight: 500;">{{ row.displayName || row.stepName }}</div>
+                <div style="color: #909399; font-size: 12px;" v-if="row.displayName">{{ row.stepName }}</div>
               </div>
             </template>
-            <el-descriptions :column="2" border size="small">
-              <el-descriptions-item label="角色标识">{{ role.name }}</el-descriptions-item>
-              <el-descriptions-item label="显示名称">{{ role.displayName || '-' }}</el-descriptions-item>
-              <el-descriptions-item label="描述" :span="2">{{ role.description || '-' }}</el-descriptions-item>
-              <el-descriptions-item label="入口函数">
-                <code style="color: #409eff;">{{ role.entryFunction || '-' }}</code>
-              </el-descriptions-item>
-              <el-descriptions-item label="清理函数">
-                <code style="color: #409eff;">{{ role.cleanupFunction || '-' }}</code>
-              </el-descriptions-item>
-              <el-descriptions-item label="依赖角色" :span="2">
-                <template v-if="role.dependsOn?.length">
-                  <el-tag v-for="dep in role.dependsOn" :key="dep" size="small" style="margin-right: 5px;">
+          </el-table-column>
+          <el-table-column prop="script" label="执行脚本" width="150">
+            <template #default="{ row }">
+              <code style="color: #409eff;">{{ row.script || '-' }}</code>
+            </template>
+          </el-table-column>
+          <el-table-column label="依赖" min-width="120">
+            <template #default="{ row }">
+              <template v-if="row.dependsOn">
+                <template v-if="Array.isArray(row.dependsOn)">
+                  <el-tag v-for="dep in row.dependsOn" :key="dep" size="small" type="info" style="margin-right: 4px;">
                     {{ dep }}
                   </el-tag>
                 </template>
-                <span v-else>-</span>
-              </el-descriptions-item>
-              <el-descriptions-item label="结果收集">
-                <el-tag :type="role.resultCollector ? 'success' : 'info'" size="small">
-                  {{ role.resultCollector ? '是' : '否' }}
-                </el-tag>
-              </el-descriptions-item>
-              <el-descriptions-item label="启动探测">
-                <el-tag :type="role.startupProbe?.enabled ? 'success' : 'info'" size="small">
-                  {{ role.startupProbe?.enabled ? '已启用' : '未启用' }}
-                </el-tag>
-              </el-descriptions-item>
-            </el-descriptions>
-            
-            <!-- 启动探测详情 -->
-            <div v-if="role.startupProbe?.enabled" style="margin-top: 10px; padding: 10px; background: #f5f7fa; border-radius: 4px;">
-              <div style="font-size: 13px; color: #606266; margin-bottom: 8px;">启动探测配置</div>
-              <el-descriptions :column="4" size="small">
-                <el-descriptions-item label="初始延迟">{{ role.startupProbe.initialDelay || 0 }}s</el-descriptions-item>
-                <el-descriptions-item label="超时">{{ role.startupProbe.timeout || 30 }}s</el-descriptions-item>
-                <el-descriptions-item label="间隔">{{ role.startupProbe.period || 5 }}s</el-descriptions-item>
-              </el-descriptions>
-              <div v-if="role.startupProbe.command" style="margin-top: 8px; font-size: 12px;">
-                <span style="color: #909399;">探测命令：</span>
-                <code style="background: #e4e7ed; padding: 2px 6px; border-radius: 3px;">{{ role.startupProbe.command }}</code>
-              </div>
-            </div>
-
-            <!-- 角色参数 -->
-            <div v-if="role.params?.length" style="margin-top: 10px;">
-              <div style="font-size: 13px; color: #606266; margin-bottom: 8px;">角色参数 ({{ role.params.length }} 个)</div>
-              <el-table :data="role.params" size="small" border>
-                <el-table-column prop="displayName" label="参数名称" width="150">
-                  <template #default="{ row }">
-                    {{ row.displayName || row.name }}
-                  </template>
-                </el-table-column>
-                <el-table-column prop="name" label="标识" width="120" />
-                <el-table-column prop="type" label="类型" width="80">
-                  <template #default="{ row }">
-                    <el-tag size="small">{{ row.type }}</el-tag>
-                  </template>
-                </el-table-column>
-                <el-table-column prop="default" label="默认值" width="100">
-                  <template #default="{ row }">
-                    {{ row.default ?? '-' }}
-                  </template>
-                </el-table-column>
-                <el-table-column prop="required" label="必填" width="70">
-                  <template #default="{ row }">
-                    <el-tag :type="row.required ? 'danger' : 'info'" size="small">
-                      {{ row.required ? '是' : '否' }}
-                    </el-tag>
-                  </template>
-                </el-table-column>
-              </el-table>
-            </div>
-          </el-collapse-item>
-        </el-collapse>
+                <template v-else-if="typeof row.dependsOn === 'string' && row.dependsOn">
+                  <el-tag v-for="dep in row.dependsOn.split(',')" :key="dep" size="small" type="info" style="margin-right: 4px;">
+                    {{ dep.trim() }}
+                  </el-tag>
+                </template>
+              </template>
+              <span v-else style="color: #909399;">-</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="结果收集" width="90" align="center">
+            <template #default="{ row }">
+              <el-tag :type="row.resultCollector ? 'success' : 'info'" size="small">
+                {{ row.resultCollector ? '是' : '否' }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="参数" width="80" align="center">
+            <template #default="{ row }">
+              <el-tag v-if="row.params && (Array.isArray(row.params) ? row.params.length : Object.keys(row.params).length)" size="small" type="warning">
+                {{ Array.isArray(row.params) ? row.params.length : Object.keys(row.params).length }}
+              </el-tag>
+              <span v-else style="color: #909399;">-</span>
+            </template>
+          </el-table-column>
+        </el-table>
       </div>
 
       <!-- 文件列表 -->
@@ -328,14 +255,13 @@
 import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, User } from '@element-plus/icons-vue'
+import { Plus, List } from '@element-plus/icons-vue'
 import { scriptApi, type Script } from '@/api/script'
 import { formatTime } from '@/utils/format'
 import { TEST_CATEGORIES, getCategoryLabel } from '@/config/categories'
 import axios from 'axios'
 // 版本功能暂时隐藏
 // import VersionManager from './VersionManager.vue'
-import ParamConfig from './ParamConfig.vue'
 import ParseRuleConfig from './ParseRuleConfig.vue'
 
 const router = useRouter()
@@ -354,9 +280,6 @@ const queryParams = reactive({
 // const versionDialogVisible = ref(false)
 const currentScript = ref<Script | null>(null)
 
-// 参数配置
-const paramDialogVisible = ref(false)
-
 // 解析规则配置
 const parseDialogVisible = ref(false)
 
@@ -369,6 +292,14 @@ function formatFileSize(bytes: number) {
   if (bytes < 1024) return bytes + ' B'
   if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
   return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
+}
+
+// 将 steps 对象转为数组
+function getStepsArray(steps: Record<string, any>) {
+  return Object.entries(steps).map(([stepName, config]) => ({
+    stepName,
+    ...config
+  }))
 }
 
 // 文件查看相关
@@ -490,11 +421,6 @@ function handleEditFromDetail() {
 //   currentScript.value = row
 //   versionDialogVisible.value = true
 // }
-
-function handleParams(row: Script) {
-  currentScript.value = row
-  paramDialogVisible.value = true
-}
 
 function handleParseRules(row: Script) {
   currentScript.value = row

@@ -58,26 +58,14 @@ public class TaskCreateRequest implements Serializable {
      * 角色-服务器映射（新版格式）
      * 格式: { "server": [1, 2], "client": [1] }
      * 表示步骤 deploy 在服务器 1,2 上执行，步骤 test 在服务器 1 上执行
-     * 兼容旧格式 roleServerMapping
      */
     private Map<String, List<Long>> stepServerMapping;
-    
-    /**
-     * 步骤服务器映射（旧字段，兼容）
-     */
-    private Map<String, List<Long>> roleServerMapping;
 
     /**
      * 步骤参数
      * 格式: { "step_1": { "MYSQL_PORT": 3306 }, "step_2": { "WAREHOUSES": 10 } }
-     * 兼容旧格式 roleParams
      */
     private Map<String, Map<String, Object>> stepParams;
-    
-    /**
-     * 步骤参数（旧字段，兼容）
-     */
-    private Map<String, Map<String, Object>> roleParams;
 
     /**
      * 角色执行策略
@@ -88,21 +76,6 @@ public class TaskCreateRequest implements Serializable {
      * 共享参数
      */
     private Map<String, Object> sharedParams;
-
-    /**
-     * 部署参数
-     */
-    private Map<String, Object> deployParams;
-
-    /**
-     * 执行参数
-     */
-    private Map<String, Object> runParams;
-
-    /**
-     * 生命周期配置
-     */
-    private LifecycleConfig lifecycleConfig;
 
     /**
      * 是否启用指标采集
@@ -140,16 +113,4 @@ public class TaskCreateRequest implements Serializable {
      */
     private String failureStrategy = "continue";
 
-    /**
-     * 生命周期配置
-     */
-    @Data
-    public static class LifecycleConfig implements Serializable {
-        private static final long serialVersionUID = 1L;
-
-        private Boolean skipDeploy = false;
-        private Boolean skipCleanup = false;
-        private Integer deployTimeout = 600;
-        private Integer cleanupTimeout = 300;
-    }
 }

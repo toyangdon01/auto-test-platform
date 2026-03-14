@@ -22,21 +22,12 @@ public class TaskDetailResponse {
     private String scriptVersion;
     private String status;
     private Integer progress;
-    private String lifecycleMode;
 
     // 脚本信息
     private ScriptInfo script;
 
-    // 生命周期配置
-    private LifecycleConfig lifecycleConfig;
-
-    // 生命周期汇总
-    private LifecycleSummary lifecycleSummary;
-
     // 参数
     private Map<String, Object> sharedParams;
-    private Map<String, Object> deployParams;
-    private Map<String, Object> runParams;
 
     // 服务器详情
     private List<ServerProgress> servers;
@@ -64,34 +55,6 @@ public class TaskDetailResponse {
         private Long id;
         private String name;
         private String version;
-        private String lifecycleMode;
-        private Boolean hasDeploy;
-        private Boolean hasCleanup;
-    }
-
-    @Data
-    public static class LifecycleConfig {
-        private Boolean skipDeploy;
-        private Boolean skipCleanup;
-        private Integer deployTimeout;
-        private Integer cleanupTimeout;
-    }
-
-    @Data
-    public static class LifecycleSummary {
-        private StageSummary deploy;
-        private StageSummary run;
-        private StageSummary cleanup;
-    }
-
-    @Data
-    public static class StageSummary {
-        private String status;
-        private LocalDateTime startedAt;
-        private LocalDateTime finishedAt;
-        private Integer duration;
-        private Integer successCount;
-        private Integer failedCount;
     }
 
     @Data

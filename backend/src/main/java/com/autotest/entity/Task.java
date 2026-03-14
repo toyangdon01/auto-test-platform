@@ -56,38 +56,6 @@ public class Task implements Serializable {
     private Map<String, Object> roleExecutionStrategy;
 
     /**
-     * 部署参数（JSON）
-     */
-    @TableField(typeHandler = JsonbTypeHandler.class)
-    private Map<String, Object> deployParams;
-
-    /**
-     * 执行参数（JSON）
-     */
-    @TableField(typeHandler = JsonbTypeHandler.class)
-    private Map<String, Object> runParams;
-
-    /**
-     * 是否跳过部署
-     */
-    private Boolean skipDeploy;
-
-    /**
-     * 是否跳过卸载
-     */
-    private Boolean skipCleanup;
-
-    /**
-     * 部署超时（秒）
-     */
-    private Integer deployTimeout;
-
-    /**
-     * 卸载超时（秒）
-     */
-    private Integer cleanupTimeout;
-
-    /**
      * 部署状态
      */
     private String deployStatus;
