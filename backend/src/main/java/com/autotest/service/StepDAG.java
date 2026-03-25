@@ -33,25 +33,50 @@ public class StepDAG {
         private String displayName;
         private String script;
         private List<String> dependsOn;
-        private boolean resultCollector;
+        private boolean resultParser; // 是否启用结果解析
+        private boolean resultCollector; // 是否启用结果收集
         private Map<String, Object> params;
         private Map<String, Object> startupProbe;
+        // 步骤专属资源
+        private List<Map<String, Object>> resources;
+        // 文件收集配置
+        private boolean fileCollectEnabled;
+        private List<Map<String, Object>> fileCollects;
+        // 解析规则配置
+        private Map<String, Object> parseRule;
     }
     
     /**
      * 添加步骤
      */
     public void addStep(String name, String displayName, String script, 
-                        List<String> dependsOn, boolean resultCollector,
+                        List<String> dependsOn, boolean resultParser,
                         Map<String, Object> params, Map<String, Object> startupProbe) {
+        addStep(name, displayName, script, dependsOn, resultParser, params, startupProbe, 
+                null, false, null, null);
+    }
+    
+    /**
+     * 添加步骤（完整版，包含资源和文件收集配置）
+     */
+    @SuppressWarnings("unchecked")
+    public void addStep(String name, String displayName, String script, 
+                        List<String> dependsOn, boolean resultParser,
+                        Map<String, Object> params, Map<String, Object> startupProbe,
+                        List<Map<String, Object>> resources, boolean fileCollectEnabled,
+                        List<Map<String, Object>> fileCollects, Map<String, Object> parseRule) {
         StepConfig config = new StepConfig();
         config.setName(name);
         config.setDisplayName(displayName);
         config.setScript(script);
         config.setDependsOn(dependsOn != null ? dependsOn : Collections.emptyList());
-        config.setResultCollector(resultCollector);
+        config.setResultParser(resultParser);
         config.setParams(params);
         config.setStartupProbe(startupProbe);
+        config.setResources(resources != null ? resources : Collections.emptyList());
+        config.setFileCollectEnabled(fileCollectEnabled);
+        config.setFileCollects(fileCollects != null ? fileCollects : Collections.emptyList());
+        config.setParseRule(parseRule);
         
         steps.put(name, config);
         status.put(name, "pending");

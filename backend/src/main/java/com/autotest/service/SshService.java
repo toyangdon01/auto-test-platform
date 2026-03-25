@@ -4,6 +4,7 @@ import com.autotest.entity.Server;
 import com.jcraft.jsch.*;
 
 import java.io.*;
+import java.nio.charset.StandardCharsets;
 import java.util.Properties;
 import java.util.function.Consumer;
 
@@ -68,6 +69,20 @@ public class SshService {
      * @return 执行结果
      */
     public static ExecuteResult executeCommand(Server server, String command, Consumer<String> outputCallback, int timeoutMs) {
+        return executeCommandWithPid(server, command, outputCallback, timeoutMs, null);
+    }
+
+    /**
+     * 执行远程命令并返回 PID（用于后续停止）
+     *
+     * @param server      服务器信息
+     * @param command     命令
+     * @param outputCallback 实时输出回调（可为null）
+     * @param timeoutMs   超时时间（毫秒）
+     * @param pidFile     PID 文件路径（可选，为 null 则不保存 PID）
+     * @return 执行结果
+     */
+    public static ExecuteResult executeCommandWithPid(Server server, String command, Consumer<String> outputCallback, int timeoutMs, String pidFile) {
         Session session = null;
         ChannelExec channel = null;
         ExecuteResult result = new ExecuteResult();
@@ -79,8 +94,16 @@ public class SshService {
             session.setTimeout(DEFAULT_TIMEOUT);
             session.connect();
 
+            // 如果需要保存 PID，使用 nohup 方式执行
+            String actualCommand = command;
+            if (pidFile != null) {
+                // 创建 PID 文件目录
+                String pidDir = pidFile.substring(0, pidFile.lastIndexOf('/'));
+                actualCommand = "mkdir -p " + pidDir + " && nohup bash -c '" + command + "' > /dev/null 2>&1 & echo $! > " + pidFile + " && sleep 1 && cat " + pidFile;
+            }
+
             channel = (ChannelExec) session.openChannel("exec");
-            channel.setCommand(command);
+            channel.setCommand(actualCommand);
             
             InputStream in = channel.getInputStream();
             InputStream err = channel.getErrStream();
@@ -104,7 +127,7 @@ public class SshService {
                 while (in.available() > 0) {
                     int len = in.read(buffer, 0, 4096);
                     if (len < 0) break;
-                    String output = new String(buffer, 0, len);
+                    String output = new String(buffer, 0, len, StandardCharsets.UTF_8);
                     stdout.append(output);
                     if (outputCallback != null) {
                         outputCallback.accept(output);
@@ -115,7 +138,7 @@ public class SshService {
                 while (err.available() > 0) {
                     int len = err.read(buffer, 0, 4096);
                     if (len < 0) break;
-                    String error = new String(buffer, 0, len);
+                    String error = new String(buffer, 0, len, StandardCharsets.UTF_8);
                     stderr.append(error);
                     if (outputCallback != null) {
                         outputCallback.accept("[ERROR] " + error);
@@ -127,7 +150,7 @@ public class SshService {
                     while (in.available() > 0) {
                         int len = in.read(buffer, 0, 4096);
                         if (len < 0) break;
-                        String output = new String(buffer, 0, len);
+                        String output = new String(buffer, 0, len, StandardCharsets.UTF_8);
                         stdout.append(output);
                         if (outputCallback != null) {
                             outputCallback.accept(output);
@@ -136,7 +159,7 @@ public class SshService {
                     while (err.available() > 0) {
                         int len = err.read(buffer, 0, 4096);
                         if (len < 0) break;
-                        String error = new String(buffer, 0, len);
+                        String error = new String(buffer, 0, len, StandardCharsets.UTF_8);
                         stderr.append(error);
                         if (outputCallback != null) {
                             outputCallback.accept("[ERROR] " + error);
@@ -300,6 +323,97 @@ public class SshService {
             if (session != null) {
                 session.disconnect();
             }
+        }
+    }
+
+    /**
+     * 停止远程进程（通过 PID 文件）
+     *
+     * @param server   服务器信息
+     * @param pidFile  PID 文件路径
+     * @return 是否成功停止
+     */
+    public static boolean killProcess(Server server, String pidFile) {
+        try {
+            // 读取 PID
+            ExecuteResult readResult = executeCommand(server, "cat " + pidFile + " 2>/dev/null", null, 5000);
+            if (readResult.getExitCode() != 0 || readResult.getOutput().trim().isEmpty()) {
+                // 进程可能已经结束
+                return true;
+            }
+            
+            String pid = readResult.getOutput().trim();
+            
+            // 尝试正常终止进程
+            executeCommand(server, "kill -15 " + pid + " 2>/dev/null || true", null, 5000);
+            
+            // 等待一下
+            Thread.sleep(500);
+            
+            // 检查进程是否还在运行
+            ExecuteResult checkResult = executeCommand(server, "ps -p " + pid + " -o pid= 2>/dev/null", null, 5000);
+            if (checkResult.getExitCode() == 0 && !checkResult.getOutput().trim().isEmpty()) {
+                // 强制杀死进程
+                executeCommand(server, "kill -9 " + pid + " 2>/dev/null || true", null, 5000);
+            }
+            
+            // 删除 PID 文件
+            executeCommand(server, "rm -f " + pidFile, null, 5000);
+            
+            return true;
+        } catch (Exception e) {
+            System.err.println("[SSH] Kill process failed: " + e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * 停止远程进程（通过 PID）
+     *
+     * @param server   服务器信息
+     * @param pid      进程 PID
+     * @return 是否成功停止
+     */
+    public static boolean killProcessByPid(Server server, String pid) {
+        try {
+            if (pid == null || pid.isEmpty()) {
+                return true;
+            }
+            
+            // 尝试正常终止进程
+            executeCommand(server, "kill -15 " + pid + " 2>/dev/null || true", null, 5000);
+            
+            // 等待一下
+            Thread.sleep(500);
+            
+            // 检查进程是否还在运行
+            ExecuteResult checkResult = executeCommand(server, "ps -p " + pid + " -o pid= 2>/dev/null", null, 5000);
+            if (checkResult.getExitCode() == 0 && !checkResult.getOutput().trim().isEmpty()) {
+                // 强制杀死进程
+                executeCommand(server, "kill -9 " + pid + " 2>/dev/null || true", null, 5000);
+            }
+            
+            return true;
+        } catch (Exception e) {
+            System.err.println("[SSH] Kill process failed: " + e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * 清理远程工作目录
+     *
+     * @param server    服务器信息
+     * @param workDir   工作目录路径
+     * @return 是否成功清理
+     */
+    public static boolean cleanupWorkDir(Server server, String workDir) {
+        try {
+            ExecuteResult result = executeCommand(server, "rm -rf " + workDir, null, 10000);
+            return result.getExitCode() == 0;
+        } catch (Exception e) {
+            System.err.println("[SSH] Cleanup failed: " + e.getMessage());
+            return false;
         }
     }
 

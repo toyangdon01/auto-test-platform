@@ -126,7 +126,7 @@
       <!-- 执行计划配置 -->
       <el-divider content-position="left">
         <span>执行计划</span>
-        <el-tooltip content="定义脚本的执行步骤、依赖关系和生命周期，支持多步骤按序执行" placement="top">
+        <el-tooltip content="定义脚本的执行步骤、依赖关系和生命周期。每个步骤可配置专属资源和输出收集" placement="top">
           <el-icon style="margin-left: 4px; cursor: help;"><QuestionFilled /></el-icon>
         </el-tooltip>
       </el-divider>
@@ -138,10 +138,10 @@
         />
       </el-form-item>
 
-      <!-- 关联资源配置 -->
+      <!-- 共享资源配置 -->
       <el-divider content-position="left">
-        <span>关联资源</span>
-        <el-tooltip content="测试执行时自动上传到服务器的资源文件" placement="top">
+        <span>共享资源</span>
+        <el-tooltip content="所有步骤共用的资源文件，如公共配置文件、证书等。步骤专属资源请在上方执行计划中配置" placement="top">
           <el-icon style="margin-left: 4px; cursor: help;"><QuestionFilled /></el-icon>
         </el-tooltip>
       </el-divider>
@@ -151,18 +151,6 @@
           v-model="resourceBindings" 
           :scriptId="scriptId ?? undefined" 
         />
-      </el-form-item>
-
-      <!-- 输出文件收集配置 -->
-      <el-divider content-position="left">
-        <span>输出文件收集</span>
-        <el-tooltip content="测试完成后自动从服务器收集结果文件" placement="top">
-          <el-icon style="margin-left: 4px; cursor: help;"><QuestionFilled /></el-icon>
-        </el-tooltip>
-      </el-divider>
-
-      <el-form-item label="">
-        <OutputCollectConfig v-model="outputCollectData" />
       </el-form-item>
     </el-form>
 
@@ -203,7 +191,6 @@ import { scriptResourceApi, type ScriptResource } from '@/api/resource'
 import request from '@/utils/request'
 import ResourceConfig from './ResourceConfig.vue'
 import StepConfig from './StepConfig.vue'
-import OutputCollectConfig from './OutputCollectConfig.vue'
 import { TEST_CATEGORIES } from '@/config/categories'
 
 const route = useRoute()
@@ -227,10 +214,7 @@ const tempFilePath = ref('')
 // 执行步骤数据
 const stepsData = ref<any>({})
 
-// 输出收集配置
-const outputCollectData = ref<any>({ collectEnabled: false, collectRules: [] })
-
-// 关联资源配置（本地模式）
+// 共享资源配置（本地模式）
 const resourceBindings = ref<ScriptResource[]>([])
 
 const formData = reactive({
@@ -299,8 +283,6 @@ async function handleSave(andRun: boolean) {
     parameters: formData.runParams.filter((p: any) => p.name),
     // 执行步骤
     steps: stepsData.value,
-    // 输出收集配置
-    outputConfig: outputCollectData.value,
   }
   
   let savedScriptId: number | null = null
@@ -374,13 +356,6 @@ async function loadScript() {
       formData.runParams = res.data.parameters
     } else {
       formData.runParams = []
-    }
-    
-    // 加载输出收集配置
-    if (res.data.outputConfig) {
-      outputCollectData.value = res.data.outputConfig
-    } else {
-      outputCollectData.value = { collectEnabled: false, collectRules: [] }
     }
   }
 }

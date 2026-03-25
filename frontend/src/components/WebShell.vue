@@ -122,6 +122,9 @@ function initTerminal() {
   // 打开终端
   terminal.open(terminalRef.value)
   fitAddon.fit()
+  
+  // 自动聚焦到终端
+  terminal.focus()
 
   // 监听终端输入
   terminal.onData((data) => {

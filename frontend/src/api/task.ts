@@ -1,5 +1,14 @@
 import request, { type PageParams, type PageResult } from '@/utils/request'
 
+// 收集的文件类型
+export interface CollectedFile {
+  name: string
+  path: string
+  size?: number
+  contentType?: string
+  content?: string  // 文本文件内容
+}
+
 // 任务步骤类型
 export interface TaskStep {
   id: number
@@ -21,6 +30,7 @@ export interface TaskStep {
   errorMessage?: string
   resultCollector?: boolean
   parsedResult?: Record<string, any>
+  outputFiles?: CollectedFile[]  // 收集的文件列表
   createdAt: string
   updatedAt: string
 }

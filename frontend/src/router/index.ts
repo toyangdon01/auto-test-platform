@@ -151,18 +151,6 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/results/detail.vue'),
         meta: { title: '结果详情', hidden: true },
       },
-      {
-        path: 'compare',
-        name: 'ResultCompare',
-        component: () => import('@/views/results/compare.vue'),
-        meta: { title: '结果对比' },
-      },
-      {
-        path: 'trend',
-        name: 'ResultTrend',
-        component: () => import('@/views/results/trend.vue'),
-        meta: { title: '趋势分析' },
-      },
     ],
   },
   {
@@ -185,20 +173,7 @@ const routes: RouteRecordRaw[] = [
       },
     ],
   },
-  {
-    path: '/analysis',
-    component: Layout,
-    redirect: '/analysis/trend',
-    meta: { title: '数据分析', icon: 'TrendCharts' },
-    children: [
-      {
-        path: 'trend',
-        name: 'TrendAnalysis',
-        component: () => import('@/views/analysis/trend.vue'),
-        meta: { title: '趋势分析' },
-      },
-    ],
-  },
+
   {
     path: '/settings',
     component: Layout,

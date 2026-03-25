@@ -34,22 +34,9 @@ public class TestResultServiceImpl implements TestResultService {
 
     @Override
     public PageResult<TestResult> getPage(int page, int pageSize, Long taskId, Long serverId, String result) {
-        LambdaQueryWrapper<TestResult> wrapper = new LambdaQueryWrapper<>();
-
-        if (taskId != null) {
-            wrapper.eq(TestResult::getTaskId, taskId);
-        }
-        if (serverId != null) {
-            wrapper.eq(TestResult::getServerId, serverId);
-        }
-        if (result != null && !result.isEmpty()) {
-            wrapper.eq(TestResult::getResult, result);
-        }
-
-        wrapper.orderByDesc(TestResult::getCreatedAt);
-
-        IPage<TestResult> pageResult = testResultMapper.selectPage(
-                new Page<>(page, pageSize), wrapper);
+        // 使用关联查询获取任务名称和脚本名称
+        IPage<TestResult> pageResult = testResultMapper.selectPageWithNames(
+                new Page<>(page, pageSize), taskId, result);
 
         return PageResult.of(pageResult);
     }

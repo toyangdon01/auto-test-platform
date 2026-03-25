@@ -46,20 +46,26 @@
       </el-descriptions>
 
       <!-- 解析结果 -->
-      <template v-if="detail.parsedData && Object.keys(detail.parsedData).length">
+      <template v-if="hasParsedData">
         <el-divider content-position="left">
-          <el-icon><DataLine /></el-icon>
-          解析结果
+          <div class="divider-header">
+            <span><el-icon><DataLine /></el-icon> 解析结果</span>
+            <el-button type="primary" size="small" @click="exportToExcel">
+              <el-icon><Download /></el-icon> 导出 Excel
+            </el-button>
+          </div>
         </el-divider>
 
         <div class="parsed-data">
-          <el-descriptions :column="3" border>
+          <el-descriptions :column="1" border>
             <el-descriptions-item 
-              v-for="(value, key) in detail.parsedData" 
-              :key="key"
-              :label="formatParsedKey(key as string)"
+              v-for="(item, index) in parsedFormItems" 
+              :key="index"
+              :label="item.label"
+              label-align="left"
+              label-class-name="parsed-label"
             >
-              <span class="parsed-value">{{ formatParsedValue(value) }}</span>
+              {{ item.displayValue }}
             </el-descriptions-item>
           </el-descriptions>
         </div>
@@ -164,7 +170,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
-import { DataAnalysis, Document, Folder, DataLine } from '@element-plus/icons-vue'
+import { DataAnalysis, Document, Folder, DataLine, Download } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import axios from 'axios'
 import request from '@/utils/request'
@@ -247,6 +253,117 @@ const outputFileList = computed(() => {
   }))
 })
 
+// 是否有解析数据
+const hasParsedData = computed(() => {
+  return detail.value?.parsedData && Object.keys(detail.value.parsedData).length > 0
+})
+
+// 解析 parsedData 为表单项列表
+const parsedFormItems = computed(() => {
+  if (!detail.value?.parsedData) return []
+  
+  const items: Array<{ label: string; value: any; displayValue: string; rawValue: string }> = []
+  
+  for (const [key, rawValue] of Object.entries(detail.value.parsedData)) {
+    // 跳过 parser 字段
+    const keyLower = key.toLowerCase()
+    if (keyLower === 'parser' || keyLower.includes('parser')) {
+      continue
+    }
+    
+    // 尝试解析字符串值（可能是 JSON 或 key-value 格式）
+    const parsed = parseValue(rawValue)
+    
+    if (parsed.isObject) {
+      // 如果是对象/JSON，展开每个字段
+      for (const [subKey, subValue] of Object.entries(parsed.data)) {
+        // 跳过子字段中的 parser
+        if (subKey.toLowerCase() === 'parser' || subKey.toLowerCase().includes('parser')) {
+          continue
+        }
+        items.push({
+          label: formatParsedKey(subKey),
+          value: subValue,
+          displayValue: formatDisplayValue(subValue),
+          rawValue: String(subValue)
+        })
+      }
+    } else if (parsed.isKeyValue) {
+      // 如果是 key-value 格式，展开每个字段
+      for (const [subKey, subValue] of Object.entries(parsed.data)) {
+        // 跳过子字段中的 parser
+        if (subKey.toLowerCase() === 'parser' || subKey.toLowerCase().includes('parser')) {
+          continue
+        }
+        items.push({
+          label: formatParsedKey(subKey),
+          value: subValue,
+          displayValue: String(subValue),
+          rawValue: String(subValue)
+        })
+      }
+    } else {
+      // 普通值，直接显示
+      items.push({
+        label: formatParsedKey(key),
+        value: parsed.data,
+        displayValue: formatDisplayValue(parsed.data),
+        rawValue: String(parsed.data)
+      })
+    }
+  }
+  
+  return items
+})
+
+// 解析值：支持 JSON、key-value、普通值
+const parseValue = (value: any): { data: any; isObject: boolean; isKeyValue: boolean } => {
+  // 如果已经是对象
+  if (typeof value === 'object' && value !== null) {
+    return { data: value, isObject: !Array.isArray(value), isKeyValue: false }
+  }
+  
+  // 如果不是字符串，直接返回
+  if (typeof value !== 'string') {
+    return { data: value, isObject: false, isKeyValue: false }
+  }
+  
+  const trimmed = value.trim()
+  
+  // 尝试解析为 JSON 对象
+  if (trimmed.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(trimmed)
+      if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+        return { data: parsed, isObject: true, isKeyValue: false }
+      }
+    } catch (e) {
+      // JSON 解析失败，继续尝试其他格式
+    }
+  }
+  
+  // 尝试解析为 key-value 格式（每行一个 key=value 或 key: value）
+  const kvPattern = /^([^=:]+)[=:]\s*(.+)$/
+  const lines = trimmed.split(/\r?\n/).filter(line => line.trim())
+  const kvData: Record<string, string> = {}
+  let hasKvFormat = false
+  
+  for (const line of lines) {
+    const match = line.match(kvPattern)
+    if (match) {
+      hasKvFormat = true
+      kvData[match[1].trim()] = match[2].trim()
+    }
+  }
+  
+  if (hasKvFormat && Object.keys(kvData).length > 0) {
+    return { data: kvData, isObject: false, isKeyValue: true }
+  }
+  
+  // 无法解析，返回原值
+  return { data: value, isObject: false, isKeyValue: false }
+}
+
 // 下载收集的文件
 const downloadFile = async (file: any) => {
   if (!file.storagePath) {
@@ -315,12 +432,54 @@ const formatParsedKey = (key: string) => {
     .join(' ')
 }
 
-const formatParsedValue = (value: any) => {
+// 格式化显示值
+const formatDisplayValue = (value: any): string => {
   if (value == null) return '-'
-  if (typeof value === 'object') {
-    return JSON.stringify(value, null, 2)
-  }
+  if (typeof value === 'boolean') return value ? '是' : '否'
+  if (Array.isArray(value)) return value.join(', ')
+  if (typeof value === 'object') return JSON.stringify(value)
   return String(value)
+}
+
+// 复制到剪贴板
+const copyToClipboard = async (text: string) => {
+  try {
+    await navigator.clipboard.writeText(text)
+    ElMessage.success('已复制到剪贴板')
+  } catch (err) {
+    console.error('复制失败:', err)
+    ElMessage.error('复制失败')
+  }
+}
+
+// 导出为 Excel
+const exportToExcel = () => {
+  if (!parsedFormItems.value.length) {
+    ElMessage.warning('没有可导出的数据')
+    return
+  }
+  
+  // 创建 CSV 内容
+  const headers = ['指标名称', '指标值']
+  const rows = parsedFormItems.value.map(item => [item.label, item.displayValue])
+  
+  // 使用 BOM 确保 Excel 正确识别 UTF-8 编码
+  let csvContent = '\uFEFF'
+  csvContent += headers.join(',') + '\n'
+  csvContent += rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n')
+  
+  // 创建 Blob 并下载
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.setAttribute('download', `解析结果_${detail.value?.taskName || 'export'}_${new Date().toISOString().slice(0, 10)}.csv`)
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url)
+  
+  ElMessage.success('导出成功')
 }
 
 const fetchDetail = async () => {
@@ -409,9 +568,21 @@ onMounted(() => {
   margin-bottom: 20px;
 }
 
-.parsed-value {
-  font-family: 'Monaco', 'Menlo', monospace;
-  font-size: 13px;
-  color: #409eff;
+:deep(.parsed-label) {
+  width: 160px;
+  font-weight: 500;
+}
+
+.divider-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.divider-header span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 </style>

@@ -104,6 +104,11 @@ public class Task implements Serializable {
     private Map<String, Object> collectConfig;
 
     /**
+     * 超时时间（毫秒），默认 300000（5分钟）
+     */
+    private Integer timeout;
+
+    /**
      * 创建时间
      */
     @TableField(fill = FieldFill.INSERT)
@@ -150,4 +155,10 @@ public class Task implements Serializable {
      */
     @TableField(exist = false)
     private Integer runningCount;
+
+    /**
+     * 脚本名称（非持久化）
+     */
+    @TableField(exist = false)
+    private String scriptName;
 }

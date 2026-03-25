@@ -13,6 +13,7 @@ import org.springframework.stereotype.Component;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -217,8 +218,8 @@ public class WebShellEndpoint {
                 byte[] buffer = new byte[4096];
                 int len;
                 while ((len = shellSession.getInputStream().read(buffer)) != -1) {
-                    // 将 SSH 输出推送到 WebSocket
-                    String output = new String(buffer, 0, len);
+                    // 将 SSH 输出推送到 WebSocket，使用 UTF-8 编码
+                    String output = new String(buffer, 0, len, StandardCharsets.UTF_8);
                     sendMessage(shellSession.getWebSocketSession(), output);
                 }
             } catch (Exception e) {

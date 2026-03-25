@@ -1,6 +1,7 @@
 package com.autotest.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
+import com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler;
 import lombok.Data;
 
 import java.io.Serializable;
@@ -66,4 +67,106 @@ public class TaskServer implements Serializable {
      */
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createdAt;
+
+    // ==================== 部署阶段 ====================
+
+    /**
+     * 部署状态：pending/running/completed/failed/skipped
+     */
+    private String deployStatus;
+
+    /**
+     * 部署开始时间
+     */
+    private LocalDateTime deployStartedAt;
+
+    /**
+     * 部署结束时间
+     */
+    private LocalDateTime deployFinishedAt;
+
+    /**
+     * 部署退出码
+     */
+    private Integer deployExitCode;
+
+    /**
+     * 部署输出日志
+     */
+    private String deployOutput;
+
+    /**
+     * 部署错误信息
+     */
+    private String deployError;
+
+    // ==================== 执行阶段 ====================
+
+    /**
+     * 执行状态：pending/running/completed/failed
+     */
+    private String runStatus;
+
+    /**
+     * 执行开始时间
+     */
+    private LocalDateTime runStartedAt;
+
+    /**
+     * 执行结束时间
+     */
+    private LocalDateTime runFinishedAt;
+
+    /**
+     * 执行退出码
+     */
+    private Integer runExitCode;
+
+    /**
+     * 执行输出日志
+     */
+    private String runOutput;
+
+    /**
+     * 执行错误信息
+     */
+    private String runError;
+
+    /**
+     * 解析后的结果（JSON）
+     */
+    @TableField(typeHandler = JacksonTypeHandler.class)
+    private Map<String, Object> parsedResult;
+
+    // ==================== 卸载阶段 ====================
+
+    /**
+     * 卸载状态：pending/running/completed/failed/skipped
+     */
+    private String cleanupStatus;
+
+    /**
+     * 卸载开始时间
+     */
+    private LocalDateTime cleanupStartedAt;
+
+    /**
+     * 卸载结束时间
+     */
+    private LocalDateTime cleanupFinishedAt;
+
+    /**
+     * 卸载退出码
+     */
+    private Integer cleanupExitCode;
+
+    /**
+     * 卸载输出日志
+     */
+    private String cleanupOutput;
+
+    /**
+     * 卸载错误信息
+     */
+    private String cleanupError;
 }

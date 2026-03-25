@@ -48,6 +48,14 @@
         </template>
       </el-table-column>
       
+      <el-table-column prop="scriptName" label="所属脚本" min-width="150">
+        <template #default="{ row }">
+          <el-link type="info" @click="$router.push(`/scripts/edit/${row.scriptId}`)">
+            {{ row.scriptName || `脚本 ${row.scriptId}` }}
+          </el-link>
+        </template>
+      </el-table-column>
+      
       <el-table-column prop="status" label="状态" width="180">
         <template #default="{ row }">
           <div class="status-cell">

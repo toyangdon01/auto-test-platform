@@ -113,4 +113,9 @@ public class TaskCreateRequest implements Serializable {
      */
     private String failureStrategy = "continue";
 
+    /**
+     * 超时时间（毫秒），默认 300000（5分钟）
+     */
+    private Integer timeout = 300000;
+
 }

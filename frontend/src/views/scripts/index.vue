@@ -62,7 +62,6 @@
           <el-button type="primary" link @click="handleEdit(row)">编辑</el-button>
           <!-- 版本功能暂时隐藏 -->
           <!-- <el-button type="primary" link @click="handleVersions(row)">版本</el-button> -->
-          <el-button type="primary" link @click="handleParseRules(row)">解析</el-button>
           <el-button type="primary" link @click="handleExport(row)">导出</el-button>
           <el-button type="danger" link @click="handleDelete(row)">删除</el-button>
         </template>

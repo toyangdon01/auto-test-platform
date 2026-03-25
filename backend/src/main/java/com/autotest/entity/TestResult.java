@@ -105,4 +105,22 @@ public class TestResult implements Serializable {
      */
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createdAt;
+    
+    /**
+     * 任务名称（非持久化）
+     */
+    @TableField(exist = false)
+    private String taskName;
+    
+    /**
+     * 脚本名称（非持久化）
+     */
+    @TableField(exist = false)
+    private String scriptName;
+    
+    /**
+     * 服务器名称（非持久化）
+     */
+    @TableField(exist = false)
+    private String serverName;
 }

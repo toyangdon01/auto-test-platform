@@ -3,9 +3,11 @@ package com.autotest.entity;
 import com.baomidou.mybatisplus.annotation.*;
 import com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler;
 import com.autotest.handler.JsonbTypeHandler;
+import com.autotest.handler.JsonbListTypeHandler;
 import lombok.Data;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -87,6 +89,12 @@ public class TaskStep {
      */
     @TableField(typeHandler = JacksonTypeHandler.class)
     private Map<String, Object> parsedResult;
+    
+    /**
+     * 收集的文件列表
+     */
+    @TableField(typeHandler = JsonbListTypeHandler.class)
+    private List<Map<String, Object>> outputFiles;
     
     /**
      * 启动探测配置

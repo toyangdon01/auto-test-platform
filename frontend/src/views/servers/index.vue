@@ -55,13 +55,19 @@
           <el-tag :type="getStatusType(row.status)">{{ getStatusText(row.status) }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="cpuCores" label="CPU" width="120">
+      <el-table-column prop="cpuCores" label="CPU" width="100">
         <template #default="{ row }">
           <span v-if="row.cpuCores">{{ row.cpuCores }} 核</span>
           <span v-else class="text-secondary">-</span>
         </template>
       </el-table-column>
-      <el-table-column prop="cpuArch" label="CPU架构" width="100">
+      <el-table-column prop="cpuModel" label="CPU 型号" min-width="200">
+        <template #default="{ row }">
+          <span v-if="row.cpuModel" :title="row.cpuModel">{{ row.cpuModel }}</span>
+          <span v-else class="text-secondary">-</span>
+        </template>
+      </el-table-column>
+      <el-table-column prop="cpuArch" label="架构" width="80">
         <template #default="{ row }">
           <span v-if="row.cpuArch">{{ row.cpuArch }}</span>
           <span v-else class="text-secondary">-</span>
@@ -70,6 +76,14 @@
       <el-table-column prop="memorySize" label="内存" width="100">
         <template #default="{ row }">
           <span v-if="row.memorySize">{{ row.memorySize }}</span>
+          <span v-else class="text-secondary">-</span>
+        </template>
+      </el-table-column>
+      <el-table-column prop="groupId" label="所属分组" width="120">
+        <template #default="{ row }">
+          <el-tag v-if="row.groupId" size="small" effect="plain">
+            {{ getGroupName(row.groupId) }}
+          </el-tag>
           <span v-else class="text-secondary">-</span>
         </template>
       </el-table-column>
@@ -135,7 +149,7 @@
           </template>
           <el-input v-model="formData.host" placeholder="IP 或域名" />
         </el-form-item>
-        <el-form-item label="SSH端口" prop="port">
+        <el-form-item label="SSH 端口" prop="port">
           <el-input-number v-model="formData.port" :min="1" :max="65535" />
         </el-form-item>
         <el-form-item label="用户名" prop="username">
@@ -310,6 +324,12 @@ function getStatusText(status: string) {
     error: '异常',
   }
   return texts[status] || status
+}
+
+// 获取分组名称
+function getGroupName(groupId: number): string {
+  const group = groups.value.find(g => g.id === groupId)
+  return group ? group.name : '未知分组'
 }
 
 // 新增

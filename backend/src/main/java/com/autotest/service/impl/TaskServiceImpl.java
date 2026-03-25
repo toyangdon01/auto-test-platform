@@ -1,6 +1,7 @@
 package com.autotest.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.autotest.common.PageResult;
 import com.autotest.dto.request.TaskCreateRequest;
@@ -12,6 +13,7 @@ import com.autotest.entity.Server;
 import com.autotest.entity.Task;
 import com.autotest.entity.TaskServer;
 import com.autotest.entity.TaskStep;
+import com.autotest.entity.TestResult;
 import com.autotest.exception.BusinessException;
 import com.autotest.mapper.ScriptMapper;
 import com.autotest.mapper.ScriptVersionMapper;
@@ -19,6 +21,7 @@ import com.autotest.mapper.ServerMapper;
 import com.autotest.mapper.TaskMapper;
 import com.autotest.mapper.TaskServerMapper;
 import com.autotest.mapper.TaskStepMapper;
+import com.autotest.mapper.TestResultMapper;
 import com.autotest.service.TaskExecutionService;
 import com.autotest.service.TaskService;
 import lombok.RequiredArgsConstructor;
@@ -45,6 +48,7 @@ public class TaskServiceImpl implements TaskService {
     private final TaskMapper taskMapper;
     private final TaskServerMapper taskServerMapper;
     private final TaskStepMapper taskStepMapper;
+    private final TestResultMapper testResultMapper;
     private final ScriptMapper scriptMapper;
     private final ScriptVersionMapper scriptVersionMapper;
     private final ServerMapper serverMapper;
@@ -52,27 +56,12 @@ public class TaskServiceImpl implements TaskService {
 
     @Override
     public PageResult<Task> listTasks(TaskQueryRequest request) {
-        LambdaQueryWrapper<Task> wrapper = new LambdaQueryWrapper<>();
-        
-        // 名称模糊搜索
-        if (StringUtils.hasText(request.getName())) {
-            wrapper.like(Task::getName, request.getName());
-        }
-        
-        // 状态筛选
-        if (StringUtils.hasText(request.getStatus())) {
-            wrapper.eq(Task::getStatus, request.getStatus());
-        }
-        
-        // 脚本筛选
-        if (request.getScriptId() != null) {
-            wrapper.eq(Task::getScriptId, request.getScriptId());
-        }
-        
-        // 排序
-        wrapper.orderByDesc(Task::getCreatedAt);
-        
-        Page<Task> page = taskMapper.selectPage(request.<Task>toPage(), wrapper);
+        // 使用关联查询获取脚本名称
+        IPage<Task> page = taskMapper.selectPageWithScriptName(
+            new Page<>(request.getPage(), request.getSize()),
+            request.getName(),
+            request.getStatus()
+        );
         
         // 填充服务器统计
         for (Task task : page.getRecords()) {
@@ -253,6 +242,7 @@ public class TaskServiceImpl implements TaskService {
         task.setMaxParallel(request.getMaxParallel());
         task.setFailureStrategy(request.getFailureStrategy());
         task.setCollectEnabled(request.getCollectEnabled());
+        task.setTimeout(request.getTimeout());
         
         // 如果请求中没有 collectConfig，从脚本版本中获取
         if (request.getCollectConfig() != null && !request.getCollectConfig().isEmpty()) {
@@ -326,10 +316,20 @@ public class TaskServiceImpl implements TaskService {
             throw BusinessException.of("任务不存在");
         }
         
-        // 删除任务服务器关联
+        // 删除任务步骤（task_steps）
+        LambdaQueryWrapper<TaskStep> stepWrapper = new LambdaQueryWrapper<>();
+        stepWrapper.eq(TaskStep::getTaskId, id);
+        taskStepMapper.delete(stepWrapper);
+        
+        // 删除任务服务器关联（task_servers）
         LambdaQueryWrapper<TaskServer> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(TaskServer::getTaskId, id);
         taskServerMapper.delete(wrapper);
+        
+        // 删除测试结果（test_results）
+        LambdaQueryWrapper<TestResult> resultWrapper = new LambdaQueryWrapper<>();
+        resultWrapper.eq(TestResult::getTaskId, id);
+        testResultMapper.delete(resultWrapper);
         
         // 删除任务
         taskMapper.deleteById(id);
@@ -412,10 +412,32 @@ public class TaskServiceImpl implements TaskService {
             throw BusinessException.of("任务已完成或已取消");
         }
         
-        task.setStatus("cancelled");
+        // 调用执行服务的真正取消方法（停止进程、清理工作目录）
+        boolean cancelled = taskExecutionService.cancelTask(id);
+        
+        if (cancelled) {
+            task.setStatus("cancelled");
+        } else {
+            // 如果任务不在运行中，直接标记为取消
+            task.setStatus("cancelled");
+        }
+        
         task.setFinishedAt(LocalDateTime.now());
         task.setUpdatedAt(LocalDateTime.now());
         taskMapper.updateById(task);
+        
+        // 更新所有关联服务器的状态为已取消
+        LambdaQueryWrapper<TaskServer> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(TaskServer::getTaskId, id);
+        List<TaskServer> taskServers = taskServerMapper.selectList(wrapper);
+        for (TaskServer ts : taskServers) {
+            if (!"completed".equals(ts.getOverallStatus())) {
+                ts.setOverallStatus("cancelled");
+                taskServerMapper.updateById(ts);
+            }
+        }
+        
+        log.info("任务 {} 已被取消", id);
     }
 
     @Override

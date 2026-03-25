@@ -38,6 +38,7 @@ public class TaskExecutionService {
     private final TestResultMapper testResultMapper;
     private final ScriptResourceMapper scriptResourceMapper;
     private final ResourceFileMapper resourceFileMapper;
+    private final ResultParseService resultParseService;
 
     @Value("${autotest.storage.scripts-path:C:/data/auto-test/scripts}")
     private String scriptsPath;
@@ -205,8 +206,12 @@ public class TaskExecutionService {
             
             Map<String, Object> startupProbe = (Map<String, Object>) stepDef.get("startupProbe");
             
+            // 获取解析规则配置
+            Map<String, Object> parseRule = (Map<String, Object>) stepDef.get("parseRule");
+            
             dag.addStep(stepName, displayName, scriptFile, dependsOn, 
-                       resultCollector != null ? resultCollector : true, params, startupProbe);
+                       resultCollector != null ? resultCollector : true, params, startupProbe,
+                       null, false, null, parseRule);
         }
         
         if (dag.hasCycle()) {
@@ -327,7 +332,7 @@ public class TaskExecutionService {
                 taskStep.setDependsOn(config.getDependsOn() != null && !config.getDependsOn().isEmpty() ? 
                     String.join(",", config.getDependsOn()) : null);
                 taskStep.setParams(mergedParams.isEmpty() ? null : mergedParams);
-                taskStep.setResultCollector(config.isResultCollector());
+                taskStep.setResultCollector(config.isResultCollector() || config.isResultParser());
                 taskStep.setStartupProbe(config.getStartupProbe());
                 taskStep.setStatus("pending");
                 
@@ -392,10 +397,20 @@ public class TaskExecutionService {
             
             // 构建参数
             Map<String, Object> params = new HashMap<>();
+            
+            // 添加内置参数
+            params.put("TASK_ID", task.getId());
+            params.put("SCRIPT_ID", task.getScriptId());
+            params.put("TASK_NAME", task.getName() != null ? task.getName() : "");
+            params.put("SCRIPT_VERSION", task.getScriptVersion() != null ? task.getScriptVersion() : "");
+            params.put("SERVER_ID", server.getId());
+            params.put("SERVER_NAME", server.getName() != null ? server.getName() : "");
+            params.put("SERVER_HOST", server.getHost() != null ? server.getHost() : "");
+            
+            // 添加用户定义的共享参数
             if (task.getSharedParams() != null) {
                 params.putAll(task.getSharedParams());
             }
-            // steps 中的 params 只用于参数定义，实际值从 task.sharedParams 获取
             
             // 构建环境变量
             StringBuilder envBuilder = new StringBuilder();
@@ -435,8 +450,38 @@ public class TaskExecutionService {
             }
             
             // 结果收集
-            if (success && Boolean.TRUE.equals(stepConfig.isResultCollector())) {
-                createTestResult(task, server, taskStep, scriptVersion);
+            if (success && (Boolean.TRUE.equals(stepConfig.isResultCollector()) || Boolean.TRUE.equals(stepConfig.isResultParser()))) {
+                Map<String, Object> parseRule = stepConfig.getParseRule();
+                String fileContent = null;
+                
+                context.log("[DEBUG] 开始结果收集，parseRule=" + (parseRule != null ? "not null" : "null"));
+                
+                if (parseRule != null) {
+                    String inputSource = (String) parseRule.get("inputSource");
+                    String filePattern = (String) parseRule.get("filePattern");
+                    
+                    context.log("[DEBUG] inputSource=" + inputSource + ", filePattern=" + filePattern);
+                    
+                    if ("file".equals(inputSource) && filePattern != null && !filePattern.isEmpty()) {
+                        String actualFilePath = replaceBuiltInParams(filePattern, task, server);
+                        context.log("读取结果文件：" + actualFilePath);
+                        
+                        SshService.ExecuteResult fileResult = SshService.executeCommand(server, "cat " + actualFilePath, null, 30000);
+                        
+                        if (fileResult.getExitCode() == 0 && fileResult.getOutput() != null && !fileResult.getOutput().isEmpty()) {
+                            fileContent = fileResult.getOutput();
+                            context.log("文件内容长度：" + fileContent.length() + " 字符");
+                        } else {
+                            context.log("[WARN] 读取结果文件失败：" + fileResult.getError());
+                        }
+                    } else if ("stdout".equals(inputSource)) {
+                        fileContent = taskStep.getOutput();
+                        context.log("使用标准输出，内容长度：" + (fileContent != null ? fileContent.length() : 0) + " 字符");
+                    }
+                }
+                
+                context.log("[DEBUG] 调用 createTestResult, fileContent=" + (fileContent != null ? "not null, length=" + fileContent.length() : "null"));
+                createTestResult(task, server, taskStep, scriptVersion, parseRule, fileContent, context);
             }
             
             taskStepMapper.updateById(taskStep);
@@ -652,29 +697,6 @@ public class TaskExecutionService {
     }
 
     /**
-     * 创建测试结果
-     */
-    private void createTestResult(Task task, Server server, TaskStep taskStep, ScriptVersion scriptVersion) {
-        // 查找对应的 TaskServer
-        LambdaQueryWrapper<TaskServer> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(TaskServer::getTaskId, task.getId())
-               .eq(TaskServer::getServerId, server.getId());
-        TaskServer taskServer = taskServerMapper.selectOne(wrapper);
-        
-        TestResult testResult = new TestResult();
-        testResult.setTaskId(task.getId());
-        testResult.setServerId(server.getId());
-        testResult.setTaskServerId(taskServer != null ? taskServer.getId() : null);
-        testResult.setResult(taskStep.getExitCode() == 0 ? "pass" : "fail");
-        testResult.setExitCode(taskStep.getExitCode());
-        testResult.setRawOutput(taskStep.getOutput());
-        testResult.setStartedAt(taskStep.getStartedAt());
-        testResult.setFinishedAt(taskStep.getFinishedAt());
-        
-        testResultMapper.insert(testResult);
-    }
-
-    /**
      * 获取脚本版本
      */
     private ScriptVersion getScriptVersion(Long scriptId, String version) {
@@ -745,5 +767,78 @@ public class TaskExecutionService {
         public boolean isCancelled() {
             return cancelled;
         }
+    }
+    
+    /**
+     * 替换字符串中的内置参数
+     */
+    public static String replaceBuiltInParams(String input, Task task, Server server) {
+        if (input == null || input.isEmpty()) return input;
+        String result = input;
+        if (task != null) {
+            result = result.replace("${TASK_ID}", String.valueOf(task.getId()));
+            result = result.replace("${SCRIPT_ID}", String.valueOf(task.getScriptId()));
+            result = result.replace("${TASK_NAME}", task.getName() != null ? task.getName() : "");
+            result = result.replace("${SCRIPT_VERSION}", task.getScriptVersion() != null ? task.getScriptVersion() : "");
+        }
+        if (server != null) {
+            result = result.replace("${SERVER_ID}", String.valueOf(server.getId()));
+            result = result.replace("${SERVER_NAME}", server.getName() != null ? server.getName() : "");
+            result = result.replace("${SERVER_HOST}", server.getHost() != null ? server.getHost() : "");
+        }
+        return result;
+    }
+    
+    /**
+     * 创建测试结果
+     */
+    private void createTestResult(Task task, Server server, TaskStep taskStep, ScriptVersion scriptVersion,
+                                   Map<String, Object> parseRule, String fileContent, ExecutionContext context) {
+        LambdaQueryWrapper<TaskServer> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(TaskServer::getTaskId, task.getId()).eq(TaskServer::getServerId, server.getId());
+        TaskServer taskServer = taskServerMapper.selectOne(wrapper);
+        
+        TestResult testResult = new TestResult();
+        testResult.setTaskId(task.getId());
+        testResult.setServerId(server.getId());
+        testResult.setTaskServerId(taskServer != null ? taskServer.getId() : null);
+        testResult.setResult(taskStep.getExitCode() == 0 ? "pass" : "fail");
+        testResult.setExitCode(taskStep.getExitCode());
+        testResult.setRawOutput(taskStep.getOutput());
+        testResult.setStartedAt(taskStep.getStartedAt());
+        testResult.setFinishedAt(taskStep.getFinishedAt());
+        
+        if (parseRule != null && fileContent != null && !fileContent.isEmpty()) {
+            try {
+                ResultRule rule = convertToResultRule(parseRule);
+                context.log("开始解析，parserType=" + rule.getParserType() + ", format=" + rule.getBuiltinFormat());
+                Map<String, Object> parsedData = resultParseService.parse(fileContent, rule);
+                testResult.setParsedData(parsedData);
+                context.log("解析成功：" + parsedData.size() + " 个字段");
+            } catch (Exception e) {
+                context.log("[WARN] 解析失败：" + e.getMessage());
+                log.error("解析失败", e);
+                testResult.setResultReason("解析失败：" + e.getMessage());
+            }
+        } else {
+            context.log("[INFO] 跳过解析：parseRule=" + (parseRule == null) + ", fileContent=" + (fileContent == null || fileContent.isEmpty()));
+        }
+        
+        testResultMapper.insert(testResult);
+    }
+    
+    /**
+     * 将 Map 转换为 ResultRule 对象
+     */
+    private ResultRule convertToResultRule(Map<String, Object> parseRule) {
+        ResultRule rule = new ResultRule();
+        rule.setParserType((String) parseRule.get("parserType"));
+        rule.setBuiltinFormat((String) parseRule.get("builtinFormat"));
+        rule.setInputSource((String) parseRule.get("inputSource"));
+        rule.setFilePattern((String) parseRule.get("filePattern"));
+        rule.setScriptSource((String) parseRule.get("scriptSource"));
+        rule.setScriptContent((String) parseRule.get("scriptContent"));
+        rule.setScriptLanguage((String) parseRule.get("scriptLanguage"));
+        return rule;
     }
 }

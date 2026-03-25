@@ -7,10 +7,13 @@ import com.autotest.dto.request.TaskQueryRequest;
 import com.autotest.dto.response.TaskDetailResponse;
 import com.autotest.entity.Task;
 import com.autotest.entity.TaskStep;
+import com.autotest.entity.Server;
 import com.autotest.entity.Metric;
 import com.autotest.mapper.MetricMapper;
 import com.autotest.mapper.TaskStepMapper;
+import com.autotest.mapper.ServerMapper;
 import com.autotest.service.TaskService;
+import com.autotest.service.SshService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -40,6 +43,7 @@ public class TaskController {
     private final TaskService taskService;
     private final MetricMapper metricMapper;
     private final TaskStepMapper taskStepMapper;
+    private final ServerMapper serverMapper;
 
     @Operation(summary = "获取任务列表")
     @GetMapping
@@ -118,6 +122,130 @@ public class TaskController {
     @PostMapping("/fix-status")
     public ApiResponse<Map<String, Integer>> fixTaskStatus() {
         return ApiResponse.success(taskService.fixAllTaskStatus());
+    }
+    
+    @Operation(summary = "获取步骤文件内容（文本文件）")
+    @GetMapping("/steps/{stepId}/files/{fileName}")
+    public ApiResponse<Map<String, String>> getStepFileContent(
+            @PathVariable Long stepId,
+            @PathVariable String fileName) {
+        
+        TaskStep taskStep = taskStepMapper.findByIdWithServer(stepId);
+        if (taskStep == null) {
+            return ApiResponse.error("步骤不存在");
+        }
+        
+        Server server = serverMapper.selectById(taskStep.getServerId());
+        if (server == null) {
+            return ApiResponse.error("服务器不存在");
+        }
+        
+        // 从 outputFiles 中查找文件
+        List<Map<String, Object>> outputFiles = taskStep.getOutputFiles();
+        if (outputFiles == null || outputFiles.isEmpty()) {
+            return ApiResponse.error("没有收集的文件");
+        }
+        
+        Map<String, Object> targetFile = null;
+        for (Map<String, Object> f : outputFiles) {
+            if (fileName.equals(f.get("name"))) {
+                targetFile = f;
+                break;
+            }
+        }
+        
+        if (targetFile == null) {
+            return ApiResponse.error("文件不存在: " + fileName);
+        }
+        
+        String filePath = (String) targetFile.get("path");
+        if (filePath == null) {
+            return ApiResponse.error("文件路径无效");
+        }
+        
+        try {
+            // 读取文件内容（限制 1MB）
+            SshService.ExecuteResult result = SshService.executeCommand(server,
+                "cat " + filePath + " 2>/dev/null | head -c 1048576", null, 30000);
+            
+            if (result.getExitCode() != 0) {
+                return ApiResponse.error("读取文件失败");
+            }
+            
+            return ApiResponse.success(Map.of("content", result.getOutput()));
+        } catch (Exception e) {
+            return ApiResponse.error("读取文件失败: " + e.getMessage());
+        }
+    }
+    
+    @Operation(summary = "下载步骤文件")
+    @GetMapping("/steps/{stepId}/files/{fileName}/download")
+    public void downloadStepFile(
+            @PathVariable Long stepId,
+            @PathVariable String fileName,
+            HttpServletResponse response) throws IOException {
+        
+        TaskStep taskStep = taskStepMapper.findByIdWithServer(stepId);
+        if (taskStep == null) {
+            response.sendError(404, "步骤不存在");
+            return;
+        }
+        
+        Server server = serverMapper.selectById(taskStep.getServerId());
+        if (server == null) {
+            response.sendError(404, "服务器不存在");
+            return;
+        }
+        
+        // 从 outputFiles 中查找文件
+        List<Map<String, Object>> outputFiles = taskStep.getOutputFiles();
+        if (outputFiles == null || outputFiles.isEmpty()) {
+            response.sendError(404, "没有收集的文件");
+            return;
+        }
+        
+        Map<String, Object> targetFile = null;
+        for (Map<String, Object> f : outputFiles) {
+            if (fileName.equals(f.get("name"))) {
+                targetFile = f;
+                break;
+            }
+        }
+        
+        if (targetFile == null) {
+            response.sendError(404, "文件不存在: " + fileName);
+            return;
+        }
+        
+        String filePath = (String) targetFile.get("path");
+        if (filePath == null) {
+            response.sendError(500, "文件路径无效");
+            return;
+        }
+        
+        try {
+            // 读取文件内容
+            SshService.ExecuteResult result = SshService.executeCommand(server,
+                "cat " + filePath + " 2>/dev/null", null, 60000);
+            
+            if (result.getExitCode() != 0) {
+                response.sendError(500, "读取文件失败");
+                return;
+            }
+            
+            byte[] fileContent = result.getOutput().getBytes(StandardCharsets.UTF_8);
+            
+            // 设置响应头
+            String encodedFilename = URLEncoder.encode(fileName, StandardCharsets.UTF_8).replace("+", "%20");
+            response.setContentType("application/octet-stream");
+            response.setHeader("Content-Disposition", "attachment; filename*=UTF-8''" + encodedFilename);
+            response.setContentLength(fileContent.length);
+            
+            response.getOutputStream().write(fileContent);
+            response.getOutputStream().flush();
+        } catch (Exception e) {
+            response.sendError(500, "下载文件失败: " + e.getMessage());
+        }
     }
 
     @Operation(summary = "导出任务指标数据")

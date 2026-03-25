@@ -4,9 +4,12 @@ import com.autotest.common.ApiResponse;
 import com.autotest.common.PageResult;
 import com.autotest.entity.Script;
 import com.autotest.entity.ScriptVersion;
+import com.autotest.entity.Task;
 import com.autotest.mapper.ScriptMapper;
 import com.autotest.mapper.ScriptVersionMapper;
+import com.autotest.mapper.TaskMapper;
 import com.autotest.service.ScriptFileService;
+import com.autotest.service.TaskService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -42,6 +45,8 @@ public class ScriptController {
     private final ScriptMapper scriptMapper;
     private final ScriptVersionMapper scriptVersionMapper;
     private final ScriptFileService scriptFileService;
+    private final TaskMapper taskMapper;
+    private final TaskService taskService;
 
     @Operation(summary = "获取脚本列表")
     @GetMapping
@@ -573,8 +578,25 @@ public class ScriptController {
     @Operation(summary = "删除脚本")
     @DeleteMapping("/{id}")
     public ApiResponse<Void> deleteScript(@PathVariable Long id) throws IOException {
+        // 查询使用此脚本的所有任务
+        List<Task> tasks = taskMapper.selectList(new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<Task>()
+            .eq(Task::getScriptId, id));
+        
+        if (!tasks.isEmpty()) {
+            log.info("删除脚本前清理关联任务：scriptId={}, taskCount={}", id, tasks.size());
+            // 删除关联的任务（级联删除 task_servers, task_steps, test_results 等）
+            for (Task task : tasks) {
+                taskService.deleteTask(task.getId());
+            }
+        }
+        
+        // 删除脚本文件
         scriptFileService.deleteScriptFiles(id);
+        
+        // 删除脚本记录
         scriptMapper.deleteById(id);
+        
+        log.info("脚本删除成功：scriptId={}", id);
         return ApiResponse.success();
     }
 

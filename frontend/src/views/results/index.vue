@@ -64,6 +64,11 @@
           <span>{{ row.taskName || `任务 #${row.taskId}` }}</span>
         </template>
       </el-table-column>
+      <el-table-column prop="scriptName" label="所属脚本" min-width="150">
+        <template #default="{ row }">
+          <span>{{ row.scriptName || '-' }}</span>
+        </template>
+      </el-table-column>
       <el-table-column prop="serverName" label="执行服务器" min-width="150">
         <template #default="{ row }">
           <span>{{ row.serverName || `服务器 #${row.serverId}` }}</span>

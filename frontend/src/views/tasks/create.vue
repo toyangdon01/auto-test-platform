@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="page-card">
     <div class="page-header">
       <h3 class="page-title">创建任务</h3>
@@ -139,6 +139,24 @@
 
       <!-- Step 3: 配置参数 -->
       <div v-show="currentStep === 2" class="step-panel">
+        <el-alert type="info" :closable="false" show-icon class="mb-4">
+          <template #title>
+            <div class="builtin-params-tip">
+              <strong>支持的内置参数：</strong>
+              <div class="params-list">
+                <span class="param-tag">TASK_ID</span>
+                <span class="param-tag">SCRIPT_ID</span>
+                <span class="param-tag">TASK_NAME</span>
+                <span class="param-tag">SCRIPT_VERSION</span>
+                <span class="param-tag">SERVER_ID</span>
+                <span class="param-tag">SERVER_NAME</span>
+                <span class="param-tag">SERVER_HOST</span>
+              </div>
+              <div class="tip-text">这些参数会自动传递给脚本，可在脚本中作为环境变量使用，或在文件路径中使用（如 /tmp/result_${TASK_ID}.txt）</div>
+            </div>
+          </template>
+        </el-alert>
+        
         <el-form :model="formData" label-width="120px">
           <template v-if="scriptParameters.length > 0">
             <el-divider content-position="left">共享参数</el-divider>
@@ -178,68 +196,31 @@
             </template>
             <el-input v-model="formData.name" placeholder="请输入任务名称" />
           </el-form-item>
-
-          <el-form-item prop="executionMode">
+          
+          <el-form-item label="超时时间">
             <template #label>
-              执行模式
-              <el-tooltip content="立即执行：创建后立即开始测试；定时执行：在指定时间自动开始" placement="top">
+              超时时间
+              <el-tooltip content="单步骤执行超时时间，超时后任务将失败" placement="top">
                 <el-icon class="field-tip-icon"><QuestionFilled /></el-icon>
               </el-tooltip>
             </template>
-            <el-radio-group v-model="formData.executionMode">
-              <el-radio value="immediate">立即执行</el-radio>
-              <el-radio value="scheduled">定时执行</el-radio>
-            </el-radio-group>
-          </el-form-item>
-
-          <el-form-item v-if="formData.executionMode === 'scheduled'" label="执行时间" prop="scheduledTime">
-            <el-date-picker
-              v-model="formData.scheduledTime"
-              type="datetime"
-              placeholder="选择执行时间"
+            <el-input-number 
+              v-model="formData.timeout" 
+              :min="60" 
+              :max="3600" 
+              :step="60"
+              placeholder="默认 300 秒"
             />
-          </el-form-item>
-
-          <el-form-item>
-            <template #label>
-              并行模式
-              <el-tooltip content="顺序执行：按顺序逐个服务器执行；并行执行：多个服务器同时执行" placement="top">
-                <el-icon class="field-tip-icon"><QuestionFilled /></el-icon>
-              </el-tooltip>
-            </template>
-            <el-radio-group v-model="formData.parallelMode">
-              <el-radio value="sequential">顺序执行</el-radio>
-              <el-radio value="parallel">并行执行</el-radio>
-            </el-radio-group>
-          </el-form-item>
-
-          <el-form-item v-if="formData.parallelMode === 'parallel'" label="最大并行数">
-            <el-input-number v-model="formData.maxParallel" :min="1" :max="20" />
-          </el-form-item>
-
-          <el-form-item>
-            <template #label>
-              失败策略
-              <el-tooltip content="继续执行：某服务器失败后继续执行其他服务器；停止执行：有失败时立即停止所有执行" placement="top">
-                <el-icon class="field-tip-icon"><QuestionFilled /></el-icon>
-              </el-tooltip>
-            </template>
-            <el-radio-group v-model="formData.failureStrategy">
-              <el-radio value="continue">继续执行</el-radio>
-              <el-radio value="stop">停止执行</el-radio>
-            </el-radio-group>
-          </el-form-item>
-
-          <el-form-item label="指标采集">
-            <template #label>
-              指标采集
-              <el-tooltip content="开启后会在测试过程中采集 CPU、内存等性能指标" placement="top">
-                <el-icon class="field-tip-icon"><QuestionFilled /></el-icon>
-              </el-tooltip>
-            </template>
-            <el-switch v-model="formData.collectEnabled" />
+            <span class="unit">秒</span>
+            <span class="field-hint">（范围: 60-3600秒，默认300秒）</span>
           </el-form-item>
         </el-form>
+
+        <!-- 指标采集配置组件 -->
+        <MetricCollectConfig 
+          v-model="formData.collectConfig" 
+          :server-ids="selectedServerIds" 
+        />
       </div>
     </div>
 
@@ -261,6 +242,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { QuestionFilled } from '@element-plus/icons-vue'
 import { scriptApi, taskApi, type Script } from '@/api/script'
+import MetricCollectConfig from '@/components/MetricCollectConfig.vue'
 import { serverApi, type Server } from '@/api/server'
 
 const router = useRouter()
@@ -302,20 +284,26 @@ const assignedServerCount = computed(() => {
 
 const formData = reactive({
   name: '',
-  executionMode: 'immediate' as 'immediate' | 'scheduled',
-  scheduledTime: '',
-  parallelMode: 'sequential' as 'sequential' | 'parallel',
-  maxParallel: 1,
-  failureStrategy: 'continue' as 'continue' | 'stop',
-  collectEnabled: true,
+  timeout: 300,  // 默认 5 分钟
   // 共享参数值（动态）
   sharedParams: {} as Record<string, any>,
+  // 指标采集配置（默认禁用）
+  collectConfig: { enabled: false } as any,
 })
 
 const formRules = {
   name: [{ required: true, message: '请输入任务名称', trigger: 'blur' }],
-  executionMode: [{ required: true, message: '请选择执行模式', trigger: 'change' }],
 }
+
+// 已选择的服务器 ID 列表（用于动态加载设备和网卡）
+const selectedServerIds = computed(() => {
+  if (scriptSteps.value.length > 0) {
+    return stepServerConfigs.value
+      .map(c => c.serverId)
+      .filter(id => id !== null && id !== undefined)
+  }
+  return []
+})
 
 const canNext = computed(() => {
   if (currentStep.value === 0) return !!selectedScript.value
@@ -372,6 +360,9 @@ async function loadScriptSteps(script: Script) {
       // 将 steps 对象转换为数组
       const steps: StepDefinition[] = []
       for (const [stepName, stepConfig] of Object.entries(stepsData)) {
+        // 跳过元数据字段
+        if (stepName === '_meta') continue
+        
         const config = stepConfig as any
         steps.push({
           name: stepName,
@@ -530,14 +521,14 @@ async function handleSubmit() {
     serverIds: allServerIds,
     stepServerMapping,
     stepParams,
-    executionMode: formData.executionMode,
-    scheduledTime: formData.scheduledTime,
-    parallelMode: formData.parallelMode,
-    maxParallel: formData.maxParallel,
-    failureStrategy: formData.failureStrategy,
-    collectEnabled: formData.collectEnabled,
+    executionMode: 'immediate',
+    parallelMode: 'sequential',
+    maxParallel: 1,
+    failureStrategy: 'continue',
+    timeout: formData.timeout * 1000,  // 转换为毫秒
+    collectEnabled: formData.collectConfig?.enabled !== false,
+    collectConfig: formData.collectConfig,
     sharedParams: formData.sharedParams,
-    deployParams: { deployDir: formData.deployDir },
   }
   
   const res = await taskApi.create(data)
@@ -765,5 +756,46 @@ onMounted(() => {
 
 .no-steps {
   padding: 40px;
+}
+
+.unit {
+  margin-left: 8px;
+  color: var(--el-text-color-secondary);
+}
+
+.field-hint {
+  margin-left: 12px;
+  color: var(--el-text-color-placeholder);
+  font-size: 12px;
+}
+
+// 内置参数提示样式
+.builtin-params-tip {
+  .params-list {
+    margin-top: 8px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  
+  .param-tag {
+    display: inline-block;
+    padding: 2px 8px;
+    background: var(--el-color-primary-light-9);
+    color: var(--el-color-primary);
+    border-radius: 4px;
+    font-size: 12px;
+    font-family: monospace;
+  }
+  
+  .tip-text {
+    margin-top: 8px;
+    font-size: 12px;
+    color: var(--el-text-color-secondary);
+  }
+}
+
+.mb-4 {
+  margin-bottom: 16px;
 }
 </style>

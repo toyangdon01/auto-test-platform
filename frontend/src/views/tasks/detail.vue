@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="task-detail">
     <!-- 任务概览 -->
     <div class="page-card">
@@ -122,6 +122,7 @@
       </div>
     </div>
 
+    
     <!-- 步骤执行详情 -->
     <div class="page-card mt-20" v-if="taskSteps.length > 0">
       <h4 class="section-title">步骤执行详情</h4>
@@ -199,12 +200,38 @@
         
         <el-table-column label="操作" width="80" fixed="right">
           <template #default="{ row }">
-            <el-button type="primary" link @click="showStepDetail(row)" :disabled="!row.output">
+            <el-button type="primary" link @click="showStepDetail(row)" :disabled="!row.output && !row.error && row.status === 'pending'">
               <el-icon><Document /></el-icon>详情
             </el-button>
           </template>
         </el-table-column>
       </el-table>
+    </div>
+
+    <!-- 指标采集趋势（四个图表） -->
+    <div class="page-card mt-20" v-if="task?.collectEnabled">
+      <h4 class="section-title">
+        <el-icon><DataLine /></el-icon>
+        指标采集趋势
+      </h4>
+      <div class="metrics-grid">
+        <div class="metric-chart-item">
+          <h5 class="metric-chart-title">CPU 使用率</h5>
+          <MetricSingleChart :task-id="task.id" metric-type="cpu" />
+        </div>
+        <div class="metric-chart-item">
+          <h5 class="metric-chart-title">内存使用率</h5>
+          <MetricSingleChart :task-id="task.id" metric-type="memory" />
+        </div>
+        <div class="metric-chart-item">
+          <h5 class="metric-chart-title">磁盘 I/O</h5>
+          <MetricSingleChart :task-id="task.id" metric-type="disk" />
+        </div>
+        <div class="metric-chart-item">
+          <h5 class="metric-chart-title">网络流量</h5>
+          <MetricSingleChart :task-id="task.id" metric-type="network" />
+        </div>
+      </div>
     </div>
 
     <!-- 正在执行的命令 -->
@@ -343,18 +370,22 @@
             <pre class="output-content">{{ currentStep.output }}</pre>
           </div>
         </div>
+        <div v-else class="no-output">
+          <el-empty description="暂无执行输出" :image-size="60" />
+        </div>
       </template>
     </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import MetricSingleChart from '@/components/MetricSingleChart.vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { 
   VideoPlay, VideoPause, RefreshRight, Refresh, Loading,
-  Monitor, Document, DataAnalysis, CopyDocument, ArrowDown,
+  Monitor, Document, DataAnalysis, DataLine, CopyDocument, ArrowDown,
   CircleCheck, CircleClose, Clock, Warning
 } from '@element-plus/icons-vue'
 import request from '@/utils/request'
@@ -380,10 +411,10 @@ const currentStep = ref<TaskStep | null>(null)
 let pollTimer: ReturnType<typeof setInterval> | null = null
 
 // 计算属性
-const successCount = computed(() => serverList.value.filter(s => s.run?.status === 'completed').length)
-const runningCount = computed(() => serverList.value.filter(s => s.run?.status === 'running').length)
-const failCount = computed(() => serverList.value.filter(s => s.run?.status === 'failed' || s.run?.status === 'error').length)
-const pendingCount = computed(() => serverList.value.filter(s => !s.run?.status || s.run?.status === 'pending').length)
+const successCount = computed(() => serverList.value.filter(s => s.overallStatus === 'completed').length)
+const runningCount = computed(() => serverList.value.filter(s => s.overallStatus === 'running').length)
+const failCount = computed(() => serverList.value.filter(s => s.overallStatus === 'failed' || s.overallStatus === 'error').length)
+const pendingCount = computed(() => serverList.value.filter(s => !s.overallStatus || s.overallStatus === 'pending').length)
 
 const overallProgress = computed(() => {
   if (serverList.value.length === 0) return 0
@@ -400,16 +431,16 @@ const executionLevels = computed(() => {
   
   task.value.servers.forEach((s: any) => {
     if (s.role && !roleMap.has(s.role)) {
-      const startTime = s.run?.startedAt ? new Date(s.run.startedAt).getTime() : 0
-      const endTime = s.run?.finishedAt ? new Date(s.run.finishedAt).getTime() : 0
+      const startTime = s.startedAt ? new Date(s.startedAt).getTime() : 0
+      const endTime = s.finishedAt ? new Date(s.finishedAt).getTime() : 0
       const duration = startTime && endTime ? Math.round((endTime - startTime) / 1000) : 0
       
       roleMap.set(s.role, {
         name: s.role,
         displayName: s.roleName || s.role,
-        startedAt: s.run?.startedAt || '',
-        finishedAt: s.run?.finishedAt || '',
-        status: s.run?.status || 'pending',
+        startedAt: s.startedAt || '',
+        finishedAt: s.finishedAt || '',
+        status: s.overallStatus || 'pending',
         duration
       })
     }
@@ -475,6 +506,11 @@ async function fetchSteps() {
     const res = await taskApi.getSteps(taskId)
     if (res.code === 0) {
       taskSteps.value = res.data || []
+      console.log('步骤数据:', taskSteps.value)
+      // 打印每个步骤的 output 状态
+      taskSteps.value.forEach((step: TaskStep) => {
+        console.log(`步骤 ${step.id} (${step.stepName}): status=${step.status}, output长度=${step.output?.length || 0}`)
+      })
     }
   } catch (e: any) {
     console.error('获取步骤数据失败', e)
@@ -530,7 +566,10 @@ function getStepStatusText(status?: string) {
 }
 
 function showStepDetail(step: TaskStep) {
-  currentStep.value = step
+  // 从最新的 taskSteps 中获取步骤数据，确保显示最新的输出
+  const latestStep = taskSteps.value.find(s => s.id === step.id)
+  currentStep.value = latestStep || step
+  console.log('步骤详情 - stepId:', step.id, 'output长度:', latestStep?.output?.length, 'output:', latestStep?.output?.substring(0, 100))
   stepDetailVisible.value = true
 }
 
@@ -589,14 +628,13 @@ function getRunStatusText(status?: string) {
   return texts[status || ''] || status || '-'
 }
 
-// 计算服务器的实际执行状态（优先使用 run.status）
+// 计算服务器的实际执行状态
 function getServerRunStatus(server: any): string {
-  // 优先使用 run.status
-  if (server.run?.status) {
-    return server.run.status
+  // 优先使用 overallStatus
+  if (server.overallStatus) {
+    return server.overallStatus
   }
-  // 回退到 overallStatus
-  return server.overallStatus || 'pending'
+  return server.status || 'pending'
 }
 
 function getPhaseText(phase?: string) {
@@ -743,15 +781,13 @@ function updateLogContent() {
   }
   
   if (currentLogPhase.value === 'run' || currentLogPhase.value === 'all') {
-    if (server.run?.output) {
+    if (server.overallStatus) {
       if (currentLogPhase.value === 'all') logs += '\n'
       logs += '========== 执行阶段 ==========\n'
-      logs += `状态: ${server.run.status || '-'}\n`
-      logs += `退出码: ${server.run.exitCode ?? '-'}\n`
-      logs += `开始时间: ${formatTime(server.run.startedAt)}\n`
-      logs += `结束时间: ${formatTime(server.run.finishedAt)}\n`
-      logs += '--- 输出 ---\n'
-      logs += server.run.output
+      logs += `状态: ${server.overallStatus || '-'}\n`
+      logs += `进度: ${server.progress ?? 0}%\n`
+      logs += `开始时间: ${formatTime(task.value?.startedAt)}\n`
+      logs += `结束时间: ${formatTime(task.value?.finishedAt)}\n`
       logs += '\n\n'
     } else if (currentLogPhase.value === 'run') {
       logs = '执行阶段暂无日志'
@@ -815,8 +851,39 @@ function startPolling() {
   pollTimer = setInterval(() => {
     if (task.value?.status === 'running') {
       fetchDetail()
+      
+      // 如果日志弹窗是打开的，实时刷新日志内容
+      if (logDialogVisible.value && currentServer.value) {
+        // 更新 currentServer 为最新的服务器数据
+        const latestServer = serverList.value.find(s => s.serverId === currentServer.value?.serverId)
+        if (latestServer) {
+          currentServer.value = latestServer
+        }
+        refreshLogs()
+      }
+      
+      // 如果步骤详情弹窗是打开的，实时刷新步骤输出
+      if (stepDetailVisible.value && currentStep.value) {
+        // 从最新的 taskSteps 中找到对应的步骤
+        const latestStep = taskSteps.value.find(s => s.id === currentStep.value?.id)
+        if (latestStep) {
+          const oldOutputLen = currentStep.value.output?.length || 0
+          currentStep.value = latestStep
+          // 调试日志
+          if (latestStep.output && latestStep.output.length > oldOutputLen) {
+            console.log('实时刷新步骤输出 - stepId:', latestStep.id, 'output长度:', latestStep.output.length)
+            // 自动滚动到输出框底部
+            nextTick(() => {
+              const outputBox = document.querySelector('.output-box .output-content')
+              if (outputBox) {
+                outputBox.scrollTop = outputBox.scrollHeight
+              }
+            })
+          }
+        }
+      }
     }
-  }, 3000)
+  }, 1000)  // 改为1秒轮询
 }
 
 function stopPolling() {
@@ -1167,4 +1234,30 @@ function getErrorMessage(output: string | null): string {
 .mr-4 {
   margin-right: 4px;
 }
+
+// 指标采集趋势网格布局
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+  
+  @media (max-width: 1200px) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.metric-chart-item {
+  background: #fff;
+  border-radius: 8px;
+  overflow: hidden;
+  
+  .metric-chart-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #303133;
+    margin: 0 0 12px 0;
+    padding-left: 4px;
+  }
+}
 </style>
+

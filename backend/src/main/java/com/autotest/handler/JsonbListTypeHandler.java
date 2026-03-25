@@ -20,6 +20,7 @@ import java.util.Map;
  *
  * @author auto-test-platform
  */
+@MappedTypes(List.class)
 public class JsonbListTypeHandler extends BaseTypeHandler<List<Map<String, Object>>> {
 
     private static final ObjectMapper objectMapper = new ObjectMapper();
@@ -38,22 +39,22 @@ public class JsonbListTypeHandler extends BaseTypeHandler<List<Map<String, Objec
     @Override
     public List<Map<String, Object>> getNullableResult(ResultSet rs, String columnName) throws SQLException {
         String json = rs.getString(columnName);
-        return parseJsonbList(json);
+        return parseJson(json);
     }
 
     @Override
     public List<Map<String, Object>> getNullableResult(ResultSet rs, int columnIndex) throws SQLException {
         String json = rs.getString(columnIndex);
-        return parseJsonbList(json);
+        return parseJson(json);
     }
 
     @Override
     public List<Map<String, Object>> getNullableResult(CallableStatement cs, int columnIndex) throws SQLException {
         String json = cs.getString(columnIndex);
-        return parseJsonbList(json);
+        return parseJson(json);
     }
 
-    private List<Map<String, Object>> parseJsonbList(String json) throws SQLException {
+    private List<Map<String, Object>> parseJson(String json) throws SQLException {
         if (json == null || json.isEmpty()) {
             return null;
         }
