@@ -206,8 +206,7 @@
             </template>
             <el-input-number 
               v-model="formData.timeout" 
-              :min="60" 
-              :max="3600" 
+              :min="1" 
               :step="60"
               placeholder="默认 300 秒"
             />
