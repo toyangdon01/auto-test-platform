@@ -51,10 +51,14 @@ public interface TestResultMapper extends BaseMapper<TestResult> {
             "  <if test='result != null and result != \"\"'>" +
             "    AND r.result = #{result}" +
             "  </if>" +
+            "  <if test='scriptId != null'>" +
+            "    AND t.script_id = #{scriptId}" +
+            "  </if>" +
             "</where>" +
             "ORDER BY r.id DESC" +
             "</script>")
     IPage<TestResult> selectPageWithNames(Page<TestResult> page,
                                            @Param("taskId") Long taskId,
-                                           @Param("result") String result);
+                                           @Param("result") String result,
+                                           @Param("scriptId") Long scriptId);
 }

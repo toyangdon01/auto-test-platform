@@ -88,20 +88,6 @@ const routes: RouteRecordRaw[] = [
     ],
   },
   {
-    path: '/resources',
-    component: Layout,
-    redirect: '/resources/list',
-    meta: { title: '资源管理', icon: 'FolderOpened' },
-    children: [
-      {
-        path: 'list',
-        name: 'ResourceList',
-        component: () => import('@/views/resources/index.vue'),
-        meta: { title: '资源文件' },
-      },
-    ],
-  },
-  {
     path: '/tasks',
     component: Layout,
     redirect: '/tasks/list',
@@ -154,22 +140,16 @@ const routes: RouteRecordRaw[] = [
     ],
   },
   {
-    path: '/reports',
+    path: '/resources',
     component: Layout,
-    redirect: '/reports/list',
-    meta: { title: '报告中心', icon: 'Tickets' },
+    redirect: '/resources/list',
+    meta: { title: '资源管理', icon: 'FolderOpened' },
     children: [
       {
         path: 'list',
-        name: 'ReportList',
-        component: () => import('@/views/reports/index.vue'),
-        meta: { title: '报告列表' },
-      },
-      {
-        path: 'detail/:id',
-        name: 'ReportDetail',
-        component: () => import('@/views/reports/detail.vue'),
-        meta: { title: '报告详情', hidden: true },
+        name: 'ResourceList',
+        component: () => import('@/views/resources/index.vue'),
+        meta: { title: '资源文件' },
       },
     ],
   },
@@ -185,18 +165,6 @@ const routes: RouteRecordRaw[] = [
         name: 'SystemConfig',
         component: () => import('@/views/settings/config.vue'),
         meta: { title: '系统配置' },
-      },
-      {
-        path: 'metrics',
-        name: 'MetricConfig',
-        component: () => import('@/views/settings/metrics.vue'),
-        meta: { title: '指标定义' },
-      },
-      {
-        path: 'rules',
-        name: 'ResultRules',
-        component: () => import('@/views/settings/rules.vue'),
-        meta: { title: '判定规则' },
       },
     ],
   },

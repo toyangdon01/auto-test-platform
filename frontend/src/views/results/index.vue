@@ -24,6 +24,11 @@
             <el-option label="错误" value="error" />
           </el-select>
         </el-form-item>
+        <el-form-item label="所属脚本">
+          <el-select v-model="searchForm.scriptId" placeholder="全部" clearable style="width: 180px">
+            <el-option v-for="script in scripts" :key="script.id" :label="script.name" :value="script.id" />
+          </el-select>
+        </el-form-item>
         <el-form-item>
           <el-button type="primary" @click="handleSearch">搜索</el-button>
           <el-button @click="handleReset">重置</el-button>
@@ -159,10 +164,12 @@ interface Statistics {
 const loading = ref(false)
 const results = ref<TestResult[]>([])
 const statistics = ref<Statistics | null>(null)
+const scripts = ref<{id: number, name: string}[]>([])
 
 const searchForm = reactive({
   keyword: '',
   result: '',
+  scriptId: '',
 })
 
 const pagination = reactive({
@@ -174,6 +181,7 @@ const pagination = reactive({
 onMounted(() => {
   fetchResults()
   fetchStatistics()
+  fetchScripts()
 })
 
 async function fetchResults() {
@@ -188,6 +196,9 @@ async function fetchResults() {
     }
     if (searchForm.keyword) {
       params.keyword = searchForm.keyword
+    }
+    if (searchForm.scriptId) {
+      params.scriptId = searchForm.scriptId
     }
 
     const res = await request.get('/results', { params })
@@ -213,6 +224,17 @@ async function fetchStatistics() {
   }
 }
 
+async function fetchScripts() {
+  try {
+    const res = await request.get('/scripts', { params: { page: 1, pageSize: 1000 } })
+    if (res.code === 0) {
+      scripts.value = res.data.items || []
+    }
+  } catch (error) {
+    console.error('获取脚本列表失败:', error)
+  }
+}
+
 function handleSearch() {
   pagination.page = 1
   fetchResults()
@@ -221,6 +243,7 @@ function handleSearch() {
 function handleReset() {
   searchForm.keyword = ''
   searchForm.result = ''
+  searchForm.scriptId = ''
   pagination.page = 1
   fetchResults()
 }

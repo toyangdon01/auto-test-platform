@@ -60,7 +60,8 @@ public class TaskServiceImpl implements TaskService {
         IPage<Task> page = taskMapper.selectPageWithScriptName(
             new Page<>(request.getPage(), request.getSize()),
             request.getName(),
-            request.getStatus()
+            request.getStatus(),
+            request.getScriptId()
         );
         
         // 填充服务器统计

@@ -34,6 +34,10 @@
         <el-option label="已取消" value="cancelled" />
       </el-select>
 
+      <el-select v-model="queryParams.scriptId" placeholder="所属脚本" clearable style="width: 180px">
+        <el-option v-for="script in scripts" :key="script.id" :label="script.name" :value="script.id" />
+      </el-select>
+
       <el-button type="primary" @click="fetchData">查询</el-button>
       <el-button @click="resetQuery">重置</el-button>
     </div>
@@ -192,7 +196,22 @@ const queryParams = reactive({
   size: 20,
   name: '',
   status: '',
+  scriptId: '',
 })
+
+const scripts = ref<{id: number, name: string}[]>([])
+
+// 获取脚本列表
+async function fetchScripts() {
+  try {
+    const res = await request.get('/scripts', { params: { page: 1, pageSize: 1000 } })
+    if (res.code === 0) {
+      scripts.value = res.data.items || []
+    }
+  } catch (e) {
+    console.error('获取脚本列表失败', e)
+  }
+}
 
 async function fetchData() {
   loading.value = true
@@ -216,6 +235,7 @@ async function fetchData() {
 function resetQuery() {
   queryParams.name = ''
   queryParams.status = ''
+  queryParams.scriptId = ''
   queryParams.page = 1
   fetchData()
 }
@@ -363,6 +383,7 @@ function stopAutoRefresh() {
 
 onMounted(() => {
   fetchData()
+  fetchScripts()
   if (autoRefresh.value) {
     startAutoRefresh()
   }

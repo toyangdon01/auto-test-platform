@@ -32,10 +32,14 @@ public interface TaskMapper extends BaseMapper<Task> {
             "  <if test='status != null and status != \"\"'>" +
             "    AND t.status = #{status}" +
             "  </if>" +
+            "  <if test='scriptId != null'>" +
+            "    AND t.script_id = #{scriptId}" +
+            "  </if>" +
             "</where>" +
             "ORDER BY t.id DESC" +
             "</script>")
     IPage<Task> selectPageWithScriptName(Page<Task> page, 
                                           @Param("name") String name, 
-                                          @Param("status") String status);
+                                          @Param("status") String status,
+                                          @Param("scriptId") Long scriptId);
 }

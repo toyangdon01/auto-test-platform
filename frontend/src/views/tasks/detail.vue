@@ -850,7 +850,8 @@ function openTerminal(row: any) {
 
 function startPolling() {
   pollTimer = setInterval(() => {
-    if (task.value?.status === 'running') {
+    // 任务运行中，或者步骤详情/日志弹窗打开时，都需要刷新数据
+    if (task.value?.status === 'running' || stepDetailVisible.value || logDialogVisible.value) {
       fetchDetail()
       
       // 如果日志弹窗是打开的，实时刷新日志内容
