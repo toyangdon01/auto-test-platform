@@ -310,6 +310,8 @@ public class TaskExecutionService {
         Map<String, Object> sharedParams = task.getSharedParams() != null ? task.getSharedParams() : new HashMap<>();
         
         for (String stepName : dag.getAllStepNames()) {
+            if ("_meta".equals(stepName)) continue; // 跳过 _meta 步骤
+            
             StepDAG.StepConfig config = dag.getStepConfig(stepName);
             
             // 合并参数：共享参数 + 步骤参数（步骤参数覆盖共享参数）

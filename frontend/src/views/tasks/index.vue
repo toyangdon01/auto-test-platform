@@ -81,6 +81,8 @@
                 :percentage="calculateProgress(row)"
                 :stroke-width="10"
                 :format="progressFormat"
+                :striped="false"
+                :striped-flow="false"
               />
               <div class="progress-detail">
                 <span class="success">{{ row.successCount || 0 }} 成功</span>

@@ -295,10 +295,12 @@ function formatFileSize(bytes: number) {
 
 // 将 steps 对象转为数组
 function getStepsArray(steps: Record<string, any>) {
-  return Object.entries(steps).map(([stepName, config]) => ({
-    stepName,
-    ...config
-  }))
+  return Object.entries(steps)
+    .filter(([stepName]) => stepName !== '_meta') // 过滤掉 _meta
+    .map(([stepName, config]) => ({
+      stepName,
+      ...config
+    }))
 }
 
 // 文件查看相关
