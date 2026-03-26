@@ -191,6 +191,10 @@ public class TaskExecutionService {
         StepDAG dag = new StepDAG();
         for (Map.Entry<String, Object> entry : stepsConfig.entrySet()) {
             String stepName = entry.getKey();
+            
+            // 跳过 _meta 步骤（仅用于存储元数据，不执行）
+            if ("_meta".equals(stepName)) continue;
+            
             Map<String, Object> stepDef = (Map<String, Object>) entry.getValue();
             
             String displayName = (String) stepDef.getOrDefault("displayName", stepName);
