@@ -71,45 +71,6 @@
         </div>
       </template>
 
-      <!-- 指标数据 -->
-      <el-divider content-position="left">
-        <el-icon><DataAnalysis /></el-icon>
-        指标数据
-      </el-divider>
-
-      <el-table :data="detail.metricList || []" stripe v-if="detail.metricList?.length">
-        <el-table-column prop="name" label="指标名称" min-width="150">
-          <template #default="{ row }">
-            <span>{{ row.name }}</span>
-            <el-text type="info" size="small" class="ml-2">({{ row.key }})</el-text>
-          </template>
-        </el-table-column>
-        <el-table-column prop="value" label="数值" width="150">
-          <template #default="{ row }">
-            <span class="metric-value">{{ formatValue(row.value) }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="unit" label="单位" width="80">
-          <template #default="{ row }">
-            {{ row.unit || '-' }}
-          </template>
-        </el-table-column>
-        <el-table-column prop="baseline" label="基准线" width="100">
-          <template #default="{ row }">
-            {{ row.baseline ?? '-' }}
-          </template>
-        </el-table-column>
-        <el-table-column prop="status" label="状态" width="100">
-          <template #default="{ row }">
-            <el-tag :type="row.status === 'normal' ? 'success' : 'warning'" size="small">
-              {{ row.status === 'normal' ? '正常' : '异常' }}
-            </el-tag>
-          </template>
-        </el-table-column>
-      </el-table>
-
-      <el-empty v-else description="暂无指标数据" />
-
       <!-- 原始输出 -->
       <el-divider content-position="left">
         <el-icon><Document /></el-icon>
@@ -161,6 +122,45 @@
           </el-table-column>
         </el-table>
       </template>
+
+      <!-- 指标数据 -->
+      <el-divider content-position="left">
+        <el-icon><DataAnalysis /></el-icon>
+        指标数据
+      </el-divider>
+
+      <el-table :data="detail.metricList || []" stripe v-if="detail.metricList?.length">
+        <el-table-column prop="name" label="指标名称" min-width="150">
+          <template #default="{ row }">
+            <span>{{ row.name }}</span>
+            <el-text type="info" size="small" class="ml-2">({{ row.key }})</el-text>
+          </template>
+        </el-table-column>
+        <el-table-column prop="value" label="数值" width="150">
+          <template #default="{ row }">
+            <span class="metric-value">{{ formatValue(row.value) }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="unit" label="单位" width="80">
+          <template #default="{ row }">
+            {{ row.unit || '-' }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="baseline" label="基准线" width="100">
+          <template #default="{ row }">
+            {{ row.baseline ?? '-' }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="status" label="状态" width="100">
+          <template #default="{ row }">
+            <el-tag :type="row.status === 'normal' ? 'success' : 'warning'" size="small">
+              {{ row.status === 'normal' ? '正常' : '异常' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+      </el-table>
+
+      <el-empty v-else description="暂无指标数据" />
     </template>
 
     <el-empty v-else-if="!loading" description="结果不存在" />
