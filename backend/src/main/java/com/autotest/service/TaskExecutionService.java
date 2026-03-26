@@ -231,7 +231,7 @@ public class TaskExecutionService {
             return 0;
         }
         
-        context.log("[INFO] 步骤数量: " + stepsConfig.size());
+        context.log("[INFO] 步骤数量: " + dag.getAllStepNames().size());
         
         // 初始化 TaskStep 记录
         initTaskSteps(task, taskServers, dag, stepParams);
