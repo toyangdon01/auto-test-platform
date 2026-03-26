@@ -49,7 +49,7 @@ public interface TaskStepMapper extends BaseMapper<TaskStep> {
     @Select("SELECT ts.*, s.name as server_name, s.host as server_host " +
             "FROM task_steps ts " +
             "LEFT JOIN servers s ON ts.server_id = s.id " +
-            "WHERE ts.task_id = #{taskId} " +
+            "WHERE ts.task_id = #{taskId} AND ts.step_name != '_meta' " +
             "ORDER BY ts.id")
     List<TaskStep> findByTaskIdWithServer(@Param("taskId") Long taskId);
     

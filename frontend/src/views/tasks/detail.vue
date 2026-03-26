@@ -505,7 +505,8 @@ async function fetchSteps() {
   try {
     const res = await taskApi.getSteps(taskId)
     if (res.code === 0) {
-      taskSteps.value = res.data || []
+      // 过滤掉 _meta 步骤
+      taskSteps.value = (res.data || []).filter((step: TaskStep) => step.stepName !== '_meta')
       console.log('步骤数据:', taskSteps.value)
       // 打印每个步骤的 output 状态
       taskSteps.value.forEach((step: TaskStep) => {
