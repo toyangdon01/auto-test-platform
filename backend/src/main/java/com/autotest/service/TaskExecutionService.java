@@ -425,24 +425,37 @@ public class TaskExecutionService {
             context.log("执行: " + scriptPath);
             
             StringBuilder logBuilder = new StringBuilder();
-            final int[] lineCount = {0};
-            final int BATCH_LINES = 50; // 每50行批量写入数据库
             final TaskStep updateStep = taskStep; // lambda中使用的final引用
+            
+            // 使用定时器每秒保存输出到数据库（用于执行中实时显示）
+            java.util.Timer saveTimer = new java.util.Timer(true);
+            saveTimer.scheduleAtFixedRate(new java.util.TimerTask() {
+                @Override
+                public void run() {
+                    synchronized(logBuilder) {
+                        updateStep.setOutput(logBuilder.toString());
+                        taskStepMapper.updateById(updateStep);
+                    }
+                }
+            }, 1000, 1000); // 每秒保存
             
             Consumer<String> logConsumer = line -> {
                 context.log("  " + line);
-                logBuilder.append(line).append("\n");
-                lineCount[0]++;
-                
-                // 每50行输出则更新数据库（用于执行中实时显示输出）
-                if (lineCount[0] % BATCH_LINES == 0) {
-                    updateStep.setOutput(logBuilder.toString());
-                    taskStepMapper.updateById(updateStep);
+                synchronized(logBuilder) {
+                    logBuilder.append(line).append("\n");
                 }
             };
             
             int timeout = 300000; // 5分钟默认超时
             SshService.ExecuteResult execResult = SshService.executeCommand(server, command, logConsumer, timeout);
+            
+            // 停止定时保存器
+            saveTimer.cancel();
+            // 最后一次保存完整输出
+            synchronized(logBuilder) {
+                updateStep.setOutput(logBuilder.toString());
+                taskStepMapper.updateById(updateStep);
+            }
             
             context.log("退出码: " + execResult.getExitCode());
             
