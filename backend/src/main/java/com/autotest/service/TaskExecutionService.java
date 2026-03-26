@@ -94,6 +94,14 @@ public class TaskExecutionService {
                 result.put("error", "任务没有关联服务器");
                 return result;
             }
+            
+            // 更新所有服务器状态为 running
+            for (TaskServer ts : taskServers) {
+                ts.setOverallStatus("running");
+                ts.setProgress(0);
+                taskServerMapper.updateById(ts);
+            }
+            
             context.log("目标服务器: " + taskServers.size() + " 台\n");
 
             // 资源上传阶段
