@@ -425,9 +425,20 @@ public class TaskExecutionService {
             context.log("执行: " + scriptPath);
             
             StringBuilder logBuilder = new StringBuilder();
+            final int[] lineCount = {0};
+            final int BATCH_LINES = 50; // 每50行批量写入数据库
+            final TaskStep updateStep = taskStep; // lambda中使用的final引用
+            
             Consumer<String> logConsumer = line -> {
                 context.log("  " + line);
                 logBuilder.append(line).append("\n");
+                lineCount[0]++;
+                
+                // 每50行输出则更新数据库（用于执行中实时显示输出）
+                if (lineCount[0] % BATCH_LINES == 0) {
+                    updateStep.setOutput(logBuilder.toString());
+                    taskStepMapper.updateById(updateStep);
+                }
             };
             
             int timeout = 300000; // 5分钟默认超时
