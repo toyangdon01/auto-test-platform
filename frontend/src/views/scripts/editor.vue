@@ -422,7 +422,9 @@ async function handleSave(andRun: boolean) {
   ElMessage.success('保存成功')
   
   if (andRun) {
-    router.push('/tasks/create')
+    // 传递 scriptId 到任务创建页面
+    const targetScriptId = isEdit.value ? route.params.id : savedScriptId
+    router.push(`/tasks/create?scriptId=${targetScriptId}`)
   } else {
     router.push('/scripts/list')
   }
