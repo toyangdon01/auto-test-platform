@@ -20,27 +20,8 @@ public class SpaConfig implements WebMvcConfigurer {
 
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
+        // 静态资源处理（排除 API 路径）
         registry.addResourceHandler("/**")
-                .addResourceLocations("classpath:/static/")
-                .resourceChain(true)
-                .addResolver(new PathResourceResolver() {
-                    @Override
-                    protected Resource getResource(String resourcePath, Resource location) throws IOException {
-                        Resource requestedResource = location.createRelative(resourcePath);
-                        
-                        // 如果请求的资源存在，直接返回
-                        if (requestedResource.exists() && requestedResource.isReadable()) {
-                            return requestedResource;
-                        }
-                        
-                        // API 请求不处理（交给 Controller）
-                        if (resourcePath.startsWith("api/")) {
-                            return null;
-                        }
-                        
-                        // 其他请求返回 index.html（SPA 路由支持）
-                        return new ClassPathResource("/static/index.html");
-                    }
-                });
+                .addResourceLocations("classpath:/static/");
     }
 }

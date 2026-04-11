@@ -1,18 +1,28 @@
 package com.autotest.service.impl;
 
+import com.autotest.config.ScriptConfig;
 import com.autotest.dto.*;
+import com.autotest.entity.Script;
+import com.autotest.entity.ScriptVersion;
 import com.autotest.exception.BusinessException;
+import com.autotest.mapper.ScriptMapper;
+import com.autotest.mapper.ScriptVersionMapper;
 import com.autotest.service.OnlineImportService;
 import com.autotest.service.ScriptPackageService;
+import static com.autotest.service.ScriptPackageService.ConflictStrategy;
 import com.autotest.util.ArchiveUrlBuilder;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.io.*;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.file.*;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
@@ -28,6 +38,17 @@ public class OnlineImportServiceImpl implements OnlineImportService {
 
     @Autowired
     private ScriptPackageService packageService;
+    
+    @Autowired
+    private ScriptMapper scriptMapper;
+    
+    @Autowired
+    private ScriptVersionMapper scriptVersionMapper;
+    
+    @Value("${autotest.storage.scripts-path:C:/data/auto-test/scripts}")
+    private String scriptsPath;
+    
+    private final YAMLMapper yamlMapper = new YAMLMapper();
 
     // 临时文件存储目录
     private static final String TEMP_DIR = System.getProperty("java.io.tmpdir") + "/autotest_online_import/";
@@ -136,12 +157,9 @@ public class OnlineImportServiceImpl implements OnlineImportService {
         }
         
         try {
-            // 2. 复用现有导入逻辑
-            ImportResult result = packageService.importPackage(
-                scriptDir,
-                request.getSelectedScripts(),
-                ConflictStrategy.valueOf(request.getConflictStrategy())
-            );
+            // 2. 执行导入（复用 ScriptPackageServiceImpl 的导入逻辑）
+            ImportResult result = importFromPath(scriptDir, request.getSelectedScripts(), 
+                ConflictStrategy.valueOf(request.getConflictStrategy()));
             
             log.info("导入完成：成功={}, 跳过={}, 失败={}", 
                 result.getImported(), result.getSkipped(), result.getFailed());
@@ -350,6 +368,167 @@ public class OnlineImportServiceImpl implements OnlineImportService {
         }
     }
 
+    /**
+     * 从 Path 导入脚本（复用 ScriptPackageServiceImpl 的逻辑）
+     */
+    private ImportResult importFromPath(Path scriptDir, List<String> selectedScripts, 
+                                        ConflictStrategy strategy) {
+        ImportResult result = new ImportResult();
+        
+        // 扫描脚本目录
+        List<String> scriptNames;
+        try {
+            scriptNames = selectedScripts != null ? selectedScripts : 
+                Files.list(scriptDir)
+                    .filter(Files::isDirectory)
+                    .filter(p -> Files.exists(p.resolve("autotest.yaml")) || 
+                                Files.exists(p.resolve("main.sh")) ||
+                                Files.exists(p.resolve("main.py")))
+                    .map(p -> p.getFileName().toString())
+                    .toList();
+        } catch (IOException e) {
+            log.error("扫描脚本目录失败", e);
+            result.addError("扫描失败：" + e.getMessage());
+            return result;
+        }
+        
+        result.setTotal(scriptNames.size());
+        log.info("发现 {} 个脚本：{}", scriptNames.size(), scriptNames);
+        
+        // 逐个导入
+        for (String scriptName : scriptNames) {
+            try {
+                importScriptFromPath(scriptDir, scriptName, strategy, result);
+            } catch (Exception e) {
+                result.addFailed(scriptName, e.getMessage());
+                log.error("导入脚本失败：{}", scriptName, e);
+            }
+        }
+        
+        return result;
+    }
+    
+    /**
+     * 导入单个脚本从 Path
+     */
+    private void importScriptFromPath(Path baseDir, String scriptName, 
+                                      ConflictStrategy strategy, ImportResult result) throws IOException {
+        Path scriptDir = baseDir.resolve(scriptName);
+        Path configPath = scriptDir.resolve("autotest.yaml");
+        
+        // 检查 autotest.yaml
+        if (!Files.exists(configPath)) {
+            throw new IOException("缺少 autotest.yaml");
+        }
+        
+        // 解析配置
+        ScriptConfig config;
+        try {
+            config = yamlMapper.readValue(configPath.toFile(), ScriptConfig.class);
+        } catch (Exception e) {
+            throw new IOException("autotest.yaml 解析失败：" + e.getMessage());
+        }
+        
+        // 检查冲突
+        Script existing = scriptMapper.selectOne(
+            new LambdaQueryWrapper<Script>().eq(Script::getName, scriptName)
+        );
+        
+        if (existing != null) {
+            if (strategy == ConflictStrategy.SKIP) {
+                result.addSkipped(scriptName, "脚本已存在");
+                return;
+            } else if (strategy == ConflictStrategy.OVERWRITE) {
+                // TODO: 更新现有脚本
+                result.addSkipped(scriptName, "覆盖功能待实现");
+                return;
+            }
+            // RENAME: 创建新脚本，使用新名称
+            scriptName = scriptName + "_v" + System.currentTimeMillis();
+        }
+        
+        // 创建新脚本
+        createScriptFromPath(scriptName, scriptDir, config, result);
+    }
+    
+    /**
+     * 创建新脚本从 Path
+     */
+    private void createScriptFromPath(String scriptName, Path scriptDir, ScriptConfig config, 
+                                      ImportResult result) throws IOException {
+        // 创建脚本记录
+        Script script = new Script();
+        script.setName(scriptName);
+        script.setScriptType(config.getType() != null ? config.getType() : "shell");
+        script.setTestCategory(config.getCategory() != null ? config.getCategory() : "general");
+        script.setDescription(config.getDescription());
+        script.setDefaultTimeout(config.getTimeout() != null ? config.getTimeout() : 3600);
+        script.setStatus("active");
+        
+        scriptMapper.insert(script);
+        log.info("创建脚本记录：{}", scriptName);
+        
+        // 创建脚本目录
+        Path targetDir = Paths.get(scriptsPath, script.getId().toString());
+        Files.createDirectories(targetDir);
+        
+        // 复制文件
+        copyDirectory(scriptDir, targetDir);
+        log.info("复制脚本文件：{} -> {}", scriptDir, targetDir);
+        
+        // 创建版本记录
+        ScriptVersion version = new ScriptVersion();
+        version.setScriptId(script.getId());
+        version.setVersion("v1.0.0");
+        version.setChangeLog("从在线仓库导入");
+        
+        // 计算文件列表和大小
+        List<Map<String, Object>> fileList = new ArrayList<>();
+        long[] totalSize = {0};
+        
+        Files.walkFileTree(scriptDir, new SimpleFileVisitor<Path>() {
+            @Override
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                Map<String, Object> fileInfo = new HashMap<>();
+                fileInfo.put("path", scriptDir.relativize(file).toString());
+                fileInfo.put("size", attrs.size());
+                fileList.add(fileInfo);
+                totalSize[0] += attrs.size();
+                return FileVisitResult.CONTINUE;
+            }
+        });
+        
+        version.setFileList(fileList);
+        version.setFileCount(fileList.size());
+        version.setTotalSize(totalSize[0]);
+        
+        scriptVersionMapper.insert(version);
+        
+        result.addImported(scriptName, script.getId());
+        log.info("脚本导入成功：{} (id={})", scriptName, script.getId());
+    }
+    
+    /**
+     * 复制目录
+     */
+    private void copyDirectory(Path source, Path target) throws IOException {
+        Files.walkFileTree(source, new SimpleFileVisitor<Path>() {
+            @Override
+            public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
+                Path targetDir = target.resolve(source.relativize(dir));
+                Files.createDirectories(targetDir);
+                return FileVisitResult.CONTINUE;
+            }
+            
+            @Override
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                Path targetFile = target.resolve(source.relativize(file));
+                Files.copy(file, targetFile, StandardCopyOption.REPLACE_EXISTING);
+                return FileVisitResult.CONTINUE;
+            }
+        });
+    }
+    
     /**
      * 临时路径信息
      */

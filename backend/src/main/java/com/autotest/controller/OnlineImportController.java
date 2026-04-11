@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.*;
  * 在线导入控制器
  */
 @RestController
-@RequestMapping("/api/v1/scripts/import/online")
+@RequestMapping("/scripts/import/online")
 @Slf4j
 public class OnlineImportController {
 
