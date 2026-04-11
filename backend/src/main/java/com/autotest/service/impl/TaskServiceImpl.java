@@ -1,0 +1,584 @@
+package com.autotest.service.impl;
+
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.autotest.common.PageResult;
+import com.autotest.dto.request.TaskCreateRequest;
+import com.autotest.dto.request.TaskQueryRequest;
+import com.autotest.dto.response.TaskDetailResponse;
+import com.autotest.entity.Script;
+import com.autotest.entity.ScriptVersion;
+import com.autotest.entity.Server;
+import com.autotest.entity.Task;
+import com.autotest.entity.TaskServer;
+import com.autotest.entity.TaskStep;
+import com.autotest.entity.TestResult;
+import com.autotest.exception.BusinessException;
+import com.autotest.mapper.ScriptMapper;
+import com.autotest.mapper.ScriptVersionMapper;
+import com.autotest.mapper.ServerMapper;
+import com.autotest.mapper.TaskMapper;
+import com.autotest.mapper.TaskServerMapper;
+import com.autotest.mapper.TaskStepMapper;
+import com.autotest.mapper.TestResultMapper;
+import com.autotest.service.TaskExecutionService;
+import com.autotest.service.TaskService;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
+
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
+/**
+ * 任务服务实现
+ *
+ * @author auto-test-platform
+ */
+@Slf4j
+@Service
+@RequiredArgsConstructor
+public class TaskServiceImpl implements TaskService {
+
+    private final TaskMapper taskMapper;
+    private final TaskServerMapper taskServerMapper;
+    private final TaskStepMapper taskStepMapper;
+    private final TestResultMapper testResultMapper;
+    private final ScriptMapper scriptMapper;
+    private final ScriptVersionMapper scriptVersionMapper;
+    private final ServerMapper serverMapper;
+    private final TaskExecutionService taskExecutionService;
+
+    @Override
+    public PageResult<Task> listTasks(TaskQueryRequest request) {
+        // 使用关联查询获取脚本名称
+        IPage<Task> page = taskMapper.selectPageWithScriptName(
+            new Page<>(request.getPage(), request.getSize()),
+            request.getName(),
+            request.getStatus(),
+            request.getScriptId()
+        );
+        
+        // 填充服务器统计
+        for (Task task : page.getRecords()) {
+            fillTaskStatistics(task);
+        }
+        
+        return PageResult.of(page);
+    }
+
+    /**
+     * 填充任务统计数据
+     */
+    private void fillTaskStatistics(Task task) {
+        List<TaskServer> servers = taskServerMapper.selectList(
+            new LambdaQueryWrapper<TaskServer>()
+                .eq(TaskServer::getTaskId, task.getId())
+        );
+        
+        int totalCount = servers.size();
+        int successCount = 0;
+        int failCount = 0;
+        int runningCount = 0;
+        
+        for (TaskServer ts : servers) {
+            String overallStatus = ts.getOverallStatus();
+            
+            if ("completed".equals(overallStatus)) {
+                successCount++;
+            } else if ("failed".equals(overallStatus)) {
+                failCount++;
+            } else if ("running".equals(overallStatus) || 
+                       "pending".equals(overallStatus) && "running".equals(task.getStatus())) {
+                // 正在执行或等待执行（任务运行中）
+                runningCount++;
+            }
+        }
+        
+        task.setServerCount(totalCount);
+        task.setSuccessCount(successCount);
+        task.setFailCount(failCount);
+        task.setRunningCount(runningCount);
+        
+        // 更新任务状态（如果有失败的服务器）
+        if (failCount > 0 && "completed".equals(task.getStatus())) {
+            task.setStatus("completed_with_errors");
+            taskMapper.updateById(task);
+        }
+    }
+
+    @Override
+    public TaskDetailResponse getTaskDetail(Long id) {
+        Task task = taskMapper.selectById(id);
+        if (task == null) {
+            throw BusinessException.of("任务不存在");
+        }
+        
+        TaskDetailResponse response = new TaskDetailResponse();
+        response.setId(task.getId());
+        response.setName(task.getName());
+        response.setDescription(task.getDescription());
+        response.setScriptId(task.getScriptId());
+        response.setScriptVersion(task.getScriptVersion());
+        response.setStatus(task.getStatus());
+        response.setSharedParams(task.getSharedParams());
+        response.setStepParams(task.getStepParams());
+        response.setStepServerMapping(task.getStepServerMapping());
+        response.setCollectConfig(task.getCollectConfig());
+        response.setTimeout(task.getTimeout());
+        response.setExecutionMode(task.getExecutionMode());
+        response.setScheduledTime(task.getScheduledTime());
+        response.setParallelMode(task.getParallelMode());
+        response.setMaxParallel(task.getMaxParallel());
+        response.setFailureStrategy(task.getFailureStrategy());
+        response.setCollectEnabled(task.getCollectEnabled());
+        response.setCreatedAt(task.getCreatedAt());
+        response.setStartedAt(task.getStartedAt());
+        response.setFinishedAt(task.getFinishedAt());
+        
+        // 获取脚本信息
+        Script script = scriptMapper.selectById(task.getScriptId());
+        if (script != null) {
+            response.setScriptName(script.getName());
+            
+            TaskDetailResponse.ScriptInfo scriptInfo = new TaskDetailResponse.ScriptInfo();
+            scriptInfo.setId(script.getId());
+            scriptInfo.setName(script.getName());
+            scriptInfo.setVersion(task.getScriptVersion());
+            response.setScript(scriptInfo);
+        }
+        
+        // 获取服务器执行状态
+        LambdaQueryWrapper<TaskServer> tsWrapper = new LambdaQueryWrapper<>();
+        tsWrapper.eq(TaskServer::getTaskId, id);
+        List<TaskServer> taskServers = taskServerMapper.selectList(tsWrapper);
+        
+        List<TaskDetailResponse.ServerProgress> servers = taskServers.stream()
+                .map(ts -> {
+                    TaskDetailResponse.ServerProgress progress = new TaskDetailResponse.ServerProgress();
+                    progress.setServerId(ts.getServerId());
+                    
+                    // 角色信息
+                    progress.setRole(ts.getRole());
+                    
+                    // 当前执行信息
+                    progress.setCurrentPhase(ts.getCurrentPhase());
+                    progress.setCurrentCommand(ts.getCurrentCommand());
+                    progress.setCommandStartedAt(ts.getCommandStartedAt());
+                    
+                    // 整体状态
+                    progress.setOverallStatus(ts.getOverallStatus());
+                    progress.setProgress(ts.getProgress());
+                    
+                    // 获取服务器名称
+                    Server server = serverMapper.selectById(ts.getServerId());
+                    if (server != null) {
+                        progress.setServerName(server.getName());
+                    }
+                    
+                    return progress;
+                })
+                .collect(Collectors.toList());
+        
+        response.setServers(servers);
+        
+        // 计算统计信息
+        int totalCount = servers.size();
+        int successCount = 0;
+        int failCount = 0;
+        
+        for (TaskDetailResponse.ServerProgress sp : servers) {
+            if ("completed".equals(sp.getOverallStatus())) {
+                successCount++;
+            } else if ("failed".equals(sp.getOverallStatus())) {
+                failCount++;
+            }
+        }
+        
+        response.setTotalServers(totalCount);
+        response.setSuccessCount(successCount);
+        response.setFailCount(failCount);
+        
+        return response;
+    }
+    
+    /**
+     * 计算 TaskServer 的整体状态
+     * 步骤执行模式下，状态由 TaskExecutionService 更新
+     */
+    private String calculateOverallStatus(TaskServer ts) {
+        // 直接返回 TaskServer 的 overallStatus 字段
+        // 步骤执行模式下，状态由 TaskExecutionService 根据步骤执行情况更新
+        return ts.getOverallStatus() != null ? ts.getOverallStatus() : "pending";
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Task createTask(TaskCreateRequest request) {
+        // 验证脚本
+        Script script = scriptMapper.selectById(request.getScriptId());
+        if (script == null) {
+            throw BusinessException.of("脚本不存在");
+        }
+        
+        // 验证服务器
+        List<Long> serverIds = request.getServerIds();
+        Boolean isLocal = request.getIsLocal();
+        
+        // 非本地执行时，服务器列表不能为空
+        if ((isLocal == null || !isLocal) && (serverIds == null || serverIds.isEmpty())) {
+            throw BusinessException.of("非本地执行时，服务器列表不能为空");
+        }
+        
+        // 验证服务器（如果有serverIds）
+        if (serverIds != null) {
+            for (Long serverId : serverIds) {
+                Server server = serverMapper.selectById(serverId);
+                if (server == null) {
+                    throw BusinessException.of("服务器不存在: " + serverId);
+                }
+            }
+        }
+        
+        // 如果有本地执行，创建一条本地执行的 TaskServer 记录
+        
+        Task task = new Task();
+        task.setName(request.getName());
+        task.setDescription(request.getDescription());
+        task.setScriptId(request.getScriptId());
+        task.setScriptVersion(request.getScriptVersion());
+        task.setSharedParams(request.getSharedParams());
+        task.setStepParams(request.getStepParams());
+        task.setStepServerMapping(request.getStepServerMapping());
+        task.setExecutionMode(request.getExecutionMode());
+        task.setParallelMode(request.getParallelMode());
+        task.setMaxParallel(request.getMaxParallel());
+        task.setFailureStrategy(request.getFailureStrategy());
+        task.setCollectEnabled(request.getCollectEnabled());
+        task.setTimeout(request.getTimeout());
+        
+        // 如果请求中没有 collectConfig，从脚本版本中获取
+        if (request.getCollectConfig() != null && !request.getCollectConfig().isEmpty()) {
+            task.setCollectConfig(request.getCollectConfig());
+        } else {
+            // outputConfig 已废弃，不再使用
+        }
+        
+        task.setRoleExecutionStrategy(request.getRoleExecutionStrategy());
+        task.setStatus("pending");
+        task.setCreatedAt(LocalDateTime.now());
+        task.setUpdatedAt(LocalDateTime.now());
+        
+        // 定时执行时间
+        if ("scheduled".equals(request.getExecutionMode()) && StringUtils.hasText(request.getScheduledTime())) {
+            task.setScheduledTime(LocalDateTime.parse(request.getScheduledTime()));
+        }
+        
+        taskMapper.insert(task);
+        
+        // 创建任务服务器关联
+        if (serverIds != null && !serverIds.isEmpty()) {
+            for (Long serverId : serverIds) {
+                TaskServer taskServer = new TaskServer();
+                taskServer.setTaskId(task.getId());
+                taskServer.setServerId(serverId);
+                taskServer.setOverallStatus("pending");
+                taskServer.setCreatedAt(LocalDateTime.now());
+                taskServer.setRole("default");
+                taskServerMapper.insert(taskServer);
+            }
+        }
+        
+        // 如果有本地执行，创建一条本地执行的 TaskServer 记录
+        if (Boolean.TRUE.equals(isLocal) && (serverIds == null || serverIds.isEmpty())) {
+            // 只有本地执行，没有远程服务器
+            TaskServer localTaskServer = new TaskServer();
+            localTaskServer.setTaskId(task.getId());
+            localTaskServer.setServerId(null);  // 本地执行没有关联服务器
+            localTaskServer.setIsLocal(true);
+            localTaskServer.setOverallStatus("pending");
+            localTaskServer.setCreatedAt(LocalDateTime.now());
+            localTaskServer.setRole("local");
+            taskServerMapper.insert(localTaskServer);
+        } else if (Boolean.TRUE.equals(isLocal)) {
+            // 同时有本地和远程执行，为本地执行添加一条记录
+            TaskServer localTaskServer = new TaskServer();
+            localTaskServer.setTaskId(task.getId());
+            localTaskServer.setServerId(null);
+            localTaskServer.setIsLocal(true);
+            localTaskServer.setOverallStatus("pending");
+            localTaskServer.setCreatedAt(LocalDateTime.now());
+            localTaskServer.setRole("local");
+            taskServerMapper.insert(localTaskServer);
+        }
+        
+        return task;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Task updateTask(Long id, TaskCreateRequest request) {
+        Task task = taskMapper.selectById(id);
+        if (task == null) {
+            throw BusinessException.of("任务不存在");
+        }
+        
+        if ("running".equals(task.getStatus())) {
+            throw BusinessException.of("执行中的任务不能修改");
+        }
+        
+        // 更新基本信息
+        task.setName(request.getName());
+        task.setDescription(request.getDescription());
+        task.setSharedParams(request.getSharedParams());
+        task.setStepParams(request.getStepParams());
+        task.setStepServerMapping(request.getStepServerMapping());
+        task.setTimeout(request.getTimeout());
+        task.setCollectEnabled(request.getCollectEnabled());
+        task.setCollectConfig(request.getCollectConfig());
+        task.setUpdatedAt(LocalDateTime.now());
+        
+        taskMapper.updateById(task);
+        
+        // 更新服务器关联（如果有变化）
+        if (request.getServerIds() != null && !request.getServerIds().isEmpty()) {
+            // 删除旧的服务器关联
+            LambdaQueryWrapper<TaskServer> deleteWrapper = new LambdaQueryWrapper<>();
+            deleteWrapper.eq(TaskServer::getTaskId, id);
+            taskServerMapper.delete(deleteWrapper);
+            
+            // 创建新的服务器关联
+            for (Long serverId : request.getServerIds()) {
+                TaskServer taskServer = new TaskServer();
+                taskServer.setTaskId(task.getId());
+                taskServer.setServerId(serverId);
+                taskServer.setOverallStatus("pending");
+                taskServer.setCreatedAt(LocalDateTime.now());
+                taskServer.setRole("default");
+                taskServerMapper.insert(taskServer);
+            }
+        }
+        
+        return task;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void deleteTask(Long id) {
+        Task task = taskMapper.selectById(id);
+        if (task == null) {
+            throw BusinessException.of("任务不存在");
+        }
+        
+        // 如果任务正在执行，先取消任务（清理远程进程和工作目录）
+        if ("running".equals(task.getStatus())) {
+            try {
+                taskExecutionService.cancelTask(id);
+            } catch (Exception e) {
+                log.warn("取消运行中的任务失败: {}", e.getMessage());
+            }
+        }
+        
+        // 删除任务步骤（task_steps）
+        LambdaQueryWrapper<TaskStep> stepWrapper = new LambdaQueryWrapper<>();
+        stepWrapper.eq(TaskStep::getTaskId, id);
+        taskStepMapper.delete(stepWrapper);
+        
+        // 删除任务服务器关联（task_servers）
+        LambdaQueryWrapper<TaskServer> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(TaskServer::getTaskId, id);
+        taskServerMapper.delete(wrapper);
+        
+        // 删除测试结果（test_results）
+        LambdaQueryWrapper<TestResult> resultWrapper = new LambdaQueryWrapper<>();
+        resultWrapper.eq(TestResult::getTaskId, id);
+        testResultMapper.delete(resultWrapper);
+        
+        // 删除任务
+        taskMapper.deleteById(id);
+    }
+
+    @Override
+    public void executeTask(Long id) {
+        Task task = taskMapper.selectById(id);
+        if (task == null) {
+            throw BusinessException.of("任务不存在");
+        }
+        
+        String status = task.getStatus();
+        // 不允许正在执行中的任务重复执行
+        if ("running".equals(status)) {
+            throw BusinessException.of("任务正在执行中，请勿重复操作");
+        }
+        
+        // 如果任务不是待执行状态，需要重置状态后再执行
+        if (!"pending".equals(status)) {
+            resetTaskForReExecution(id);
+        }
+        
+        // 获取步骤参数
+        final Map<String, Map<String, Object>> stepParams = task.getStepParams();
+        
+        // 异步执行任务
+        final Long taskId = id;
+        new Thread(() -> {
+            try {
+                taskExecutionService.executeTask(taskId, stepParams);
+            } catch (Exception e) {
+                log.error("任务执行失败: {}", e.getMessage(), e);
+            }
+        }).start();
+    }
+    
+    /**
+     * 重置任务状态以支持重新执行
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void resetTaskForReExecution(Long taskId) {
+        // 重置任务状态
+        Task task = taskMapper.selectById(taskId);
+        task.setStatus("pending");
+        task.setStartedAt(null);
+        task.setFinishedAt(null);
+        task.setUpdatedAt(LocalDateTime.now());
+        taskMapper.updateById(task);
+        
+        // 重置任务服务器状态
+        LambdaQueryWrapper<TaskServer> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(TaskServer::getTaskId, taskId);
+        List<TaskServer> taskServers = taskServerMapper.selectList(wrapper);
+        
+        for (TaskServer ts : taskServers) {
+            ts.setOverallStatus("pending");
+            ts.setProgress(0);
+            ts.setCurrentPhase(null);
+            ts.setCurrentCommand(null);
+            ts.setCommandStartedAt(null);
+            taskServerMapper.updateById(ts);
+        }
+        
+        // 删除旧的步骤记录
+        taskStepMapper.delete(new LambdaQueryWrapper<TaskStep>().eq(TaskStep::getTaskId, taskId));
+        
+        log.info("任务 {} 已重置，准备重新执行", taskId);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void cancelTask(Long id) {
+        Task task = taskMapper.selectById(id);
+        if (task == null) {
+            throw BusinessException.of("任务不存在");
+        }
+        
+        if ("completed".equals(task.getStatus()) || "cancelled".equals(task.getStatus())) {
+            throw BusinessException.of("任务已完成或已取消");
+        }
+        
+        // 调用执行服务的真正取消方法（停止进程、清理工作目录）
+        boolean cancelled = taskExecutionService.cancelTask(id);
+        
+        if (cancelled) {
+            task.setStatus("cancelled");
+        } else {
+            // 如果任务不在运行中，直接标记为取消
+            task.setStatus("cancelled");
+        }
+        
+        task.setFinishedAt(LocalDateTime.now());
+        task.setUpdatedAt(LocalDateTime.now());
+        taskMapper.updateById(task);
+        
+        // 更新所有关联服务器的状态为已取消
+        LambdaQueryWrapper<TaskServer> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(TaskServer::getTaskId, id);
+        List<TaskServer> taskServers = taskServerMapper.selectList(wrapper);
+        for (TaskServer ts : taskServers) {
+            if (!"completed".equals(ts.getOverallStatus())) {
+                ts.setOverallStatus("cancelled");
+                taskServerMapper.updateById(ts);
+            }
+        }
+        
+        log.info("任务 {} 已被取消", id);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void retryTask(Long id) {
+        Task task = taskMapper.selectById(id);
+        if (task == null) {
+            throw BusinessException.of("任务不存在");
+        }
+        
+        String status = task.getStatus();
+        if (!"failed".equals(status) && !"completed_with_errors".equals(status)) {
+            throw BusinessException.of("只有失败的任务可以重试");
+        }
+        
+        task.setStatus("pending");
+        task.setStartedAt(null);
+        task.setFinishedAt(null);
+        task.setUpdatedAt(LocalDateTime.now());
+        taskMapper.updateById(task);
+        
+        // 重置任务服务器状态
+        LambdaQueryWrapper<TaskServer> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(TaskServer::getTaskId, id);
+        List<TaskServer> taskServers = taskServerMapper.selectList(wrapper);
+        for (TaskServer ts : taskServers) {
+            ts.setOverallStatus("pending");
+            ts.setProgress(0);
+            ts.setCurrentPhase(null);
+            ts.setCurrentCommand(null);
+            ts.setCommandStartedAt(null);
+            taskServerMapper.updateById(ts);
+        }
+        
+        // 重置任务步骤状态
+        taskStepMapper.delete(new LambdaQueryWrapper<TaskStep>().eq(TaskStep::getTaskId, id));
+    }
+
+    @Override
+    public Object getTaskProgress(Long id) {
+        // TODO: 实现进度查询
+        return getTaskDetail(id);
+    }
+
+    @Override
+    public Object getTaskLogs(Long id, Long serverId, String stage) {
+        Task task = taskMapper.selectById(id);
+        if (task == null) {
+            throw BusinessException.of("任务不存在");
+        }
+        
+        if (serverId != null) {
+            LambdaQueryWrapper<TaskServer> wrapper = new LambdaQueryWrapper<>();
+            wrapper.eq(TaskServer::getTaskId, id)
+                    .eq(TaskServer::getServerId, serverId);
+            TaskServer taskServer = taskServerMapper.selectOne(wrapper);
+            if (taskServer == null) {
+                throw BusinessException.of("任务服务器不存在");
+            }
+            return taskServer;
+        }
+        
+        // 返回所有服务器日志
+        LambdaQueryWrapper<TaskServer> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(TaskServer::getTaskId, id);
+        return taskServerMapper.selectList(wrapper);
+    }
+    
+    @Override
+    public Map<String, Integer> fixAllTaskStatus() {
+        // 步骤执行模式下，状态由 TaskExecutionService 管理
+        // 此方法主要用于修复异常中断的任务状态
+        int fixedTasks = 0;
+        return Map.of("fixedTasks", fixedTasks);
+    }
+}

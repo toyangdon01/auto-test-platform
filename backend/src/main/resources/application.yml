@@ -1,0 +1,144 @@
+server:
+  port: 8080
+  servlet:
+    context-path: /api/v1
+
+spring:
+  application:
+    name: auto-test-platform
+  
+  # 排除 Redis 自动配置（暂未安装）
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration
+  
+  # 数据库初始化（首次启动时执行）
+  sql:
+    init:
+      mode: always  # 首次部署时执行 schema.sql 和 data.sql
+      schema-locations: classpath:schema.sql
+      data-locations: classpath:data.sql
+      continue-on-error: false
+    
+  # 数据源配置 - SQLite
+  datasource:
+    driver-class-name: org.sqlite.JDBC
+    url: jdbc:sqlite:${user.home}/.autotest/test_platform.db?foreign_keys=on&journal_mode=WAL
+    # SQLite 不需要用户名密码
+    hikari:
+      maximum-pool-size: 1  # SQLite 单连接即可
+  
+  # Redis 配置
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      password:
+      database: 0
+      timeout: 10000
+      lettuce:
+        pool:
+          max-active: 8
+          max-wait: -1
+          max-idle: 8
+          min-idle: 0
+  
+  # 文件上传配置
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 20GB
+      max-request-size: 20GB
+  
+  # Jackson JSON 配置
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: Asia/Shanghai
+    default-property-inclusion: non_null
+    serialization:
+      write-dates-as-timestamps: false
+    deserialization:
+      fail-on-unknown-properties: false
+
+# MyBatis-Plus 配置
+mybatis-plus:
+  mapper-locations: classpath*:/mapper/**/*.xml
+  type-aliases-package: com.autotest.entity
+  type-handlers-package: com.autotest.handler
+  global-config:
+    db-config:
+      id-type: auto
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+    banner: false
+  configuration:
+    map-underscore-to-camel-case: true
+    cache-enabled: false
+    call-setters-on-nulls: true
+    jdbc-type-for-null: 'NULL'
+    default-executor-type: reuse
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+
+# 平台自定义配置
+autotest:
+  # 存储路径配置
+  storage:
+    scripts-path: C:/data/auto-test/scripts
+    reports-path: C:/data/auto-test/reports
+    temp-path: C:/data/auto-test/temp
+    results-path: C:/data/auto-test/results
+  
+  # SSH 连接配置
+  ssh:
+    connect-timeout: 30000
+    exec-timeout: 3600000
+    default-port: 22
+  
+  # 任务执行配置
+  task:
+    max-parallel: 10
+    default-timeout: 3600
+    log-keep-days: 30
+    report-keep-days: 90
+    metric-keep-days: 180
+  
+  # 指标采集配置
+  metric:
+    default-interval: 5
+    max-interval: 60
+
+# 日志配置
+logging:
+  level:
+    root: INFO
+    com.autotest: DEBUG
+    org.springframework.web: DEBUG
+    org.springframework.scheduling: INFO
+    org.mybatis: DEBUG
+    org.apache.ibatis: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{50} - %msg%n"
+  file:
+    name: logs/auto-test-platform.log
+    max-size: 10MB
+    max-history: 30
+
+# Actuator 配置
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: when_authorized
+
+# OpenAPI 文档配置
+springdoc:
+  api-docs:
+    path: /docs
+  swagger-ui:
+    path: /swagger-ui.html
+    enabled: true

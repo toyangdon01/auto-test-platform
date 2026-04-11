@@ -1,0 +1,18 @@
+# 测试环境配置
+websocket:
+  enabled: false
+
+spring:
+  datasource:
+    driver-class-name: org.sqlite.JDBC
+    url: jdbc:sqlite:file::memory:?cache=shared
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema.sql
+
+# 禁用 Redis
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration

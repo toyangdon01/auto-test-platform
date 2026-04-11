@@ -1,0 +1,89 @@
+package com.autotest.entity;
+
+import com.baomidou.mybatisplus.annotation.*;
+import com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler;
+import com.autotest.handler.JsonbTypeHandler;
+import com.autotest.handler.JsonbListTypeHandler;
+import lombok.Data;
+
+import java.io.Serializable;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * 脚本版本实体
+ *
+ * @author auto-test-platform
+ */
+@Data
+@TableName(value = "script_versions", autoResultMap = true)
+public class ScriptVersion implements Serializable {
+
+    private static final long serialVersionUID = 1L;
+
+    @TableId(value = "id", type = IdType.AUTO)
+    private Long id;
+
+    /**
+     * 脚本 ID
+     */
+    private Long scriptId;
+
+    /**
+     * 版本号
+     */
+    private String version;
+
+    /**
+     * 文件列表（JSONB List）
+     */
+    @TableField(typeHandler = JsonbListTypeHandler.class)
+    private List<Map<String, Object>> fileList;
+
+    /**
+     * 存储路径
+     */
+    private String storagePath;
+
+    /**
+     * 总大小（字节）
+     */
+    private Long totalSize;
+
+    /**
+     * 文件数量
+     */
+    private Integer fileCount;
+
+    /**
+     * 文件校验和
+     */
+    private String checksum;
+
+    /**
+     * 执行步骤配置（JSONB）
+     * 格式：{"step_name": {"displayName": "...", "script": "...", "dependsOn": [], ...}, ...}
+     */
+    @TableField(typeHandler = JsonbTypeHandler.class)
+    private Map<String, Object> steps;
+
+    /**
+     * 执行参数定义（JSONB）
+     * 共享参数，传递给所有执行步骤
+     * 格式：[{"name": "DURATION", "displayName": "测试时长", "default": 60, "description": "测试持续时间"}, ...]
+     */
+    @TableField(typeHandler = JsonbListTypeHandler.class)
+    private java.util.List<Map<String, Object>> parameters;
+
+    /**
+     * 变更日志
+     */
+    private String changeLog;
+
+    /**
+     * 创建时间
+     */
+    @TableField(fill = FieldFill.INSERT)
+    private LocalDateTime createdAt;
+}
