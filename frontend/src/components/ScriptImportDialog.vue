@@ -18,9 +18,11 @@
           <el-form-item label="导入方式">
             <el-radio-group v-model="importType">
               <el-radio value="file">离线包导入</el-radio>
+              <el-radio value="online">在线导入</el-radio>
             </el-radio-group>
           </el-form-item>
           
+          <!-- 离线包导入 -->
           <el-form-item label="选择文件" v-if="importType === 'file'">
             <el-upload
               ref="uploadRef"
@@ -41,6 +43,36 @@
               </template>
             </el-upload>
           </el-form-item>
+          
+          <!-- 在线导入 -->
+          <template v-if="importType === 'online'">
+            <el-form-item label="仓库地址">
+              <el-input 
+                v-model="onlineForm.url" 
+                placeholder="https://gitee.com/user/scripts 或 https://github.com/user/scripts"
+              />
+              <div class="form-tip">支持 Gitee / GitHub / GitLab</div>
+            </el-form-item>
+            
+            <el-form-item label="分支/标签">
+              <el-input v-model="onlineForm.branch" placeholder="main" />
+              <div class="form-tip">默认 main，可指定分支或标签</div>
+            </el-form-item>
+            
+            <el-form-item label="子目录">
+              <el-input v-model="onlineForm.subDir" placeholder="scripts/" />
+              <div class="form-tip">可选，脚本在仓库子目录时填写</div>
+            </el-form-item>
+            
+            <el-form-item label="访问令牌">
+              <el-input 
+                v-model="onlineForm.accessToken" 
+                type="password" 
+                show-password 
+                placeholder="可选，私有仓库需要"
+              />
+            </el-form-item>
+          </template>
           
           <el-form-item label="冲突处理">
             <el-radio-group v-model="conflictStrategy">
@@ -140,13 +172,25 @@ import { ref, reactive, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Upload } from '@element-plus/icons-vue'
 import axios from 'axios'
+import { scriptApi } from '@/api/script'
 
 const visible = ref(false)
 const loading = ref(false)
 const activeStep = ref(0)
-const importType = ref('file')
+const importType = ref<'file' | 'online'>('file')
 const conflictStrategy = ref('SKIP')
 const selectedFile = ref<File | null>(null)
+
+// 在线导入表单
+const onlineForm = reactive({
+  url: '',
+  branch: 'main',
+  subDir: '',
+  accessToken: ''
+})
+
+// 在线导入临时路径
+const onlineTempPath = ref('')
 
 interface PreviewData {
   format: string
@@ -186,7 +230,11 @@ const previewScripts = computed(() => {
 
 const canProceed = computed(() => {
   if (activeStep.value === 0) {
-    return selectedFile.value !== null
+    if (importType.value === 'file') {
+      return selectedFile.value !== null
+    } else {
+      return onlineForm.url && onlineForm.url.trim().length > 0
+    }
   }
   return true
 })
@@ -200,6 +248,12 @@ const open = () => {
   preview.value = null
   importResult.value = null
   selectedFile.value = null
+  onlineForm.url = ''
+  onlineForm.branch = 'main'
+  onlineForm.subDir = ''
+  onlineForm.accessToken = ''
+  onlineTempPath.value = ''
+  importType.value = 'file'
   visible.value = true
 }
 
@@ -220,43 +274,72 @@ const prevStep = () => {
 }
 
 const previewPackage = async () => {
-  if (!selectedFile.value) return
-  
   loading.value = true
   try {
-    const formData = new FormData()
-    formData.append('file', selectedFile.value)
-    
-    const response = await axios.post('/api/v1/scripts/package/import/preview', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' }
-    })
-    
-    preview.value = response.data.data
+    if (importType.value === 'online') {
+      // 在线导入预览
+      const response = await scriptApi.previewOnline({
+        url: onlineForm.url,
+        branch: onlineForm.branch,
+        subDir: onlineForm.subDir,
+        accessToken: onlineForm.accessToken
+      })
+      preview.value = {
+        format: 'online',
+        exportedAt: new Date().toISOString(),
+        scripts: response.data.scripts.map((s: any) => s.name)
+      }
+      onlineTempPath.value = response.data.tempPath
+    } else {
+      // 离线包导入预览
+      if (!selectedFile.value) return
+      const formData = new FormData()
+      formData.append('file', selectedFile.value)
+      
+      const response = await axios.post('/api/v1/scripts/package/import/preview', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      })
+      preview.value = response.data.data
+    }
     activeStep.value = 1
   } catch (error: any) {
-    ElMessage.error('预览失败：' + error.message)
+    ElMessage.error('预览失败：' + (error.message || error))
   } finally {
     loading.value = false
   }
 }
 
 const importPackage = async () => {
-  if (!selectedFile.value) return
-  
   loading.value = true
   try {
-    const formData = new FormData()
-    formData.append('file', selectedFile.value)
-    formData.append('conflictStrategy', conflictStrategy.value)
-    
-    const response = await axios.post('/api/v1/scripts/package/import', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' }
-    })
-    
-    importResult.value = response.data.data
+    if (importType.value === 'online') {
+      // 在线导入执行
+      const response = await scriptApi.importOnline({
+        tempPath: onlineTempPath.value,
+        conflictStrategy: conflictStrategy.value
+      })
+      importResult.value = {
+        total: response.data.total,
+        imported: response.data.imported,
+        skipped: response.data.skipped,
+        failed: response.data.failed,
+        scripts: response.data.scripts || []
+      }
+    } else {
+      // 离线包导入执行
+      if (!selectedFile.value) return
+      const formData = new FormData()
+      formData.append('file', selectedFile.value)
+      formData.append('conflictStrategy', conflictStrategy.value)
+      
+      const response = await axios.post('/api/v1/scripts/package/import', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      })
+      importResult.value = response.data.data
+    }
     activeStep.value = 2
   } catch (error: any) {
-    ElMessage.error('导入失败：' + error.message)
+    ElMessage.error('导入失败：' + (error.message || error))
   } finally {
     loading.value = false
   }
@@ -297,5 +380,12 @@ defineExpose({ open })
 .warning-text {
   color: #e6a23c;
   font-size: 12px;
+}
+
+.form-tip {
+  color: #909399;
+  font-size: 12px;
+  line-height: 1.5;
+  margin-top: 4px;
 }
 </style>

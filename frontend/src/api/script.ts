@@ -67,6 +67,25 @@ export const scriptApi = {
   listFiles(scriptId: number) {
     return request.get<string[]>(`/scripts/${scriptId}/file-list`)
   },
+
+  // 在线导入 - 预览
+  previewOnline(data: {
+    url: string
+    branch?: string
+    subDir?: string
+    accessToken?: string
+  }) {
+    return request.post('/scripts/import/online/preview', data)
+  },
+
+  // 在线导入 - 执行
+  importOnline(data: {
+    tempPath: string
+    selectedScripts?: string[]
+    conflictStrategy?: 'SKIP' | 'OVERWRITE' | 'RENAME'
+  }) {
+    return request.post('/scripts/import/online/import', data)
+  },
 }
 
 // 任务类型
