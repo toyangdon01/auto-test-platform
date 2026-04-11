@@ -61,8 +61,8 @@ service.interceptors.response.use(
       return response
     }
     
-    // 业务错误
-    ElMessage.error(data.message || '请求失败')
+    // 业务错误 - 不自动显示消息，让调用方处理
+    // ElMessage.error(data.message || '请求失败')
     return Promise.reject(new Error(data.message || '请求失败'))
   },
   (error) => {

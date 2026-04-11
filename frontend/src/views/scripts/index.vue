@@ -260,7 +260,7 @@
     </el-dialog>
 
     <!-- 导入对话框 -->
-    <ScriptImportDialog ref="importDialogRef" />
+    <ScriptImportDialog ref="importDialogRef" @refresh="fetchData" />
 
     <!-- 导出对话框 -->
     <ScriptExportDialog ref="exportDialogRef" />

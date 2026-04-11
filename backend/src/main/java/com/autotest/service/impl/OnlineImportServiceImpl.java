@@ -543,6 +543,13 @@ public class OnlineImportServiceImpl implements OnlineImportService {
                                         ConflictStrategy strategy) {
         ImportResult result = new ImportResult();
         
+        // 1. 先检查是否有 scripts/ 子目录（与 scanScripts 保持一致）
+        Path scriptsSubDir = scriptDir.resolve("scripts");
+        if (Files.exists(scriptsSubDir) && Files.isDirectory(scriptsSubDir)) {
+            log.info("检测到 scripts/ 子目录，从该目录导入脚本");
+            scriptDir = scriptsSubDir;
+        }
+        
         // 扫描脚本目录
         List<String> scriptNames;
         try {
@@ -631,7 +638,7 @@ public class OnlineImportServiceImpl implements OnlineImportService {
         script.setTestCategory(config.getCategory() != null ? config.getCategory() : "general");
         script.setDescription(config.getDescription());
         script.setDefaultTimeout(config.getTimeout() != null ? config.getTimeout() : 3600);
-        script.setStatus("active");
+        script.setStatus("enabled");
         
         scriptMapper.insert(script);
         log.info("创建脚本记录：{}", scriptName);
@@ -666,6 +673,22 @@ public class OnlineImportServiceImpl implements OnlineImportService {
             }
         });
         
+        // 保存参数和步骤配置
+        if (config.getParameters() != null) {
+            List<Map<String, Object>> params = new ArrayList<>();
+            for (ScriptConfig.ParameterConfig p : config.getParameters()) {
+                Map<String, Object> map = new HashMap<>();
+                map.put("name", p.getName());
+                map.put("type", p.getType());
+                map.put("default", p.getDefaultValue());
+                map.put("description", p.getDescription());
+                params.add(map);
+            }
+            version.setParameters(params);
+        }
+        version.setSteps(config.getSteps());
+        
+        version.setStoragePath(targetDir.toString());
         version.setFileList(fileList);
         version.setFileCount(fileList.size());
         version.setTotalSize(totalSize[0]);

@@ -4,6 +4,7 @@
     title="导入脚本包"
     width="600px"
     :close-on-click-modal="false"
+    @close="handleClose"
   >
     <el-steps :active="activeStep" finish-status="success" align-center>
       <el-step title="选择文件" />
@@ -183,8 +184,8 @@ const selectedFile = ref<File | null>(null)
 
 // 在线导入表单
 const onlineForm = reactive({
-  url: '',
-  branch: 'main',
+  url: 'https://gitee.com/toyangdon1/scripts-package',
+  branch: 'master',
   subDir: '',
   accessToken: ''
 })
@@ -248,8 +249,8 @@ const open = () => {
   preview.value = null
   importResult.value = null
   selectedFile.value = null
-  onlineForm.url = ''
-  onlineForm.branch = 'main'
+  onlineForm.url = 'https://gitee.com/toyangdon1/scripts-package'
+  onlineForm.branch = 'master'
   onlineForm.subDir = ''
   onlineForm.accessToken = ''
   onlineTempPath.value = ''
@@ -303,7 +304,28 @@ const previewPackage = async () => {
     }
     activeStep.value = 1
   } catch (error: any) {
-    ElMessage.error('预览失败：' + (error.message || error))
+    // 解析后端返回的错误信息
+    let errorMsg = '预览失败'
+    if (error.response?.data?.message) {
+      // HTTP 错误响应
+      const backendMsg = error.response.data.message
+      if (backendMsg.includes('403') || backendMsg.toLowerCase().includes('forbidden')) {
+        errorMsg = 'Gitee API 访问受限，请稍后重试或使用访问令牌'
+      } else {
+        errorMsg = backendMsg
+      }
+    } else if (error.message) {
+      // 业务错误 (code !== 0)
+      const backendMsg = error.message
+      if (backendMsg.includes('403') || backendMsg.toLowerCase().includes('forbidden')) {
+        errorMsg = 'Gitee API 访问受限，请稍后重试或使用访问令牌'
+      } else if (backendMsg.includes('获取文件树失败')) {
+        errorMsg = '获取仓库文件列表失败，请检查仓库地址和分支是否正确'
+      } else {
+        errorMsg = backendMsg
+      }
+    }
+    ElMessage.error(errorMsg)
   } finally {
     loading.value = false
   }
@@ -339,7 +361,19 @@ const importPackage = async () => {
     }
     activeStep.value = 2
   } catch (error: any) {
-    ElMessage.error('导入失败：' + (error.message || error))
+    // 解析后端返回的错误信息
+    let errorMsg = '导入失败'
+    if (error.response?.data?.message) {
+      errorMsg = error.response.data.message
+      if (errorMsg.includes('HTTP 403')) {
+        errorMsg = 'Gitee API 访问受限，请稍后重试或使用访问令牌'
+      } else if (errorMsg.includes('临时文件')) {
+        errorMsg = '预览已过期，请重新预览'
+      }
+    } else if (error.message) {
+      errorMsg = '导入失败：' + error.message
+    }
+    ElMessage.error(errorMsg)
   } finally {
     loading.value = false
   }
@@ -364,6 +398,19 @@ const getStatusText = (status: string) => {
 }
 
 defineExpose({ open })
+
+// 触发刷新事件
+const emit = defineEmits<{
+  (e: 'refresh'): void
+}>()
+
+// 处理关闭
+const handleClose = () => {
+  // 如果有导入成功，触发刷新
+  if (importResult.value && importResult.value.imported > 0) {
+    emit('refresh')
+  }
+}
 </script>
 
 <style scoped>

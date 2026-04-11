@@ -37,8 +37,8 @@
       </el-form>
     </div>
 
-    <!-- 统计卡片 -->
-    <div class="stats-row" v-if="statistics">
+    <!-- 统计卡片 - 已隐藏 -->
+    <!-- <div class="stats-row" v-if="statistics">
       <div class="stat-card">
         <div class="stat-value">{{ statistics.total }}</div>
         <div class="stat-label">总结果</div>
@@ -59,7 +59,7 @@
         <div class="stat-value">{{ statistics.passRate }}%</div>
         <div class="stat-label">通过率</div>
       </div>
-    </div>
+    </div> -->
 
     <!-- 表格 -->
     <el-table :data="results" stripe v-loading="loading">
