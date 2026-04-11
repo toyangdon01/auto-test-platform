@@ -21,6 +21,8 @@ import org.springframework.stereotype.Service;
 import java.io.*;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.*;
@@ -82,15 +84,14 @@ public class OnlineImportServiceImpl implements OnlineImportService {
             repoInfo.setSubDir(request.getSubDir());
         }
         
-        // 4. 构建下载 URL
-        String downloadUrl = ArchiveUrlBuilder.build(repoInfo, request.getAccessToken());
-        log.info("下载 URL: {}", downloadUrl);
-        
-        // 5. 下载 ZIP 文件
-        Path tempZip = downloadArchive(downloadUrl);
-        
-        // 6. 解压到临时目录
-        Path tempDir = unzipArchive(tempZip);
+        // 4. 使用 API 方式下载文件（避免防机器人验证）
+        Path tempDir;
+        try {
+            tempDir = downloadFromGitRepo(repoInfo, request.getAccessToken());
+        } catch (IOException e) {
+            log.error("下载仓库失败", e);
+            throw new BusinessException("下载仓库失败：" + e.getMessage());
+        }
         
         // 7. 如果有子目录，定位到子目录
         Path scriptDir = tempDir;
@@ -119,13 +120,6 @@ public class OnlineImportServiceImpl implements OnlineImportService {
         response.setTempPath(tempPathId);
         
         log.info("预览完成：发现 {} 个脚本，临时路径 ID={}", scripts.size(), tempPathId);
-        
-        // 清理临时 ZIP 文件
-        try {
-            Files.deleteIfExists(tempZip);
-        } catch (IOException e) {
-            log.warn("删除临时 ZIP 失败：{}", e.getMessage());
-        }
         
         return response;
     }
@@ -220,45 +214,202 @@ public class OnlineImportServiceImpl implements OnlineImportService {
     }
 
     /**
-     * 下载 ZIP 文件
+     * 从 Git 仓库下载文件（使用 API 方式，避免防机器人验证）
      */
-    private Path downloadArchive(String downloadUrl) {
-        try {
-            // 创建临时目录
-            Path tempDir = Paths.get(TEMP_DIR);
-            Files.createDirectories(tempDir);
-            
-            // 生成临时文件名
-            Path tempZip = tempDir.resolve("repo_" + System.currentTimeMillis() + ".zip");
-            
-            // 下载文件
-            URL url = new URL(downloadUrl);
-            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-            conn.setConnectTimeout(60000);
-            conn.setReadTimeout(60000);
-            conn.setRequestProperty("User-Agent", "Mozilla/5.0 (AutoTest Platform)");
-            
-            int responseCode = conn.getResponseCode();
-            if (responseCode != HttpURLConnection.HTTP_OK) {
-                throw new BusinessException("下载失败：HTTP " + responseCode);
+    private Path downloadFromGitRepo(GitRepoInfo info, String accessToken) throws IOException {
+        log.info("使用 API 方式下载仓库：{}/{}/{}", info.getOwner(), info.getRepo(), info.getBranch());
+        
+        // 创建临时目录
+        Path tempDir = Files.createTempDirectory("git-import-");
+        
+        // 1. 调用 API 获取文件树
+        List<GitFileInfo> files = fetchFileTree(info, accessToken);
+        log.info("获取到 {} 个文件", files.size());
+        
+        // 2. 下载每个文件
+        for (GitFileInfo file : files) {
+            Path targetPath = tempDir.resolve(file.path);
+            Files.createDirectories(targetPath.getParent());
+            downloadFile(info, file.path, file.sha, accessToken, targetPath);
+        }
+        
+        log.info("下载完成：{} 个文件到 {}", files.size(), tempDir);
+        return tempDir;
+    }
+    
+    /**
+     * 获取仓库文件树
+     */
+    private List<GitFileInfo> fetchFileTree(GitRepoInfo info, String accessToken) throws IOException {
+        String apiUrl = String.format(
+            "https://gitee.com/api/v5/repos/%s/%s/git/trees/%s?recursive=1",
+            info.getOwner(), info.getRepo(), info.getBranch()
+        );
+        
+        if (accessToken != null && !accessToken.isEmpty()) {
+            apiUrl += "&access_token=" + URLEncoder.encode(accessToken, StandardCharsets.UTF_8);
+        }
+        
+        URL url = new URL(apiUrl);
+        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+        conn.setConnectTimeout(60000);
+        conn.setReadTimeout(60000);
+        conn.setRequestProperty("Accept", "application/json");
+        
+        int responseCode = conn.getResponseCode();
+        if (responseCode != HttpURLConnection.HTTP_OK) {
+            throw new BusinessException("获取文件树失败：HTTP " + responseCode);
+        }
+        
+        // 解析 JSON 响应
+        StringBuilder json = new StringBuilder();
+        try (BufferedReader in = new BufferedReader(new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = in.readLine()) != null) {
+                json.append(line);
             }
+        }
+        
+        // 简单解析 JSON，提取文件信息
+        List<GitFileInfo> files = new ArrayList<>();
+        String treeJson = extractJsonArray(json.toString(), "tree");
+        
+        // 解析每个文件对象
+        Pattern filePattern = Pattern.compile("\"path\":\"([^\"]+)\",\"mode\":\"[^\"]+\",\"type\":\"(blob|tree)\",\"sha\":\"([^\"]+)\"");
+        Matcher matcher = filePattern.matcher(treeJson);
+        
+        while (matcher.find()) {
+            String path = matcher.group(1);
+            String type = matcher.group(2);
+            String sha = matcher.group(3);
             
-            try (InputStream in = conn.getInputStream();
-                 OutputStream out = Files.newOutputStream(tempZip)) {
-                
-                byte[] buffer = new byte[8192];
-                int bytesRead;
-                while ((bytesRead = in.read(buffer)) != -1) {
-                    out.write(buffer, 0, bytesRead);
+            // 只处理文件（blob），跳过目录（tree）
+            if ("blob".equals(type)) {
+                // 跳过 .keep 文件和其他不需要的文件
+                if (!path.endsWith(".keep") && !path.equals("README.md")) {
+                    files.add(new GitFileInfo(path, sha));
                 }
             }
-            
-            log.info("下载完成：{} bytes", Files.size(tempZip));
-            return tempZip;
-            
-        } catch (IOException e) {
-            log.error("下载失败：{}", e.getMessage());
-            throw new BusinessException("下载失败：" + e.getMessage());
+        }
+        
+        return files;
+    }
+    
+    /**
+     * 下载单个文件
+     */
+    private void downloadFile(GitRepoInfo info, String filePath, String sha, String accessToken, Path targetPath) throws IOException {
+        // 使用 API 下载文件内容
+        String apiUrl = String.format(
+            "https://gitee.com/api/v5/repos/%s/%s/contents/%s?ref=%s",
+            info.getOwner(), info.getRepo(), 
+            URLEncoder.encode(filePath, StandardCharsets.UTF_8),
+            URLEncoder.encode(info.getBranch(), StandardCharsets.UTF_8)
+        );
+        
+        if (accessToken != null && !accessToken.isEmpty()) {
+            apiUrl += "&access_token=" + URLEncoder.encode(accessToken, StandardCharsets.UTF_8);
+        }
+        
+        URL url = new URL(apiUrl);
+        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+        conn.setConnectTimeout(60000);
+        conn.setReadTimeout(60000);
+        conn.setRequestProperty("Accept", "application/json");
+        
+        int responseCode = conn.getResponseCode();
+        if (responseCode != HttpURLConnection.HTTP_OK) {
+            log.warn("下载文件失败：{} HTTP {}", filePath, responseCode);
+            return;
+        }
+        
+        // 解析 JSON 响应，提取 content 字段
+        StringBuilder json = new StringBuilder();
+        try (BufferedReader in = new BufferedReader(new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = in.readLine()) != null) {
+                json.append(line);
+            }
+        }
+        
+        // 提取 content 字段（Base64 编码）
+        String contentBase64 = extractJsonString(json.toString(), "content");
+        if (contentBase64 != null && !contentBase64.isEmpty()) {
+            // 解码 Base64 并写入文件
+            byte[] content = java.util.Base64.getDecoder().decode(contentBase64);
+            Files.write(targetPath, content);
+        }
+    }
+    
+    /**
+     * 从 JSON 中提取数组
+     */
+    private String extractJsonArray(String json, String key) {
+        int keyIndex = json.indexOf('"' + key + '"');
+        if (keyIndex == -1) return "";
+        
+        int arrayStart = json.indexOf('[', keyIndex);
+        if (arrayStart == -1) return "";
+        
+        int depth = 1;
+        int arrayEnd = arrayStart + 1;
+        while (depth > 0 && arrayEnd < json.length()) {
+            char c = json.charAt(arrayEnd);
+            if (c == '[') depth++;
+            else if (c == ']') depth--;
+            arrayEnd++;
+        }
+        
+        return json.substring(arrayStart, arrayEnd);
+    }
+    
+    /**
+     * 从 JSON 中提取字符串值
+     */
+    private String extractJsonString(String json, String key) {
+        int keyIndex = json.indexOf('"' + key + '"');
+        if (keyIndex == -1) return null;
+        
+        int colonIndex = json.indexOf(':', keyIndex);
+        if (colonIndex == -1) return null;
+        
+        // 跳过空白字符
+        int valueStart = colonIndex + 1;
+        while (valueStart < json.length() && Character.isWhitespace(json.charAt(valueStart))) {
+            valueStart++;
+        }
+        
+        if (valueStart >= json.length()) return null;
+        
+        // 检查是否是字符串
+        if (json.charAt(valueStart) == '"') {
+            valueStart++;
+            int valueEnd = valueStart;
+            while (valueEnd < json.length()) {
+                if (json.charAt(valueEnd) == '\\' && valueEnd + 1 < json.length()) {
+                    valueEnd += 2; // 跳过转义字符
+                } else if (json.charAt(valueEnd) == '"') {
+                    break;
+                } else {
+                    valueEnd++;
+                }
+            }
+            return json.substring(valueStart, valueEnd).replace("\\n", "\n");
+        }
+        
+        return null;
+    }
+    
+    /**
+     * Git 文件信息
+     */
+    private static class GitFileInfo {
+        String path;
+        String sha;
+        
+        GitFileInfo(String path, String sha) {
+            this.path = path;
+            this.sha = sha;
         }
     }
 
@@ -306,10 +457,27 @@ public class OnlineImportServiceImpl implements OnlineImportService {
     private List<ScriptPreview> scanScripts(Path dir) {
         List<ScriptPreview> scripts = new ArrayList<>();
         
+        // 1. 先检查是否有 scripts/ 子目录
+        Path scriptsDir = dir.resolve("scripts");
+        if (Files.exists(scriptsDir) && Files.isDirectory(scriptsDir)) {
+            log.info("检测到 scripts/ 目录，从该目录扫描脚本");
+            return scanScriptsFromDirectory(scriptsDir);
+        }
+        
+        // 2. 否则扫描根目录
+        return scanScriptsFromDirectory(dir);
+    }
+    
+    /**
+     * 从指定目录扫描脚本
+     */
+    private List<ScriptPreview> scanScriptsFromDirectory(Path dir) {
+        List<ScriptPreview> scripts = new ArrayList<>();
+        
         try (Stream<Path> paths = Files.list(dir)) {
             paths.filter(Files::isDirectory)
                 .forEach(scriptDir -> {
-                    // 检查是否有 autotest.yaml 或 main.sh
+                    // 检查是否有 autotest.yaml 或 main.sh 或 main.py
                     Path yamlPath = scriptDir.resolve("autotest.yaml");
                     Path mainPath = scriptDir.resolve("main.sh");
                     Path mainPyPath = scriptDir.resolve("main.py");
