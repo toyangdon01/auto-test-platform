@@ -420,6 +420,75 @@ CREATE TABLE IF NOT EXISTS system_config (
 -- ============================================================
 
 -- ============================================================
+-- 任务编排表
+-- ============================================================
+
+-- 编排定义表
+CREATE TABLE IF NOT EXISTS pipelines (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name VARCHAR(100) NOT NULL,
+    description TEXT,
+    max_parallel INTEGER DEFAULT 5,
+    enabled BOOLEAN DEFAULT 1,
+    created_by VARCHAR(100),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_pipelines_name ON pipelines(name);
+CREATE INDEX IF NOT EXISTS idx_pipelines_enabled ON pipelines(enabled);
+
+-- 编排任务配置表
+CREATE TABLE IF NOT EXISTS pipeline_tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    pipeline_id BIGINT NOT NULL REFERENCES pipelines(id) ON DELETE CASCADE,
+    name VARCHAR(100) NOT NULL,
+    script_id BIGINT NOT NULL REFERENCES scripts(id),
+    order_num INTEGER DEFAULT 0,
+    server_ids TEXT,
+    step_server_mapping TEXT,
+    step_params TEXT,
+    shared_params TEXT,
+    timeout BIGINT,
+    enabled BOOLEAN DEFAULT 1,
+    depends_on TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_pipeline_tasks_pipeline_id ON pipeline_tasks(pipeline_id);
+CREATE INDEX IF NOT EXISTS idx_pipeline_tasks_order ON pipeline_tasks(pipeline_id, order_num);
+
+-- 编排执行记录表
+CREATE TABLE IF NOT EXISTS pipeline_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    pipeline_id BIGINT NOT NULL REFERENCES pipelines(id) ON DELETE CASCADE,
+    pipeline_name VARCHAR(100),
+    status VARCHAR(20) DEFAULT 'pending',
+    started_at TIMESTAMP,
+    finished_at TIMESTAMP,
+    triggered_by VARCHAR(100),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_pipeline_runs_pipeline_id ON pipeline_runs(pipeline_id);
+CREATE INDEX IF NOT EXISTS idx_pipeline_runs_status ON pipeline_runs(status);
+CREATE INDEX IF NOT EXISTS idx_pipeline_runs_created_at ON pipeline_runs(created_at);
+
+-- 编排执行任务关联表
+CREATE TABLE IF NOT EXISTS pipeline_run_tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    pipeline_run_id BIGINT NOT NULL REFERENCES pipeline_runs(id) ON DELETE CASCADE,
+    task_id BIGINT NOT NULL REFERENCES tasks(id),
+    task_name VARCHAR(100),
+    status VARCHAR(20) DEFAULT 'pending',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_pipeline_run_tasks_run_id ON pipeline_run_tasks(pipeline_run_id);
+CREATE INDEX IF NOT EXISTS idx_pipeline_run_tasks_task_id ON pipeline_run_tasks(task_id);
+
+-- ============================================================
 -- 数据库初始化完成
--- 表数量：18
+-- 表数量：22
 -- ============================================================

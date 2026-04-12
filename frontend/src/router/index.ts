@@ -126,6 +126,44 @@ const routes: RouteRecordRaw[] = [
     ],
   },
   {
+    path: '/pipelines',
+    component: Layout,
+    redirect: '/pipelines/list',
+    meta: { title: '任务编排', icon: 'Operation' },
+    children: [
+      {
+        path: 'list',
+        name: 'PipelineList',
+        component: () => import('@/views/pipelines/index.vue'),
+        meta: { title: '编排列表' },
+      },
+      {
+        path: 'runs',
+        name: 'PipelineRuns',
+        component: () => import('@/views/pipelines/runs.vue'),
+        meta: { title: '执行记录', hidden: true },
+      },
+      {
+        path: 'create',
+        name: 'PipelineCreate',
+        component: () => import('@/views/pipelines/editor.vue'),
+        meta: { title: '创建编排', hidden: true },
+      },
+      {
+        path: 'edit/:id',
+        name: 'PipelineEdit',
+        component: () => import('@/views/pipelines/editor.vue'),
+        meta: { title: '编辑编排', hidden: true },
+      },
+      {
+        path: 'runs/:runId',
+        name: 'PipelineRunDetail',
+        component: () => import('@/views/pipelines/run-detail.vue'),
+        meta: { title: '执行详情', hidden: true },
+      },
+    ],
+  },
+  {
     path: '/results',
     component: Layout,
     redirect: '/results/list',

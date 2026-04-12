@@ -21,7 +21,22 @@ public class SpaConfig implements WebMvcConfigurer {
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
         // 静态资源处理（排除 API 路径）
+        // 由于 context-path 已经是 /api/v1，所有 Controller 都在这个路径下
+        // 所以静态资源处理器不会影响 API 请求
         registry.addResourceHandler("/**")
-                .addResourceLocations("classpath:/static/");
+                .addResourceLocations("classpath:/static/")
+                .resourceChain(true)
+                .addResolver(new PathResourceResolver() {
+                    @Override
+                    protected Resource getResource(String resourcePath, Resource location) throws IOException {
+                        Resource requestedResource = location.createRelative(resourcePath);
+                        // 如果请求的资源存在，返回它
+                        if (requestedResource.exists() && requestedResource.isReadable()) {
+                            return requestedResource;
+                        }
+                        // 否则返回 null，让其他处理器处理
+                        return null;
+                    }
+                });
     }
 }
