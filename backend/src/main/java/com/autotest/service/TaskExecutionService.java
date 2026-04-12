@@ -1420,9 +1420,6 @@ public class TaskExecutionService {
                 logCacheService.appendLog(taskId, line);
             });
             
-            // 创建日志缓存
-            logCacheService.createCache(taskId);
-            
             context.log("========== 步骤重试开始 ==========");
             context.log("任务: " + task.getName());
             context.log("步骤: " + (taskStep.getDisplayName() != null ? taskStep.getDisplayName() : taskStep.getStepName()));
