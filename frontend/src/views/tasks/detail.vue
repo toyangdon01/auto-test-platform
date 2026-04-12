@@ -249,11 +249,21 @@
           </template>
         </el-table-column>
         
-        <el-table-column label="操作" width="80" fixed="right">
+        <el-table-column label="操作" width="120" fixed="right">
           <template #default="{ row }">
-            <el-button type="primary" link @click="showStepDetail(row)" :disabled="!row.output && !row.error && row.status === 'pending'">
-              <el-icon><Document /></el-icon>详情
-            </el-button>
+            <div class="step-actions">
+              <el-button type="primary" link @click="showStepDetail(row)" :disabled="!row.output && !row.error && row.status === 'pending'">
+                <el-icon><Document /></el-icon>详情
+              </el-button>
+              <el-button 
+                v-if="canRetryStep(row.status) && isTaskFinished" 
+                type="warning" 
+                link 
+                @click="showRetryDialog(row)"
+              >
+                <el-icon><RefreshRight /></el-icon>重试
+              </el-button>
+            </div>
           </template>
         </el-table-column>
       </el-table>
@@ -406,6 +416,7 @@
           <el-descriptions-item label="执行脚本">{{ currentStep.script }}</el-descriptions-item>
           <el-descriptions-item label="状态">
             <el-tag :type="getStepStatusType(currentStep.status)" size="small">
+              <el-icon v-if="currentStep.status === 'retrying'" class="is-loading"><Loading /></el-icon>
               {{ getStepStatusText(currentStep.status) }}
             </el-tag>
           </el-descriptions-item>
@@ -456,6 +467,56 @@
           <el-empty description="暂无执行输出" :image-size="60" />
         </div>
       </template>
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button @click="stepDetailVisible = false">关闭</el-button>
+          <el-button v-if="canRetryStep(currentStep?.status) && isTaskFinished" type="warning" @click="showRetryDialog(currentStep)">
+            <el-icon><RefreshRight /></el-icon>重试此步骤
+          </el-button>
+        </div>
+      </template>
+    </el-dialog>
+    
+    <!-- 步骤重试确认弹窗 -->
+    <el-dialog v-model="retryDialogVisible" title="重试步骤" width="500px" :close-on-click-modal="false">
+      <el-form label-width="100px">
+        <el-form-item label="步骤名称">
+          <span>{{ retryStep_data?.displayName || retryStep_data?.stepName }}</span>
+        </el-form-item>
+        <el-form-item label="执行服务器">
+          <span>{{ retryStep_data?.serverName || `Server-${retryStep_data?.serverId}` }}</span>
+        </el-form-item>
+        <el-form-item label="当前状态">
+          <el-tag :type="getStepStatusType(retryStep_data?.status)" size="small">
+            {{ getStepStatusText(retryStep_data?.status) }}
+          </el-tag>
+        </el-form-item>
+        <el-form-item label="级联执行">
+          <el-switch v-model="retryCascade" />
+          <div class="form-tip">
+            开启后将自动执行所有依赖于此步骤的下游步骤
+          </div>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="retryDialogVisible = false">取消</el-button>
+        <el-button type="warning" @click="handleRetryStep" :loading="retrying">
+          <el-icon><RefreshRight /></el-icon>
+          确认重试
+        </el-button>
+      </template>
+    </el-dialog>
+    
+    <!-- 重试实时日志弹窗 -->
+    <el-dialog v-model="retryLogVisible" title="步骤重试日志" width="90%" top="3vh" :close-on-click-modal="false" :show-close="false">
+      <div class="realtime-log-container">
+        <TaskLogStream v-if="retryLogVisible" :task-id="task?.id" task-status="retrying" />
+      </div>
+      <template #footer>
+        <el-button type="primary" @click="closeRetryLog" :disabled="retrying">
+          {{ retrying ? '执行中...' : '关闭' }}
+        </el-button>
+      </template>
     </el-dialog>
   </div>
 </template>
@@ -492,6 +553,13 @@ const currentLogs = ref('')
 const currentResult = ref<any>(null)
 const currentLogPhase = ref<'deploy' | 'run' | 'cleanup' | 'all'>('all')
 const currentStep = ref<TaskStep | null>(null)
+
+// 步骤重试相关
+const retryDialogVisible = ref(false)
+const retryLogVisible = ref(false)
+const retryStep_data = ref<TaskStep | null>(null)
+const retryCascade = ref(false)
+const retrying = ref(false)
 
 let pollTimer: ReturnType<typeof setInterval> | null = null
 
@@ -594,6 +662,12 @@ const stepServerMappingList = computed(() => {
 const collectConfigList = computed(() => {
   if (!task.value?.collectConfig) return []
   return Object.entries(task.value.collectConfig).map(([key, value]) => ({ key, value }))
+})
+
+// 任务是否已完成（可重试步骤）
+const isTaskFinished = computed(() => {
+  const status = task.value?.status
+  return status === 'completed' || status === 'completed_with_errors' || status === 'failed' || status === 'cancelled'
 })
 
 // 格式化步骤参数为表格数据
@@ -727,6 +801,7 @@ function getStatusType(status?: string) {
     completed_with_errors: 'warning',
     failed: 'danger',
     cancelled: 'info',
+    retrying: 'warning',
   }
   return types[status || ''] || 'info'
 }
@@ -739,6 +814,7 @@ function getStatusText(status?: string) {
     completed_with_errors: '部分失败',
     failed: '失败',
     cancelled: '已取消',
+    retrying: '重试中',
   }
   return texts[status || ''] || status || '-'
 }
@@ -750,7 +826,8 @@ function getStepStatusType(status?: string) {
     running: 'warning',
     success: 'success',
     failed: 'danger',
-    skipped: 'warning'
+    skipped: 'warning',
+    retrying: 'warning'
   }
   return types[status || ''] || 'info'
 }
@@ -762,7 +839,8 @@ function getStepStatusText(status?: string) {
     running: '执行中',
     success: '成功',
     failed: '失败',
-    skipped: '已跳过'
+    skipped: '已跳过',
+    retrying: '重试中'
   }
   return texts[status || ''] || status || '未知'
 }
@@ -941,6 +1019,50 @@ async function handleRetry() {
   } catch (e: any) {
     ElMessage.error(e.message || '重试失败')
   }
+}
+
+// 判断步骤是否可以重试
+function canRetryStep(status?: string): boolean {
+  return status === 'failed' || status === 'skipped'
+}
+
+// 显示重试确认弹窗
+function showRetryDialog(step: TaskStep) {
+  retryStep_data.value = step
+  retryCascade.value = false
+  retryDialogVisible.value = true
+}
+
+// 执行步骤重试
+async function handleRetryStep() {
+  if (!retryStep_data.value) return
+  
+  retryDialogVisible.value = false
+  retrying.value = true
+  retryLogVisible.value = true
+  
+  try {
+    const res = await request.post(`/tasks/${taskId}/steps/${retryStep_data.value.id}/retry`, null, {
+      params: { cascade: retryCascade.value }
+    })
+    
+    if (res.code === 0) {
+      ElMessage.success('步骤重试成功')
+    } else {
+      ElMessage.error(res.message || '步骤重试失败')
+    }
+  } catch (e: any) {
+    ElMessage.error(e.message || '步骤重试失败')
+  } finally {
+    retrying.value = false
+    fetchDetail()
+  }
+}
+
+// 关闭重试日志弹窗
+function closeRetryLog() {
+  retryLogVisible.value = false
+  fetchDetail()
 }
 
 async function handleExportMetrics() {
@@ -1608,6 +1730,26 @@ function getErrorMessage(output: string | null): string {
 
 .ml-8 {
   margin-left: 8px;
+}
+
+// 步骤操作按钮
+.step-actions {
+  display: flex;
+  gap: 4px;
+}
+
+// 表单提示
+.form-tip {
+  font-size: 12px;
+  color: #909399;
+  margin-top: 4px;
+}
+
+// 弹窗底部
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 </style>
 

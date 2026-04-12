@@ -178,6 +178,15 @@ public class TaskController {
         }
     }
     
+    @Operation(summary = "重试单个步骤")
+    @PostMapping("/{taskId}/steps/{stepId}/retry")
+    public ApiResponse<Map<String, Object>> retryStep(
+            @PathVariable Long taskId,
+            @PathVariable Long stepId,
+            @RequestParam(defaultValue = "false") boolean cascade) {
+        return ApiResponse.success(taskService.retryStep(taskId, stepId, cascade));
+    }
+    
     @Operation(summary = "下载步骤文件")
     @GetMapping("/steps/{stepId}/files/{fileName}/download")
     public void downloadStepFile(

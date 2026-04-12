@@ -69,4 +69,13 @@ public interface TaskService {
      * 修复所有任务状态
      */
     Map<String, Integer> fixAllTaskStatus();
+    
+    /**
+     * 重试单个步骤
+     * @param taskId 任务ID
+     * @param stepId 步骤ID
+     * @param cascade 是否级联执行下游步骤
+     * @return 重试结果
+     */
+    Map<String, Object> retryStep(Long taskId, Long stepId, boolean cascade);
 }

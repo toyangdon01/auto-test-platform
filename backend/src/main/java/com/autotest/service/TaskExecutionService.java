@@ -1312,4 +1312,381 @@ public class TaskExecutionService {
         // 本地执行使用特殊的标记（-1 表示本地）
         return assignedServerIds != null && assignedServerIds.contains(-1L);
     }
+    
+    // ==================== 步骤重试功能 ====================
+    
+    /**
+     * 正在重试的步骤ID集合（防止重复重试）
+     */
+    private static final Set<Long> retryingSteps = ConcurrentHashMap.newKeySet();
+    
+    /**
+     * 重试单个步骤
+     * @param taskId 任务ID
+     * @param stepId 步骤ID
+     * @param cascade 是否级联执行下游步骤
+     * @return 重试结果
+     */
+    public Map<String, Object> retryStep(Long taskId, Long stepId, boolean cascade) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        
+        // 防止重复重试
+        if (!retryingSteps.add(stepId)) {
+            result.put("success", false);
+            result.put("error", "步骤正在重试中，请勿重复操作");
+            return result;
+        }
+        
+        try {
+            // 1. 校验任务状态
+            Task task = taskMapper.selectById(taskId);
+            if (task == null) {
+                result.put("success", false);
+                result.put("error", "任务不存在");
+                return result;
+            }
+            
+            if (!isTaskFinished(task.getStatus())) {
+                result.put("success", false);
+                result.put("error", "任务未完成，无法重试步骤");
+                return result;
+            }
+            
+            // 2. 获取步骤信息
+            TaskStep taskStep = taskStepMapper.selectById(stepId);
+            if (taskStep == null) {
+                result.put("success", false);
+                result.put("error", "步骤不存在");
+                return result;
+            }
+            
+            if (!taskStep.getTaskId().equals(taskId)) {
+                result.put("success", false);
+                result.put("error", "步骤不属于该任务");
+                return result;
+            }
+            
+            // 3. 校验步骤状态（只有失败或跳过的步骤可以重试）
+            if (!"failed".equals(taskStep.getStatus()) && !"skipped".equals(taskStep.getStatus())) {
+                result.put("success", false);
+                result.put("error", "只有失败或跳过的步骤可以重试");
+                return result;
+            }
+            
+            // 4. 获取服务器信息
+            Server server = null;
+            boolean isLocal = false;
+            if (taskStep.getServerId() != null) {
+                server = serverMapper.selectById(taskStep.getServerId());
+                if (server == null) {
+                    result.put("success", false);
+                    result.put("error", "服务器不存在");
+                    return result;
+                }
+                if (!"online".equals(server.getStatus())) {
+                    result.put("success", false);
+                    result.put("error", "服务器离线，无法重试");
+                    return result;
+                }
+            } else {
+                isLocal = true;
+            }
+            
+            // 5. 获取脚本信息
+            Script script = scriptMapper.selectById(task.getScriptId());
+            ScriptVersion scriptVersion = getScriptVersion(task.getScriptId(), task.getScriptVersion());
+            if (script == null || scriptVersion == null) {
+                result.put("success", false);
+                result.put("error", "脚本或版本不存在");
+                return result;
+            }
+            
+            // 6. 更新任务状态为 retrying
+            String oldTaskStatus = task.getStatus();
+            task.setStatus("retrying");
+            taskMapper.updateById(task);
+            
+            // 7. 更新步骤状态为 retrying
+            taskStep.setStatus("retrying");
+            taskStep.setStartedAt(LocalDateTime.now());
+            taskStep.setFinishedAt(null);
+            taskStep.setExitCode(null);
+            taskStep.setOutput(null);
+            taskStep.setErrorMessage(null);
+            taskStepMapper.updateById(taskStep);
+            
+            // 8. 创建执行上下文
+            ExecutionContext context = new ExecutionContext(taskId, line -> {
+                logCacheService.appendLog(taskId, line);
+            });
+            
+            // 创建日志缓存
+            logCacheService.createCache(taskId);
+            
+            context.log("========== 步骤重试开始 ==========");
+            context.log("任务: " + task.getName());
+            context.log("步骤: " + (taskStep.getDisplayName() != null ? taskStep.getDisplayName() : taskStep.getStepName()));
+            context.log("服务器: " + (isLocal ? "本地环境" : server.getName()));
+            
+            try {
+                // 9. 确保环境就绪
+                if (!isLocal) {
+                    ensureStepEnvironment(task, taskStep, server, scriptVersion, context);
+                }
+                
+                // 10. 执行步骤
+                StepDAG.StepConfig stepConfig = buildStepConfig(taskStep, scriptVersion);
+                boolean success = executeStepOnServer(context, task, server, script, scriptVersion, stepConfig, isLocal);
+                
+                context.log("步骤执行结果: " + (success ? "成功" : "失败"));
+                
+                // 11. 如果需要级联且成功，执行下游步骤
+                if (cascade && success) {
+                    context.log("开始执行下游步骤...");
+                    executeDownstreamSteps(task, taskStep, scriptVersion, context);
+                }
+                
+                // 12. 重新计算任务状态
+                recalculateTaskStatus(task);
+                
+                context.log("========== 步骤重试结束 ==========");
+                
+                // 13. 通知日志缓存服务任务完成
+                logCacheService.completeTask(task.getId());
+                
+                result.put("success", true);
+                result.put("stepStatus", taskStep.getStatus());
+                result.put("taskStatus", task.getStatus());
+                
+            } catch (Exception e) {
+                log.error("步骤重试异常", e);
+                context.log("[ERROR] 步骤重试异常: " + e.getMessage());
+                
+                taskStep.setStatus("failed");
+                taskStep.setErrorMessage(e.getMessage());
+                taskStep.setFinishedAt(LocalDateTime.now());
+                taskStepMapper.updateById(taskStep);
+                
+                recalculateTaskStatus(task);
+                
+                logCacheService.completeTask(task.getId());
+                
+                result.put("success", false);
+                result.put("error", e.getMessage());
+            }
+            
+            return result;
+            
+        } finally {
+            retryingSteps.remove(stepId);
+        }
+    }
+    
+    /**
+     * 判断任务是否已完成
+     */
+    private boolean isTaskFinished(String status) {
+        return "completed".equals(status) 
+            || "completed_with_errors".equals(status) 
+            || "failed".equals(status) 
+            || "cancelled".equals(status);
+    }
+    
+    /**
+     * 确保步骤执行环境就绪
+     */
+    private void ensureStepEnvironment(Task task, TaskStep taskStep, Server server, 
+                                        ScriptVersion scriptVersion, ExecutionContext context) {
+        String workDir = "/tmp/test_platform/task_" + task.getId();
+        
+        // 检查目录是否存在，不存在则创建
+        context.log("检查工作目录: " + workDir);
+        String checkDir = "test -d " + workDir + " || mkdir -p " + workDir;
+        SshService.executeCommand(server, checkDir, null, 10000);
+        
+        // 检查脚本文件是否存在
+        String scriptFile = taskStep.getScript();
+        if (scriptFile != null && !scriptFile.isEmpty()) {
+            scriptFile = scriptFile.replaceAll("^\\./", "").replaceAll("/+", "/");
+            String scriptPath = workDir + "/" + scriptFile;
+            
+            String checkScript = "test -f " + scriptPath + " && echo EXISTS || echo NOT_EXISTS";
+            SshService.ExecuteResult checkResult = SshService.executeCommand(server, checkScript, null, 5000);
+            
+            if (checkResult.getOutput() == null || !checkResult.getOutput().contains("EXISTS")) {
+                context.log("脚本文件不存在，重新上传...");
+                uploadAllScriptFiles(context, server, scriptVersion, workDir);
+            } else {
+                context.log("脚本文件已存在: " + scriptPath);
+            }
+        }
+    }
+    
+    /**
+     * 构建步骤配置
+     */
+    @SuppressWarnings("unchecked")
+    private StepDAG.StepConfig buildStepConfig(TaskStep taskStep, ScriptVersion scriptVersion) {
+        StepDAG.StepConfig config = new StepDAG.StepConfig();
+        config.setName(taskStep.getStepName());
+        config.setDisplayName(taskStep.getDisplayName());
+        config.setScript(taskStep.getScript());
+        config.setResultCollector(taskStep.getResultCollector() != null && taskStep.getResultCollector());
+        
+        // 解析依赖
+        if (taskStep.getDependsOn() != null && !taskStep.getDependsOn().isEmpty()) {
+            config.setDependsOn(Arrays.asList(taskStep.getDependsOn().split(",")));
+        } else {
+            config.setDependsOn(Collections.emptyList());
+        }
+        
+        // 从脚本版本获取参数
+        if (scriptVersion.getSteps() != null) {
+            Map<String, Object> stepsConfig = scriptVersion.getSteps();
+            Map<String, Object> stepDef = (Map<String, Object>) stepsConfig.get(taskStep.getStepName());
+            if (stepDef != null) {
+                config.setParams(stepDef.get("params"));
+                config.setStartupProbe((Map<String, Object>) stepDef.get("startupProbe"));
+                config.setParseRule((Map<String, Object>) stepDef.get("parseRule"));
+            }
+        }
+        
+        return config;
+    }
+    
+    /**
+     * 执行下游步骤
+     */
+    @SuppressWarnings("unchecked")
+    private void executeDownstreamSteps(Task task, TaskStep completedStep, 
+                                         ScriptVersion scriptVersion, ExecutionContext context) {
+        // 查找所有依赖于此步骤的步骤
+        List<TaskStep> downstreamSteps = taskStepMapper.findByTaskIdWithServer(task.getId());
+        
+        for (TaskStep step : downstreamSteps) {
+            // 跳过已完成或正在执行的步骤
+            if ("success".equals(step.getStatus()) || "running".equals(step.getStatus()) || "retrying".equals(step.getStatus())) {
+                continue;
+            }
+            
+            // 检查是否依赖已完成的步骤
+            if (step.getDependsOn() != null && !step.getDependsOn().isEmpty()) {
+                List<String> dependencies = Arrays.asList(step.getDependsOn().split(","));
+                
+                // 检查所有依赖是否都已完成
+                boolean allDependenciesMet = true;
+                for (String dep : dependencies) {
+                    String depName = dep.trim();
+                    TaskStep depStep = findStepByName(downstreamSteps, depName, step.getServerId());
+                    if (depStep == null || !"success".equals(depStep.getStatus())) {
+                        allDependenciesMet = false;
+                        break;
+                    }
+                }
+                
+                if (allDependenciesMet && "skipped".equals(step.getStatus())) {
+                    // 更新步骤状态为重试中
+                    step.setStatus("retrying");
+                    step.setStartedAt(LocalDateTime.now());
+                    step.setFinishedAt(null);
+                    taskStepMapper.updateById(step);
+                    
+                    // 获取服务器
+                    Server server = null;
+                    boolean isLocal = step.getServerId() == null;
+                    if (!isLocal) {
+                        server = serverMapper.selectById(step.getServerId());
+                        if (server == null || !"online".equals(server.getStatus())) {
+                            context.log("[WARN] 服务器不可用，跳过步骤: " + step.getStepName());
+                            continue;
+                        }
+                    }
+                    
+                    Script script = scriptMapper.selectById(task.getScriptId());
+                    StepDAG.StepConfig stepConfig = buildStepConfig(step, scriptVersion);
+                    
+                    context.log("执行下游步骤: " + step.getStepName());
+                    boolean success = executeStepOnServer(context, task, server, script, scriptVersion, stepConfig, isLocal);
+                    context.log("下游步骤 " + step.getStepName() + " 执行结果: " + (success ? "成功" : "失败"));
+                }
+            }
+        }
+    }
+    
+    /**
+     * 根据名称和服务器ID查找步骤
+     */
+    private TaskStep findStepByName(List<TaskStep> steps, String stepName, Long serverId) {
+        for (TaskStep step : steps) {
+            if (stepName.equals(step.getStepName()) && 
+                (serverId == null ? step.getServerId() == null : serverId.equals(step.getServerId()))) {
+                return step;
+            }
+        }
+        return null;
+    }
+    
+    /**
+     * 重新计算任务状态
+     */
+    private void recalculateTaskStatus(Task task) {
+        List<TaskServer> servers = getTaskServers(task.getId());
+        List<TaskStep> steps = taskStepMapper.findByTaskIdWithServer(task.getId());
+        
+        // 统计每个服务器上所有步骤的执行情况
+        int totalServers = servers.size();
+        int successServers = 0;
+        int failedServers = 0;
+        
+        for (TaskServer server : servers) {
+            // 统计该服务器上所有步骤的执行情况
+            List<TaskStep> serverSteps = new ArrayList<>();
+            for (TaskStep step : steps) {
+                if (server.getServerId() == null) {
+                    // 本地执行
+                    if (step.getServerId() == null) {
+                        serverSteps.add(step);
+                    }
+                } else if (server.getServerId().equals(step.getServerId())) {
+                    serverSteps.add(step);
+                }
+            }
+            
+            if (serverSteps.isEmpty()) {
+                continue;
+            }
+            
+            // 检查是否所有步骤都成功
+            boolean allSuccess = serverSteps.stream()
+                .allMatch(s -> "success".equals(s.getStatus()));
+            
+            // 检查是否有失败的步骤
+            boolean hasFailed = serverSteps.stream()
+                .anyMatch(s -> "failed".equals(s.getStatus()));
+            
+            if (allSuccess) {
+                successServers++;
+                server.setOverallStatus("completed");
+            } else if (hasFailed) {
+                failedServers++;
+                server.setOverallStatus("failed");
+            } else {
+                // 还有 pending/running/skipped 的步骤
+                server.setOverallStatus("running");
+            }
+            server.setProgress(100);
+            taskServerMapper.updateById(server);
+        }
+        
+        // 更新任务状态
+        if (successServers == totalServers) {
+            task.setStatus("completed");
+        } else if (successServers == 0) {
+            task.setStatus("failed");
+        } else {
+            task.setStatus("completed_with_errors");
+        }
+        
+        taskMapper.updateById(task);
+    }
 }

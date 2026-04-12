@@ -581,4 +581,9 @@ public class TaskServiceImpl implements TaskService {
         int fixedTasks = 0;
         return Map.of("fixedTasks", fixedTasks);
     }
+    
+    @Override
+    public Map<String, Object> retryStep(Long taskId, Long stepId, boolean cascade) {
+        return taskExecutionService.retryStep(taskId, stepId, cascade);
+    }
 }
