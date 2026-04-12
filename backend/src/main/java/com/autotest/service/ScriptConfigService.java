@@ -345,6 +345,13 @@ public class ScriptConfigService {
                 rc.setTargetPath(sr.getTargetPath());
                 rc.setPermissions(sr.getPermissions());
                 rc.setOrder(sr.getUploadOrder());
+                
+                // 查询资源文件的 MD5 值，支持跨项目导入
+                ResourceFile resourceFile = resourceFileMapper.selectById(sr.getResourceId());
+                if (resourceFile != null && resourceFile.getChecksum() != null) {
+                    rc.setResourceMd5(resourceFile.getChecksum());
+                }
+                
                 resourceConfigs.add(rc);
             }
             config.setResources(resourceConfigs);
@@ -444,29 +451,51 @@ public class ScriptConfigService {
         
         // 添加新的资源配置
         for (ScriptConfig.ResourceConfig rc : resources) {
-            if (rc.getResourceId() == null) {
-                log.warn("跳过无效资源配置：resourceId 为空");
+            Long resourceId = null;
+            
+            // 优先使用 resourceMd5 查找（跨项目一致性更好）
+            if (rc.getResourceMd5() != null && !rc.getResourceMd5().isEmpty()) {
+                ResourceFile resourceFile = resourceFileMapper.selectOne(
+                    new LambdaQueryWrapper<ResourceFile>()
+                        .eq(ResourceFile::getChecksum, rc.getResourceMd5())
+                );
+                if (resourceFile != null) {
+                    resourceId = resourceFile.getId();
+                    log.info("通过 MD5 找到资源文件：md5={}, resourceId={}", rc.getResourceMd5(), resourceId);
+                } else {
+                    log.warn("资源文件不存在：md5={}", rc.getResourceMd5());
+                }
+            }
+            
+            // 如果 MD5 查找失败，再尝试使用 resourceId
+            if (resourceId == null && rc.getResourceId() != null) {
+                resourceId = rc.getResourceId();
+                log.info("使用配置中的 resourceId: {}", resourceId);
+            }
+            
+            if (resourceId == null) {
+                log.warn("跳过无效资源配置：resourceId 和 resourceMd5 都为空或查找失败");
                 continue;
             }
             
             // 验证资源文件是否存在
-            ResourceFile resourceFile = resourceFileMapper.selectById(rc.getResourceId());
+            ResourceFile resourceFile = resourceFileMapper.selectById(resourceId);
             if (resourceFile == null) {
-                log.warn("资源文件不存在：resourceId={}", rc.getResourceId());
+                log.warn("资源文件不存在：resourceId={}", resourceId);
                 continue;
             }
             
             // 创建资源关联
             ScriptResource sr = new ScriptResource();
             sr.setScriptId(scriptId);
-            sr.setResourceId(rc.getResourceId());
+            sr.setResourceId(resourceId);
             sr.setTargetPath(rc.getTargetPath() != null ? rc.getTargetPath() : "/tmp");
             sr.setPermissions(rc.getPermissions() != null ? rc.getPermissions() : "644");
             sr.setUploadOrder(rc.getOrder() != null ? rc.getOrder() : 0);
             
             scriptResourceMapper.insert(sr);
             log.info("添加资源关联：scriptId={}, resourceId={}, targetPath={}", 
-                    scriptId, rc.getResourceId(), rc.getTargetPath());
+                    scriptId, resourceId, rc.getTargetPath());
         }
     }
     

@@ -5,9 +5,13 @@ import com.autotest.dto.ExportOptions;
 import com.autotest.dto.ImportResult;
 import com.autotest.dto.PackageManifest;
 import com.autotest.dto.ScriptImportStatus;
+import com.autotest.entity.ResourceFile;
 import com.autotest.entity.Script;
+import com.autotest.entity.ScriptResource;
 import com.autotest.entity.ScriptVersion;
+import com.autotest.mapper.ResourceFileMapper;
 import com.autotest.mapper.ScriptMapper;
+import com.autotest.mapper.ScriptResourceMapper;
 import com.autotest.mapper.ScriptVersionMapper;
 import com.autotest.service.ScriptConfigService;
 import com.autotest.service.ScriptFileService;
@@ -44,13 +48,18 @@ public class ScriptPackageServiceImpl implements ScriptPackageService {
     
     private final ScriptMapper scriptMapper;
     private final ScriptVersionMapper scriptVersionMapper;
+    private final ScriptResourceMapper scriptResourceMapper;
+    private final ResourceFileMapper resourceFileMapper;
     private final ScriptConfigService scriptConfigService;
     private final ScriptFileService scriptFileService;
     
     public ScriptPackageServiceImpl(ScriptMapper scriptMapper, ScriptVersionMapper scriptVersionMapper,
+                                    ScriptResourceMapper scriptResourceMapper, ResourceFileMapper resourceFileMapper,
                                     ScriptConfigService scriptConfigService, ScriptFileService scriptFileService) {
         this.scriptMapper = scriptMapper;
         this.scriptVersionMapper = scriptVersionMapper;
+        this.scriptResourceMapper = scriptResourceMapper;
+        this.resourceFileMapper = resourceFileMapper;
         this.scriptConfigService = scriptConfigService;
         this.scriptFileService = scriptFileService;
     }
@@ -64,6 +73,7 @@ public class ScriptPackageServiceImpl implements ScriptPackageService {
         
         try {
             List<String> scriptNames = new ArrayList<>();
+            Set<String> exportedResources = new LinkedHashSet<>(); // 使用 Set 去重
             
             // 1. 复制每个脚本
             for (Long scriptId : options.getScriptIds()) {
@@ -85,10 +95,15 @@ public class ScriptPackageServiceImpl implements ScriptPackageService {
                 copyDirectory(sourceDir, targetDir);
                 scriptNames.add(script.getName());
                 log.info("导出脚本：{}", script.getName());
+                
+                // 导出关联的资源文件
+                if (options.isIncludeResources()) {
+                    exportScriptResources(scriptId, tempDir, exportedResources);
+                }
             }
             
             // 2. 写入 manifest.json
-            writeManifest(tempDir, scriptNames);
+            writeManifest(tempDir, scriptNames, exportedResources);
             
             // 3. 打包为 ZIP
             String zipPath = tempDir + ".zip";
@@ -256,20 +271,20 @@ public class ScriptPackageServiceImpl implements ScriptPackageService {
                 return;
             } else if (strategy == ConflictStrategy.OVERWRITE) {
                 // 更新现有脚本
-                updateScript(existing.getId(), scriptDir, config, scriptName, result);
+                updateScript(existing.getId(), scriptDir, config, tempDir, scriptName, result);
                 return;
             }
             // RENAME: 继续创建新脚本，使用新名称
         }
         
         // 创建新脚本
-        createScript(scriptName, scriptDir, config, result);
+        createScript(scriptName, scriptDir, config, tempDir, result);
     }
     
     /**
      * 创建新脚本
      */
-    private void createScript(String scriptName, Path scriptDir, ScriptConfig config, ImportResult result) throws IOException {
+    private void createScript(String scriptName, Path scriptDir, ScriptConfig config, Path tempDir, ImportResult result) throws IOException {
         // 创建脚本记录
         Script script = new Script();
         script.setName(scriptName);
@@ -287,6 +302,11 @@ public class ScriptPackageServiceImpl implements ScriptPackageService {
         Path targetDir = Paths.get(scriptsPath, script.getId().toString());
         Files.createDirectories(targetDir);
         copyDirectory(scriptDir, targetDir);
+        
+        // 导入资源文件
+        if (config.getResources() != null && !config.getResources().isEmpty()) {
+            importScriptResources(script.getId(), config.getResources(), tempDir);
+        }
         
         // 创建版本记录
         ScriptVersion version = new ScriptVersion();
@@ -319,7 +339,7 @@ public class ScriptPackageServiceImpl implements ScriptPackageService {
     /**
      * 更新现有脚本
      */
-    private void updateScript(Long scriptId, Path scriptDir, ScriptConfig config, String scriptName, ImportResult result) throws IOException {
+    private void updateScript(Long scriptId, Path scriptDir, ScriptConfig config, Path tempDir, String scriptName, ImportResult result) throws IOException {
         Script script = scriptMapper.selectById(scriptId);
         if (script == null) {
             throw new IOException("脚本不存在");
@@ -346,6 +366,17 @@ public class ScriptPackageServiceImpl implements ScriptPackageService {
         deleteDirectory(targetDir);
         Files.createDirectories(targetDir);
         copyDirectory(scriptDir, targetDir);
+        
+        // 删除旧的资源关联
+        scriptResourceMapper.delete(
+            new LambdaQueryWrapper<ScriptResource>()
+                .eq(ScriptResource::getScriptId, scriptId)
+        );
+        
+        // 导入资源文件
+        if (config.getResources() != null && !config.getResources().isEmpty()) {
+            importScriptResources(scriptId, config.getResources(), tempDir);
+        }
         
         // 更新版本
         ScriptVersion version = scriptVersionMapper.selectOne(
@@ -421,17 +452,207 @@ public class ScriptPackageServiceImpl implements ScriptPackageService {
     }
     
     /**
+     * 导出脚本关联的资源文件
+     */
+    private void exportScriptResources(Long scriptId, Path tempDir, Set<String> exportedResources) throws IOException {
+        List<ScriptResource> resources = scriptResourceMapper.selectList(
+            new LambdaQueryWrapper<ScriptResource>()
+                .eq(ScriptResource::getScriptId, scriptId)
+                .orderByAsc(ScriptResource::getUploadOrder)
+        );
+        
+        if (resources.isEmpty()) {
+            return;
+        }
+        
+        Path resourcesDir = tempDir.resolve("resources");
+        Files.createDirectories(resourcesDir);
+        
+        for (ScriptResource sr : resources) {
+            ResourceFile resourceFile = resourceFileMapper.selectById(sr.getResourceId());
+            if (resourceFile == null) {
+                log.warn("资源文件不存在：resourceId={}", sr.getResourceId());
+                continue;
+            }
+            
+            Path sourcePath = Paths.get(scriptsPath.replace("scripts", "resources"), resourceFile.getStoragePath());
+            if (!Files.exists(sourcePath)) {
+                log.warn("资源文件路径不存在：{}", sourcePath);
+                continue;
+            }
+            
+            // 使用原始文件名，如果同名则添加序号
+            String fileName = resourceFile.getName();
+            Path targetPath = resourcesDir.resolve(fileName);
+            int counter = 1;
+            while (Files.exists(targetPath)) {
+                // 检查是否是同一个文件（MD5相同则跳过）
+                String existingMd5 = calculateMd5(targetPath);
+                if (existingMd5 != null && existingMd5.equals(resourceFile.getChecksum())) {
+                    log.info("资源文件已存在，跳过：{}", fileName);
+                    break;
+                }
+                // 同名但不同文件，添加序号
+                String baseName = getBaseName(resourceFile.getName());
+                String ext = getExtension(resourceFile.getName());
+                fileName = baseName + "_" + counter + ext;
+                targetPath = resourcesDir.resolve(fileName);
+                counter++;
+            }
+            
+            if (!Files.exists(targetPath)) {
+                Files.copy(sourcePath, targetPath, StandardCopyOption.REPLACE_EXISTING);
+                log.info("导出资源文件：{}", fileName);
+            }
+            
+            // 只记录文件名
+            exportedResources.add(fileName);
+        }
+    }
+    
+    /**
+     * 导入脚本关联的资源文件
+     */
+    private void importScriptResources(Long scriptId, List<ScriptConfig.ResourceConfig> resources, Path tempDir) throws IOException {
+        Path resourcesDir = tempDir.resolve("resources");
+        if (!Files.exists(resourcesDir)) {
+            log.warn("resources 目录不存在，跳过资源导入");
+            return;
+        }
+        
+        for (ScriptConfig.ResourceConfig rc : resources) {
+            // 优先使用 MD5 查找现有资源
+            ResourceFile resourceFile = null;
+            if (rc.getResourceMd5() != null && !rc.getResourceMd5().isEmpty()) {
+                resourceFile = resourceFileMapper.selectOne(
+                    new LambdaQueryWrapper<ResourceFile>()
+                        .eq(ResourceFile::getChecksum, rc.getResourceMd5())
+                );
+            }
+            
+            // 如果通过 MD5 找到了，直接关联
+            if (resourceFile != null) {
+                log.info("找到现有资源文件（MD5匹配）：resourceId={}, name={}", resourceFile.getId(), resourceFile.getName());
+            } else {
+                // 需要从包中导入资源文件
+                // 根据资源配置中的信息找到对应文件
+                // 由于 manifest 只记录文件名，我们需要在 resources 目录中查找
+                String targetFileName = null;
+                
+                // 遍历 resources 目录，找到 MD5 匹配的文件
+                if (rc.getResourceMd5() != null) {
+                    List<Path> files = Files.list(resourcesDir)
+                        .filter(Files::isRegularFile)
+                        .collect(Collectors.toList());
+                    
+                    for (Path file : files) {
+                        String md5 = calculateMd5(file);
+                        if (rc.getResourceMd5().equals(md5)) {
+                            targetFileName = file.getFileName().toString();
+                            break;
+                        }
+                    }
+                }
+                
+                if (targetFileName == null) {
+                    log.warn("未找到匹配的资源文件：resourceMd5={}", rc.getResourceMd5());
+                    continue;
+                }
+                
+                Path sourcePath = resourcesDir.resolve(targetFileName);
+                if (!Files.exists(sourcePath)) {
+                    log.warn("资源文件不存在：{}", targetFileName);
+                    continue;
+                }
+                
+                // 创建新的资源文件记录
+                resourceFile = new ResourceFile();
+                resourceFile.setName(targetFileName);
+                resourceFile.setFileSize(Files.size(sourcePath));
+                resourceFile.setChecksum(calculateMd5(sourcePath));
+                resourceFile.setFileType(getExtension(targetFileName));
+                
+                // 生成存储路径
+                String datePath = java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy/MM/dd"));
+                String uuid = java.util.UUID.randomUUID().toString();
+                String storageName = uuid + "_" + targetFileName;
+                String storagePath = datePath + "/" + storageName;
+                
+                resourceFile.setStoragePath(storagePath);
+                
+                // 复制文件到资源存储目录
+                Path targetStoragePath = Paths.get(scriptsPath.replace("scripts", "resources"), storagePath);
+                Files.createDirectories(targetStoragePath.getParent());
+                Files.copy(sourcePath, targetStoragePath, StandardCopyOption.REPLACE_EXISTING);
+                
+                resourceFileMapper.insert(resourceFile);
+                log.info("导入资源文件：id={}, name={}", resourceFile.getId(), resourceFile.getName());
+            }
+            
+            // 创建脚本-资源关联
+            ScriptResource scriptResource = new ScriptResource();
+            scriptResource.setScriptId(scriptId);
+            scriptResource.setResourceId(resourceFile.getId());
+            scriptResource.setTargetPath(rc.getTargetPath());
+            scriptResource.setPermissions(rc.getPermissions());
+            scriptResource.setUploadOrder(rc.getOrder() != null ? rc.getOrder() : 0);
+            
+            scriptResourceMapper.insert(scriptResource);
+            log.info("创建脚本资源关联：scriptId={}, resourceId={}", scriptId, resourceFile.getId());
+        }
+    }
+    
+    /**
+     * 计算文件的 MD5
+     */
+    private String calculateMd5(Path file) {
+        try {
+            java.security.MessageDigest md = java.security.MessageDigest.getInstance("MD5");
+            byte[] fileBytes = Files.readAllBytes(file);
+            byte[] digest = md.digest(fileBytes);
+            StringBuilder sb = new StringBuilder();
+            for (byte b : digest) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+    
+    /**
+     * 获取文件基础名（不含扩展名）
+     */
+    private String getBaseName(String fileName) {
+        if (fileName == null) return "file";
+        int dotIndex = fileName.lastIndexOf('.');
+        return dotIndex > 0 ? fileName.substring(0, dotIndex) : fileName;
+    }
+    
+    /**
+     * 获取文件扩展名
+     */
+    private String getExtension(String fileName) {
+        if (fileName == null) return "";
+        int dotIndex = fileName.lastIndexOf('.');
+        return dotIndex > 0 ? fileName.substring(dotIndex) : "";
+    }
+
+    /**
      * 写入 manifest.json
      */
-    private void writeManifest(Path tempDir, List<String> scriptNames) throws IOException {
+    private void writeManifest(Path tempDir, List<String> scriptNames, Set<String> resources) throws IOException {
         Map<String, Object> manifest = new LinkedHashMap<>();
         manifest.put("format", "autotest-scripts-package/v1");
         manifest.put("exportedAt", LocalDate.now().toString());
         manifest.put("scripts", scriptNames);
+        if (!resources.isEmpty()) {
+            manifest.put("resources", new ArrayList<>(resources));
+        }
         
         Path manifestPath = tempDir.resolve("manifest.json");
         objectMapper.writeValue(manifestPath.toFile(), manifest);
-        log.info("写入 manifest.json: {} 个脚本", scriptNames.size());
+        log.info("写入 manifest.json: {} 个脚本, {} 个资源", scriptNames.size(), resources.size());
     }
     
     /**

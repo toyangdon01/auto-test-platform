@@ -94,7 +94,17 @@ public class ScriptConfig {
      */
     @Data
     public static class ResourceConfig {
+        /**
+         * 资源文件 ID（优先使用）
+         */
         private Long resourceId;
+        
+        /**
+         * 资源文件 MD5 值（resourceId 为空时使用）
+         * 支持跨项目共享脚本，避免 ID 冲突
+         */
+        private String resourceMd5;
+        
         private String targetPath;
         private String permissions;
         private Integer order;

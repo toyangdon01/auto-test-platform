@@ -5,7 +5,7 @@
       <div class="header-actions">
         <el-button @click="showImportDialog">
           <el-icon><Upload /></el-icon>
-          导入
+          批量导入
         </el-button>
         <el-button @click="handleBatchExport" :disabled="selectedScripts.length === 0">
           <el-icon><Download /></el-icon>
