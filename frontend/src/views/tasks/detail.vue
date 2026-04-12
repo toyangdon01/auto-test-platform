@@ -1023,7 +1023,7 @@ async function handleRetry() {
 
 // 判断步骤是否可以重试
 function canRetryStep(status?: string): boolean {
-  return status === 'failed' || status === 'skipped'
+  return status === 'failed' || status === 'skipped' || status === 'success'
 }
 
 // 显示重试确认弹窗

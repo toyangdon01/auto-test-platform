@@ -1366,10 +1366,10 @@ public class TaskExecutionService {
                 return result;
             }
             
-            // 3. 校验步骤状态（只有失败或跳过的步骤可以重试）
-            if (!"failed".equals(taskStep.getStatus()) && !"skipped".equals(taskStep.getStatus())) {
+            // 3. 校验步骤状态（失败、跳过、成功的步骤都可以重试）
+            if (!"failed".equals(taskStep.getStatus()) && !"skipped".equals(taskStep.getStatus()) && !"success".equals(taskStep.getStatus())) {
                 result.put("success", false);
-                result.put("error", "只有失败或跳过的步骤可以重试");
+                result.put("error", "只有失败、跳过或成功的步骤可以重试");
                 return result;
             }
             
