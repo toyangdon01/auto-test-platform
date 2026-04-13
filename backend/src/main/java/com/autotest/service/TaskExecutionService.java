@@ -288,13 +288,22 @@ public class TaskExecutionService {
             // 获取解析规则配置
             Map<String, Object> parseRule = (Map<String, Object>) stepDef.get("parseRule");
             
+            // 获取步骤资源配置
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> resources = (List<Map<String, Object>>) stepDef.get("resources");
+            
+            // 获取文件收集配置
+            Boolean fileCollectEnabled = (Boolean) stepDef.get("fileCollectEnabled");
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> fileCollects = (List<Map<String, Object>>) stepDef.get("fileCollects");
+            
             // 修复：addStep 第 5 个参数是 resultParser，不是 resultCollector
             // resultParser 和 resultCollector 都设置为相同的值，确保结果会被收集
             boolean resultEnabled = resultCollector != null ? resultCollector : false;
             dag.addStep(stepName, displayName, scriptFile, dependsOn, 
                        resultEnabled,  // resultParser
                        params, startupProbe,
-                       null, false, null, parseRule);
+                       resources, fileCollectEnabled != null ? fileCollectEnabled : false, fileCollects, parseRule);
         }
         
         if (dag.hasCycle()) {
@@ -597,6 +606,9 @@ public class TaskExecutionService {
             
             SshService.executeCommand(server, "chmod +x " + scriptPath, null, 5000);
             
+            // 上传步骤专属资源
+            uploadStepResources(context, server, task, stepConfig, workDir);
+            
             // 构建参数
             Map<String, Object> params = new HashMap<>();
             
@@ -869,8 +881,22 @@ public class TaskExecutionService {
                     if (rf == null) continue;
                     
                     String localPath = Paths.get(scriptsPath.replace("scripts", "resources"), rf.getStoragePath()).toString();
-                    // target_path 是相对于任务工作目录的路径
-                    String targetPath = workDir + "/" + sr.getTargetPath();
+                    
+                    // 判断目标路径是绝对路径还是相对路径
+                    String srTargetPath = sr.getTargetPath();
+                    String targetPath;
+                    if (srTargetPath != null && srTargetPath.startsWith("/")) {
+                        // 绝对路径：直接使用
+                        targetPath = srTargetPath;
+                        // 确保父目录存在
+                        String parentDir = targetPath.substring(0, targetPath.lastIndexOf("/"));
+                        if (!parentDir.isEmpty()) {
+                            SshService.executeCommand(server, "mkdir -p " + parentDir, null, 10000);
+                        }
+                    } else {
+                        // 相对路径：拼接到任务工作目录
+                        targetPath = workDir + "/" + (srTargetPath != null ? srTargetPath : "");
+                    }
                     
                     context.log("  上传: " + rf.getName() + " -> " + targetPath);
                     SshService.uploadFile(server, localPath, targetPath);
@@ -878,6 +904,73 @@ public class TaskExecutionService {
                 } catch (Exception e) {
                     context.log("[ERROR] 上传资源失败: " + e.getMessage());
                 }
+            }
+        }
+    }
+
+    /**
+     * 上传步骤专属资源
+     */
+    @SuppressWarnings("unchecked")
+    private void uploadStepResources(ExecutionContext context, Server server, Task task,
+                                      StepDAG.StepConfig stepConfig, String workDir) {
+        List<Map<String, Object>> resources = stepConfig.getResources();
+        if (resources == null || resources.isEmpty()) {
+            return;
+        }
+        
+        context.log("上传步骤资源: " + resources.size() + " 个文件");
+        
+        for (Map<String, Object> res : resources) {
+            try {
+                Object resourceIdObj = res.get("resourceId");
+                if (resourceIdObj == null) continue;
+                
+                Long resourceId;
+                if (resourceIdObj instanceof Long) {
+                    resourceId = (Long) resourceIdObj;
+                } else if (resourceIdObj instanceof Integer) {
+                    resourceId = ((Integer) resourceIdObj).longValue();
+                } else if (resourceIdObj instanceof Number) {
+                    resourceId = ((Number) resourceIdObj).longValue();
+                } else {
+                    context.log("[WARN] 无效的 resourceId 类型: " + resourceIdObj.getClass());
+                    continue;
+                }
+                
+                ResourceFile rf = resourceFileMapper.selectById(resourceId);
+                if (rf == null) {
+                    context.log("[WARN] 资源文件不存在: " + resourceId);
+                    continue;
+                }
+                
+                String localPath = Paths.get(scriptsPath.replace("scripts", "resources"), rf.getStoragePath()).toString();
+                
+                // 获取目标路径和权限
+                String targetPathStr = (String) res.get("targetPath");
+                String permissions = (String) res.getOrDefault("permissions", "644");
+                
+                // 判断目标路径是绝对路径还是相对路径
+                String targetPath;
+                if (targetPathStr != null && targetPathStr.startsWith("/")) {
+                    // 绝对路径：直接使用
+                    targetPath = targetPathStr;
+                    // 确保父目录存在
+                    String parentDir = targetPath.substring(0, targetPath.lastIndexOf("/"));
+                    if (!parentDir.isEmpty()) {
+                        SshService.executeCommand(server, "mkdir -p " + parentDir, null, 10000);
+                    }
+                } else {
+                    // 相对路径：拼接到任务工作目录
+                    targetPath = workDir + "/" + (targetPathStr != null ? targetPathStr : rf.getName());
+                }
+                
+                context.log("  上传步骤资源: " + rf.getName() + " -> " + targetPath);
+                SshService.uploadFile(server, localPath, targetPath);
+                SshService.executeCommand(server, "chmod " + permissions + " " + targetPath, null, 5000);
+                
+            } catch (Exception e) {
+                context.log("[ERROR] 上传步骤资源失败: " + e.getMessage());
             }
         }
     }

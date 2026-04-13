@@ -24,6 +24,7 @@ import com.autotest.mapper.TaskStepMapper;
 import com.autotest.mapper.TestResultMapper;
 import com.autotest.service.TaskExecutionService;
 import com.autotest.service.TaskService;
+import com.autotest.service.LogCacheService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -53,6 +54,7 @@ public class TaskServiceImpl implements TaskService {
     private final ScriptVersionMapper scriptVersionMapper;
     private final ServerMapper serverMapper;
     private final TaskExecutionService taskExecutionService;
+    private final LogCacheService logCacheService;
 
     @Override
     public PageResult<Task> listTasks(TaskQueryRequest request) {
@@ -557,21 +559,42 @@ public class TaskServiceImpl implements TaskService {
             throw BusinessException.of("任务不存在");
         }
         
-        if (serverId != null) {
-            LambdaQueryWrapper<TaskServer> wrapper = new LambdaQueryWrapper<>();
-            wrapper.eq(TaskServer::getTaskId, id)
-                    .eq(TaskServer::getServerId, serverId);
-            TaskServer taskServer = taskServerMapper.selectOne(wrapper);
-            if (taskServer == null) {
-                throw BusinessException.of("任务服务器不存在");
-            }
-            return taskServer;
+        // 先尝试从内存缓存获取实时日志
+        String cachedLog = logCacheService.getLog(id);
+        if (cachedLog != null && !cachedLog.isEmpty()) {
+            // 返回内存中的实时日志
+            return Map.of(
+                "source", "cache",
+                "log", cachedLog,
+                "completed", logCacheService.isTaskCompleted(id)
+            );
         }
         
-        // 返回所有服务器日志
-        LambdaQueryWrapper<TaskServer> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(TaskServer::getTaskId, id);
-        return taskServerMapper.selectList(wrapper);
+        // 内存中没有缓存，从数据库中获取历史日志（步骤输出）
+        List<TaskStep> steps = taskStepMapper.findByTaskIdWithServer(id);
+        if (steps == null || steps.isEmpty()) {
+            return Map.of(
+                "source", "database",
+                "log", "",
+                "completed", true
+            );
+        }
+        
+        // 构建历史日志
+        StringBuilder logBuilder = new StringBuilder();
+        for (TaskStep step : steps) {
+            if (step.getOutput() != null && !step.getOutput().isEmpty()) {
+                logBuilder.append("=== 步骤: ").append(step.getDisplayName() != null ? step.getDisplayName() : step.getStepName())
+                          .append(" ===\n");
+                logBuilder.append(step.getOutput()).append("\n\n");
+            }
+        }
+        
+        return Map.of(
+            "source", "database",
+            "log", logBuilder.toString(),
+            "completed", true
+        );
     }
     
     @Override

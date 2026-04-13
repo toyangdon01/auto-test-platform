@@ -128,6 +128,14 @@ public class LogCacheService {
     }
 
     /**
+     * 检查任务是否已完成
+     */
+    public boolean isTaskCompleted(Long taskId) {
+        LogBuffer buffer = logBuffers.get(taskId);
+        return buffer != null && buffer.isCompleted();
+    }
+
+    /**
      * 标记任务完成
      */
     public void completeTask(Long taskId) {
@@ -139,14 +147,14 @@ public class LogCacheService {
         // 通知 WebSocket 客户端
         pushToWebSocket(taskId, "complete:任务执行完成");
         
-        // 延迟清理缓存（保留 5 分钟供查看）
+        // 延迟清理缓存（保留 30 分钟供查看）
         new Timer().schedule(new TimerTask() {
             @Override
             public void run() {
                 logBuffers.remove(taskId);
                 log.debug("清理任务 {} 的日志缓存", taskId);
             }
-        }, 5 * 60 * 1000);
+        }, 30 * 60 * 1000);
     }
 
     /**
