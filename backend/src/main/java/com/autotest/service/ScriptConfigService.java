@@ -110,6 +110,7 @@ public class ScriptConfigService {
      * @param tempPath 临时目录路径
      * @return 解析结果（包含配置、状态、警告、错误信息）
      */
+    @SuppressWarnings("unchecked")
     public ConfigParseResult parseConfigFromTempWithDetails(String tempPath) {
         Path configPath = Paths.get(tempPath, CONFIG_FILE);
         
@@ -120,7 +121,120 @@ public class ScriptConfigService {
         }
         
         try {
-            ScriptConfig config = yamlMapper.readValue(configPath.toFile(), ScriptConfig.class);
+            // 先读取为 JsonNode，以便处理 steps 的多种格式
+            JsonNode rootNode = yamlMapper.readTree(configPath.toFile());
+            ScriptConfig config = new ScriptConfig();
+            
+            // 解析基本字段
+            if (rootNode.has("name")) {
+                config.setName(rootNode.get("name").asText());
+            }
+            if (rootNode.has("description")) {
+                config.setDescription(rootNode.get("description").asText());
+            }
+            if (rootNode.has("type")) {
+                config.setType(rootNode.get("type").asText());
+            }
+            if (rootNode.has("category")) {
+                config.setCategory(rootNode.get("category").asText());
+            }
+            if (rootNode.has("timeout")) {
+                config.setTimeout(rootNode.get("timeout").asInt());
+            }
+            
+            // 解析 parameters
+            if (rootNode.has("parameters") && rootNode.get("parameters").isArray()) {
+                List<ScriptConfig.ParameterConfig> params = new ArrayList<>();
+                for (JsonNode paramNode : rootNode.get("parameters")) {
+                    ScriptConfig.ParameterConfig pc = new ScriptConfig.ParameterConfig();
+                    if (paramNode.has("name")) pc.setName(paramNode.get("name").asText());
+                    if (paramNode.has("type")) pc.setType(paramNode.get("type").asText());
+                    if (paramNode.has("default")) {
+                        JsonNode defaultNode = paramNode.get("default");
+                        if (defaultNode.isTextual()) {
+                            pc.setDefaultValue(defaultNode.asText());
+                        } else if (defaultNode.isNumber()) {
+                            pc.setDefaultValue(defaultNode.numberValue());
+                        } else if (defaultNode.isBoolean()) {
+                            pc.setDefaultValue(defaultNode.asBoolean());
+                        } else {
+                            pc.setDefaultValue(defaultNode.asText());
+                        }
+                    }
+                    if (paramNode.has("description")) pc.setDescription(paramNode.get("description").asText());
+                    params.add(pc);
+                }
+                config.setParameters(params);
+            }
+            
+            // 解析 steps - 支持 Object 和 Array 两种格式
+            if (rootNode.has("steps")) {
+                JsonNode stepsNode = rootNode.get("steps");
+                Map<String, Object> stepsMap = new LinkedHashMap<>();
+                
+                if (stepsNode.isObject()) {
+                    // Object 格式（当前支持的格式）
+                    // 直接转换为 Map
+                    stepsMap = yamlMapper.treeToValue(stepsNode, Map.class);
+                    log.debug("解析 steps 为 Object 格式，共 {} 个步骤", stepsMap.size());
+                    
+                } else if (stepsNode.isArray()) {
+                    // Array 格式（用户容易误用的格式）
+                    // 转换为 Map 格式，使用 name 字段作为 key
+                    log.info("检测到 steps 为数组格式，自动转换为对象格式");
+                    int index = 1;
+                    for (JsonNode stepNode : stepsNode) {
+                        String stepName;
+                        if (stepNode.has("name") && !stepNode.get("name").asText().isEmpty()) {
+                            stepName = stepNode.get("name").asText();
+                        } else {
+                            // 如果没有 name，自动生成 step_1, step_2, ...
+                            stepName = "step_" + index;
+                        }
+                        
+                        // 将步骤转换为 Map
+                        Map<String, Object> stepConfig = yamlMapper.treeToValue(stepNode, Map.class);
+                        // 移除 name 字段（它是 key，不需要在 value 中）
+                        if (stepConfig != null) {
+                            stepConfig.remove("name");
+                        }
+                        
+                        stepsMap.put(stepName, stepConfig);
+                        index++;
+                    }
+                    log.debug("数组格式 steps 转换完成，共 {} 个步骤", stepsMap.size());
+                }
+                
+                config.setSteps(stepsMap);
+            }
+            
+            // 解析 resources
+            if (rootNode.has("resources") && rootNode.get("resources").isArray()) {
+                List<ScriptConfig.ResourceConfig> resources = new ArrayList<>();
+                for (JsonNode resNode : rootNode.get("resources")) {
+                    ScriptConfig.ResourceConfig rc = new ScriptConfig.ResourceConfig();
+                    if (resNode.has("resourceId")) {
+                        if (resNode.get("resourceId").isNumber()) {
+                            rc.setResourceId(resNode.get("resourceId").asLong());
+                        }
+                    }
+                    if (resNode.has("resourceMd5")) {
+                        rc.setResourceMd5(resNode.get("resourceMd5").asText());
+                    }
+                    if (resNode.has("targetPath")) {
+                        rc.setTargetPath(resNode.get("targetPath").asText());
+                    }
+                    if (resNode.has("permissions")) {
+                        rc.setPermissions(resNode.get("permissions").asText());
+                    }
+                    if (resNode.has("order")) {
+                        rc.setOrder(resNode.get("order").asInt());
+                    }
+                    resources.add(rc);
+                }
+                config.setResources(resources);
+            }
+            
             log.info("成功解析临时配置文件：{}", configPath);
             
             // 验证配置并收集警告

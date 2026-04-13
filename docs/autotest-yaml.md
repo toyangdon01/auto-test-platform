@@ -146,8 +146,53 @@ steps:
 
 #### 步骤配置
 
+`steps` 字段支持两种格式：**对象格式**（推荐）和 **数组格式**（兼容）。
+
+#### 格式一：对象格式（推荐）
+
+```yaml
+steps:
+  prepare:
+    displayName: 准备环境
+    script: scripts/prepare.sh
+    dependsOn: []
+    
+  run_test:
+    displayName: 执行测试
+    script: main.sh
+    dependsOn:
+      - prepare
+```
+
+#### 格式二：数组格式（兼容）
+
+如果用户习惯数组格式，也支持自动转换：
+
+```yaml
+steps:
+  - name: prepare
+    displayName: 准备环境
+    script: scripts/prepare.sh
+    dependsOn: []
+    
+  - name: run_test
+    displayName: 执行测试
+    script: main.sh
+    dependsOn:
+      - prepare
+```
+
+> 💡 **说明**：
+> - 对象格式是推荐的标准格式，步骤名称作为 key，更清晰
+> - 数组格式会被自动转换为对象格式
+> - 如果数组格式的步骤没有 `name` 字段，会自动生成 `step_1`、`step_2` 等名称
+> - 两种格式在保存时都会转换为对象格式
+
+#### 步骤字段说明
+
 | 字段 | 类型 | 说明 |
 |------|------|------|
+| `name` | string | 步骤名称（数组格式必填，对象格式作为 key） |
 | `displayName` | string | 步骤显示名称 |
 | `script` | string | 要执行的脚本文件路径 |
 | `dependsOn` | string[] | 依赖的步骤列表 |
