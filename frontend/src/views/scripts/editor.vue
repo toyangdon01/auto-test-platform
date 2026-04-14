@@ -9,7 +9,7 @@
       
       <div class="header-actions">
         <el-button @click="handleSave(false)">保存</el-button>
-        <el-button type="primary" @click="handleSave(true)">保存并执行</el-button>
+        <el-button type="primary" @click="handleSave(true)">保存并执�?/el-button>
       </div>
     </div>
 
@@ -23,7 +23,7 @@
                 <el-icon class="field-tip-icon"><QuestionFilled /></el-icon>
               </el-tooltip>
             </template>
-            <el-input v-model="formData.name" placeholder="如 mysql_test" />
+            <el-input v-model="formData.name" placeholder="�?mysql_test" />
           </el-form-item>
         </el-col>
         <el-col :span="12">
@@ -54,7 +54,7 @@
           >
             <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
             <div class="el-upload__text">
-              拖拽文件到此处，或 <em>点击上传</em>
+              拖拽文件到此处，�?<em>点击上传</em>
             </div>
             <template #tip>
               <div class="el-upload__tip">
@@ -63,14 +63,14 @@
             </template>
           </el-upload>
 
-          <!-- 已上传文件列表 -->
+          <!-- 已上传文件列�?-->
           <div v-if="uploadedFiles.length > 0" class="uploaded-files">
             <div class="file-list-header">
               <span>文件列表</span>
               <el-button type="danger" link @click="clearFiles">清空</el-button>
             </div>
             <el-table :data="uploadedFiles" size="small" border>
-              <el-table-column prop="name" label="文件名" min-width="200" />
+              <el-table-column prop="name" label="文件�? min-width="200" />
               <el-table-column prop="path" label="路径" min-width="200" />
               <el-table-column prop="size" label="大小" width="100">
                 <template #default="{ row }">
@@ -113,13 +113,13 @@
       <el-form-item label="执行参数">
         <div class="param-config">
           <div v-for="(param, index) in formData.runParams" :key="index" class="param-item">
-            <el-input v-model="param.name" placeholder="参数名" style="width: 120px" />
+            <el-input v-model="param.name" placeholder="参数�? style="width: 120px" />
             <el-select v-model="param.type" placeholder="类型" style="width: 90px" teleported>
-              <el-option label="字符串" value="string" />
+              <el-option label="字符�? value="string" />
               <el-option label="数字" value="number" />
               <el-option label="布尔" value="boolean" />
             </el-select>
-            <el-input v-model="param.default" placeholder="默认值" style="width: 120px" />
+            <el-input v-model="param.default" placeholder="默认�? style="width: 120px" />
             <el-input v-model="param.description" placeholder="参数描述" style="flex: 1" />
             <el-button type="danger" link @click="formData.runParams.splice(index, 1)">
               <el-icon><Delete /></el-icon>
@@ -134,7 +134,7 @@
       <!-- 执行计划配置 -->
       <el-divider content-position="left">
         <span>执行计划</span>
-        <el-tooltip content="定义脚本的执行步骤、依赖关系和生命周期。每个步骤可配置专属资源和输出收集" placement="top">
+        <el-tooltip content="定义脚本的执行步骤、依赖关系和生命周期。每个步骤可配置专属资源和输出收�? placement="top">
           <el-icon style="margin-left: 4px; cursor: help;"><QuestionFilled /></el-icon>
         </el-tooltip>
       </el-divider>
@@ -162,7 +162,7 @@
       </el-form-item>
     </el-form>
 
-    <!-- 文件编辑对话框 -->
+    <!-- 文件编辑对话�?-->
     <el-dialog
       v-model="fileViewDialogVisible"
       :title="currentViewFile?.name || '文件内容'"
@@ -172,7 +172,7 @@
       <div class="file-viewer">
         <div class="file-path">
           <el-tag type="info" size="small">{{ currentViewFile?.path }}</el-tag>
-          <el-tag v-if="fileModified" type="warning" size="small" style="margin-left: 8px">已修改</el-tag>
+          <el-tag v-if="fileModified" type="warning" size="small" style="margin-left: 8px">已修�?/el-tag>
         </div>
         <el-input
           v-model="fileContent"
@@ -234,11 +234,11 @@ const formData = reactive({
 })
 
 const formRules = {
-  name: [{ required: true, message: '请输入脚本名称', trigger: 'blur' }],
+  name: [{ required: true, message: '请输入脚本名�?, trigger: 'blur' }],
   testCategory: [{ required: true, message: '请选择测试类型', trigger: 'change' }],
 }
 
-// 所有脚本文件（用于执行计划下拉选择）
+// 所有脚本文件（用于执行计划下拉选择�?
 const scriptFileOptions = computed(() => {
   return uploadedFiles.value.filter(f => f.type === 'sh' || f.type === 'py')
 })
@@ -257,7 +257,7 @@ async function handleFileChange(file: any) {
       uploadedFiles.value = res.data.fileList || []
       tempFilePath.value = res.data.tempPath
       
-      // 自动填充配置（如果有 autotest.yaml）
+      // 自动填充配置（如果有 autotest.yaml�?
       if (res.data.config) {
         const config = res.data.config
         
@@ -297,12 +297,12 @@ async function handleFileChange(file: any) {
           }))
         }
         
-        ElMessage.success(`已解析 ${uploadedFiles.value.length} 个文件，检测到 autotest.yaml 配置`)
+        ElMessage.success(`已解�?${uploadedFiles.value.length} 个文件，检测到 autotest.yaml 配置`)
       } else {
-        ElMessage.success(`已解析 ${uploadedFiles.value.length} 个文件`)
+        ElMessage.success(`已解�?${uploadedFiles.value.length} 个文件`)
       }
       
-      // 显示配置解析错误（如果有）
+      // 显示配置解析错误（如果有�?
       if (res.data.configError) {
         ElMessage.warning(`配置文件解析失败: ${res.data.configError}`)
       }
@@ -314,15 +314,15 @@ async function handleFileChange(file: any) {
 
 async function clearFiles() {
   if (!isEdit.value) {
-    // 新建模式：只清空本地状态
+    // 新建模式：只清空本地状�?
     uploadedFiles.value = []
     tempFilePath.value = ''
     return
   }
   
-  // 编辑模式：调用后端 API 清空文件
+  // 编辑模式：调用后�?API 清空文件
   try {
-    await ElMessageBox.confirm('确定要清空所有文件吗？此操作不可恢复。', '警告', {
+    await ElMessageBox.confirm('确定要清空所有文件吗？此操作不可恢复�?, '警告', {
       confirmButtonText: '确定',
       cancelButtonText: '取消',
       type: 'warning'
@@ -331,7 +331,7 @@ async function clearFiles() {
     await request.delete(`/scripts/${scriptId.value}/files`)
     uploadedFiles.value = []
     tempFilePath.value = ''
-    ElMessage.success('文件已清空')
+    ElMessage.success('文件已清�?)
   } catch (e: any) {
     if (e !== 'cancel') {
       ElMessage.error(e.response?.data?.message || '清空失败')
@@ -349,9 +349,9 @@ async function deleteFile(file: UploadedFile) {
     return
   }
   
-  // 编辑模式：调用后端 API 删除文件
+  // 编辑模式：调用后�?API 删除文件
   try {
-    await ElMessageBox.confirm(`确定要删除文件 "${file.name}" 吗？`, '确认删除', {
+    await ElMessageBox.confirm(`确定要删除文�?"${file.name}" 吗？`, '确认删除', {
       confirmButtonText: '确定',
       cancelButtonText: '取消',
       type: 'warning'
@@ -366,7 +366,7 @@ async function deleteFile(file: UploadedFile) {
       uploadedFiles.value.splice(index, 1)
     }
     
-    ElMessage.success('文件已删除')
+    ElMessage.success('文件已删�?)
   } catch (e: any) {
     if (e !== 'cancel') {
       ElMessage.error(e.response?.data?.message || '删除失败')
@@ -407,9 +407,7 @@ async function handleSave(andRun: boolean) {
   } else {
     const res = await scriptApi.create(data)
     // 从响应获取新脚本ID
-    if (res.data?.id) {
-      savedScriptId = res.data.id
-    }
+    if (res.data?.script?.id) { savedScriptId = res.data.script.id } else if (res.data?.id) { savedScriptId = res.data.id }
   }
   
   // 新建模式下，保存关联资源
@@ -432,7 +430,7 @@ async function handleSave(andRun: boolean) {
   ElMessage.success('保存成功')
   
   if (andRun) {
-    // 传递 scriptId 到任务创建页面
+    // 传�?scriptId 到任务创建页�?
     const targetScriptId = isEdit.value ? route.params.id : savedScriptId
     router.push(`/tasks/create?scriptId=${targetScriptId}`)
   } else {
@@ -456,11 +454,11 @@ async function loadScript() {
       fileList: res.data.fileList || [],
     })
     
-    // 优先使用返回的 fileList，否则调用 file-list API 获取
+    // 优先使用返回�?fileList，否则调�?file-list API 获取
     if (res.data.fileList && res.data.fileList.length > 0) {
       uploadedFiles.value = res.data.fileList as UploadedFile[]
     } else {
-      // 从 file-list API 获取文件列表
+      // �?file-list API 获取文件列表
       try {
         const fileListRes = await request.get(`/scripts/${route.params.id}/file-list`)
         if (fileListRes.code === 0 && fileListRes.data) {
@@ -511,7 +509,7 @@ function isTextFile(type: string, name: string): boolean {
 
 async function viewFile(file: UploadedFile) {
   currentViewFile.value = file
-  fileContent.value = '加载中...'
+  fileContent.value = '加载�?..'
   fileModified.value = false
   originalContent.value = ''
   fileViewDialogVisible.value = true
