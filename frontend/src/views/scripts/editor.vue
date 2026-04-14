@@ -287,6 +287,16 @@ async function handleFileChange(file: any) {
           stepsData.value = config.steps
         }
         
+        // 填充共享资源
+        if (config.resources && config.resources.length > 0) {
+          resourceBindings.value = config.resources.map((r: any) => ({
+            resourceId: r.resourceId || null,
+            targetPath: r.targetPath || '/tmp',
+            permissions: r.permissions || '644',
+            uploadOrder: r.order || r.uploadOrder || 1
+          }))
+        }
+        
         ElMessage.success(`已解析 ${uploadedFiles.value.length} 个文件，检测到 autotest.yaml 配置`)
       } else {
         ElMessage.success(`已解析 ${uploadedFiles.value.length} 个文件`)
