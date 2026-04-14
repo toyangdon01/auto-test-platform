@@ -886,16 +886,24 @@ public class TaskExecutionService {
                     String srTargetPath = sr.getTargetPath();
                     String targetPath;
                     if (srTargetPath != null && srTargetPath.startsWith("/")) {
-                        // 绝对路径：直接使用
-                        targetPath = srTargetPath;
-                        // 确保父目录存在
-                        String parentDir = targetPath.substring(0, targetPath.lastIndexOf("/"));
-                        if (!parentDir.isEmpty()) {
-                            SshService.executeCommand(server, "mkdir -p " + parentDir, null, 10000);
+                        // 绝对路径
+                        // 判断是否是目录（不以文件扩展名结尾）
+                        boolean isDirectory = !srTargetPath.matches(".*\\.[a-zA-Z0-9]{1,10}$");
+                        if (isDirectory) {
+                            // 是目录：创建目录，然后追加文件名
+                            SshService.executeCommand(server, "mkdir -p " + srTargetPath, null, 10000);
+                            targetPath = srTargetPath + "/" + rf.getName();
+                        } else {
+                            // 是文件：确保父目录存在
+                            String parentDir = srTargetPath.substring(0, srTargetPath.lastIndexOf("/"));
+                            if (!parentDir.isEmpty()) {
+                                SshService.executeCommand(server, "mkdir -p " + parentDir, null, 10000);
+                            }
+                            targetPath = srTargetPath;
                         }
                     } else {
                         // 相对路径：拼接到任务工作目录
-                        targetPath = workDir + "/" + (srTargetPath != null ? srTargetPath : "");
+                        targetPath = workDir + "/" + (srTargetPath != null ? srTargetPath : rf.getName());
                     }
                     
                     context.log("  上传: " + rf.getName() + " -> " + targetPath);
@@ -953,12 +961,20 @@ public class TaskExecutionService {
                 // 判断目标路径是绝对路径还是相对路径
                 String targetPath;
                 if (targetPathStr != null && targetPathStr.startsWith("/")) {
-                    // 绝对路径：直接使用
-                    targetPath = targetPathStr;
-                    // 确保父目录存在
-                    String parentDir = targetPath.substring(0, targetPath.lastIndexOf("/"));
-                    if (!parentDir.isEmpty()) {
-                        SshService.executeCommand(server, "mkdir -p " + parentDir, null, 10000);
+                    // 绝对路径
+                    // 判断是否是目录（不以文件扩展名结尾）
+                    boolean isDirectory = !targetPathStr.matches(".*\\.[a-zA-Z0-9]{1,10}$");
+                    if (isDirectory) {
+                        // 是目录：创建目录，然后追加文件名
+                        SshService.executeCommand(server, "mkdir -p " + targetPathStr, null, 10000);
+                        targetPath = targetPathStr + "/" + rf.getName();
+                    } else {
+                        // 是文件：确保父目录存在
+                        String parentDir = targetPathStr.substring(0, targetPathStr.lastIndexOf("/"));
+                        if (!parentDir.isEmpty()) {
+                            SshService.executeCommand(server, "mkdir -p " + parentDir, null, 10000);
+                        }
+                        targetPath = targetPathStr;
                     }
                 } else {
                     // 相对路径：拼接到任务工作目录

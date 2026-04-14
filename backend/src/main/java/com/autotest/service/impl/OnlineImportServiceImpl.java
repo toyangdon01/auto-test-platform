@@ -6,7 +6,11 @@ import com.autotest.entity.Script;
 import com.autotest.entity.ScriptVersion;
 import com.autotest.exception.BusinessException;
 import com.autotest.mapper.ScriptMapper;
+import com.autotest.mapper.ScriptResourceMapper;
 import com.autotest.mapper.ScriptVersionMapper;
+import com.autotest.mapper.ResourceFileMapper;
+import com.autotest.entity.ScriptResource;
+import com.autotest.entity.ResourceFile;
 import com.autotest.service.OnlineImportService;
 import com.autotest.service.ScriptPackageService;
 import static com.autotest.service.ScriptPackageService.ConflictStrategy;
@@ -46,6 +50,12 @@ public class OnlineImportServiceImpl implements OnlineImportService {
     
     @Autowired
     private ScriptVersionMapper scriptVersionMapper;
+    
+    @Autowired
+    private ScriptResourceMapper scriptResourceMapper;
+    
+    @Autowired
+    private ResourceFileMapper resourceFileMapper;
     
     @Value("${autotest.storage.scripts-path:C:/data/auto-test/scripts}")
     private String scriptsPath;
@@ -694,6 +704,37 @@ public class OnlineImportServiceImpl implements OnlineImportService {
         version.setTotalSize(totalSize[0]);
         
         scriptVersionMapper.insert(version);
+        
+        // 保存资源配置（脚本级别共享资源）
+        if (config.getResources() != null && !config.getResources().isEmpty()) {
+            for (ScriptConfig.ResourceConfig rc : config.getResources()) {
+                Long resourceId = rc.getResourceId();
+                
+                // 如果 resourceId 为空，尝试用 resourceMd5 查找
+                if (resourceId == null && rc.getResourceMd5() != null) {
+                    ResourceFile rf = resourceFileMapper.selectOne(
+                        new LambdaQueryWrapper<ResourceFile>().eq(ResourceFile::getChecksum, rc.getResourceMd5())
+                    );
+                    if (rf != null) {
+                        resourceId = rf.getId();
+                    }
+                }
+                
+                if (resourceId == null) {
+                    log.warn("资源未找到：resourceId={}, resourceMd5={}", rc.getResourceId(), rc.getResourceMd5());
+                    continue;
+                }
+                
+                ScriptResource sr = new ScriptResource();
+                sr.setScriptId(script.getId());
+                sr.setResourceId(resourceId);
+                sr.setTargetPath(rc.getTargetPath());
+                sr.setPermissions(rc.getPermissions() != null ? rc.getPermissions() : "644");
+                sr.setUploadOrder(rc.getOrder() != null ? rc.getOrder() : 0);
+                scriptResourceMapper.insert(sr);
+                log.info("关联资源：scriptId={}, resourceId={}, targetPath={}", script.getId(), resourceId, rc.getTargetPath());
+            }
+        }
         
         result.addImported(scriptName, script.getId());
         log.info("脚本导入成功：{} (id={})", scriptName, script.getId());
