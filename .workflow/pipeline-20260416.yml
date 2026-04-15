@@ -36,18 +36,18 @@ stages:
           - ''
           - if [ ! -f /root/temp/jdk.tar.gz ];then
           - '  mkdir -p /root/temp'
-          - '  curl -L  https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.9%2B9/OpenJDK17U-jdk_x64_linux_hotspot_17.0.9_9.tar.gz -o /root/temp/jdk.tar.gz'
+          - '  curl -L  https://gh-proxy.org/https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.9%2B9/OpenJDK17U-jdk_x64_linux_hotspot_17.0.9_9.tar.gz -o /root/temp/jdk.tar.gz'
           - fi
-          - ''
           - ''
           - tar -xzf /root/temp/jdk.tar.gz -C temp-linux/jdk/
           - JDK_DIR="$(pwd)/temp-linux/jdk/jdk-17.0.9+9"
           - ''
           - '#MAVEN'
           - if [ ! -f /root/temp/maven.tar.gz ];then
-          - '  curl -L https://gh-proxy.org/https://dlcdn.apache.org/maven/maven-3/3.9.14/binaries/apache-maven-3.9.14-bin.tar.gz -o /root/temp/maven.tar.gz'
+          - '  mkdir /root/temp'
+          - '  curl -L https://dlcdn.apache.org/maven/maven-3/3.9.14/binaries/apache-maven-3.9.14-bin.tar.gz -o /root/temp/maven.tar.gz'
           - fi
-          - tar -xzvf /root/temp-linux/maven.tar.gz
+          - tar -xzvf /root/temp/maven.tar.gz
           - ''
           - export JAVA_HOME="$JDK_DIR/"
           - export PATH="$(pwd)/apache-maven-3.9.14/bin:$JAVA_HOME/bin:$PATH"
@@ -61,6 +61,7 @@ stages:
           - '#打包linux'
           - 'mkdir -p dist/auto-test-platform-linux-arm64 '
           - if [ ! -f /root/temp/jre.tar.gz ];then
+          - '  mkdir /root/temp'
           - '  curl -L  https://gh-proxy.org/https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.9%2B9/OpenJDK17U-jre_aarch64_linux_hotspot_17.0.9_9.tar.gz -o /root/temp/jre.tar.gz'
           - fi
           - tar -xzf /root/temp/jre.tar.gz -C dist/auto-test-platform-linux-arm64
@@ -86,7 +87,9 @@ stages:
           - '#打包windows'
           - mkdir -p  dist/auto-test-platform-windows-x64
           - if [ ! -f /root/temp/jre_w.tar.gz ];then
-          - '  curl -L  https://gh-proxy.org/https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.9%2B9.1/OpenJDK17U-jre_x64_windows_hotspot_17.0.9_9.zip -o temp-windows/jre_w.zip'
+          - '  mkdir /root/temp'
+          - '  curl -L  https://gh-proxy.org/https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.9%2B9.1/OpenJDK17U-jre_x64_windows_hotspot_17.0.9_9.zip -o /root/temp/jre_w.zip'
+          - fi
           - unzip /root/temp/jre_w.zip
           - ''
           - '# 整理目录'
