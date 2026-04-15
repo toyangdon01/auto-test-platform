@@ -55,7 +55,7 @@ stages:
           - ''
           - '#打包linux'
           - cd ..
-          - curl -L  https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.9%2B9/OpenJDK17U-jre_aarch64_linux_hotspot_17.0.9_9.tar.gz -o temp-linux/jre.tar.gz
+          - curl -L  https://gh-proxy.org/https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.9%2B9/OpenJDK17U-jre_aarch64_linux_hotspot_17.0.9_9.tar.gz -o temp-linux/jre.tar.gz
           - tar -xzf temp-linux/jre.tar.gz -C dist/auto-test-platform-linux-arm64
           - cp dist/auto-test-platform-1.0.0.jar dist/auto-test-platform-linux-arm64/auto-test-platform.jar
           - cat > dist/auto-test-platform-linux-arm64/start.sh << 'EOF'
@@ -77,7 +77,7 @@ stages:
           - ''
           - '#打包windows'
           - mkdir -p temp-windows dist/auto-test-platform-windows-x64
-          - curl -L  https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.9%2B9.1/OpenJDK17U-jre_x64_windows_hotspot_17.0.9_9.zip -o temp-windows/jre.zip
+          - curl -L  https://gh-proxy.org/https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.9%2B9.1/OpenJDK17U-jre_x64_windows_hotspot_17.0.9_9.zip -o temp-windows/jre.zip
           - unzip temp-windows/jre.zip
           - cd ..
           - ''
