@@ -27,6 +27,10 @@ stages:
           - npm install
           - npm run build
           - ''
+          - cd ..
+          - mkdir dist
+          - 'cp -r ./frontend/dist dist   '
+          - ''
           - echo "前端构建完成"
           - ''
         artifacts:
