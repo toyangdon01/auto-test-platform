@@ -49,12 +49,14 @@ stages:
         jdkVersion: '17'
         mavenVersion: 3.3.9
         commands:
+          - ls dist
           - mkdir -p backend/src/main/resources/static
           - cp -r dist/* ../backend/src/main/resources/static/
           - cd backend
           - mvn package -DskipTests
           - mkdir -p ../dist
-          - cp target/*.jar ../dist/auto-test-platform-1.0.0.jar
+          - cp target/*.jar ../dist/
+          - ls ../dist
           - echo "后端构建完成“
           - ''
           - '#打包linux'
