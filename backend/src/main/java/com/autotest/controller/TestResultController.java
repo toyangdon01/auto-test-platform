@@ -36,7 +36,7 @@ import java.util.stream.Collectors;
  * @author auto-test-platform
  */
 @RestController
-@RequestMapping("/results")
+@RequestMapping("/api/v1/results")
 @RequiredArgsConstructor
 @Tag(name = "测试结果", description = "测试结果的增删改查")
 public class TestResultController {

@@ -18,7 +18,7 @@ import java.util.Map;
  */
 @Tag(name = "parse-rules", description = "输出解析规则")
 @RestController
-@RequestMapping("/scripts/{scriptId}/parse-rules")
+@RequestMapping("/api/v1/scripts/{scriptId}/parse-rules")
 @RequiredArgsConstructor
 public class ParseRuleController {
 

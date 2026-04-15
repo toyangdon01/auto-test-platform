@@ -13,7 +13,7 @@ import java.util.List;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/pipelines")
+@RequestMapping("/api/v1/pipelines")
 @RequiredArgsConstructor
 public class PipelineController {
 

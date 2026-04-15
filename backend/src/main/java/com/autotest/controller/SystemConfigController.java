@@ -17,7 +17,7 @@ import java.util.Map;
  */
 @Tag(name = "系统配置")
 @RestController
-@RequestMapping("/system/config")
+@RequestMapping("/api/v1/system/config")
 @RequiredArgsConstructor
 public class SystemConfigController {
 

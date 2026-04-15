@@ -19,7 +19,7 @@ import java.util.Map;
  */
 @Tag(name = "script-versions", description = "脚本版本管理")
 @RestController
-@RequestMapping("/scripts/{scriptId}/versions")
+@RequestMapping("/api/v1/scripts/{scriptId}/versions")
 @RequiredArgsConstructor
 public class ScriptVersionController {
 

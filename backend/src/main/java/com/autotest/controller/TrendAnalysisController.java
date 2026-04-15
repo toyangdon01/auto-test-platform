@@ -19,7 +19,7 @@ import java.util.Map;
  */
 @Tag(name = "趋势分析")
 @RestController
-@RequestMapping("/trend")
+@RequestMapping("/api/v1/trend")
 @RequiredArgsConstructor
 public class TrendAnalysisController {
 

@@ -14,7 +14,7 @@ import java.util.List;
  * 脚本资源关联控制器
  */
 @RestController
-@RequestMapping("/scripts/{scriptId}/resources")
+@RequestMapping("/api/v1/scripts/{scriptId}/resources")
 @RequiredArgsConstructor
 @Tag(name = "脚本资源关联")
 public class ScriptResourceController {

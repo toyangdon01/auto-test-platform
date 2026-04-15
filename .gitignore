@@ -77,3 +77,6 @@ tests/
 
 # Backend runtime scripts storage
 /backend/scripts/
+
+# Backend static resources (auto-generated during build)
+backend/src/main/resources/static/

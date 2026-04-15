@@ -21,7 +21,7 @@ import java.util.List;
  */
 @Tag(name = "server-groups", description = "服务器分组管理")
 @RestController
-@RequestMapping("/server-groups")
+@RequestMapping("/api/v1/server-groups")
 @RequiredArgsConstructor
 public class ServerGroupController {
 

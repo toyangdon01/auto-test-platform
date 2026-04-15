@@ -28,7 +28,7 @@ import java.util.Map;
  */
 @Slf4j
 @RestController
-@RequestMapping("/resources")
+@RequestMapping("/api/v1/resources")
 @RequiredArgsConstructor
 @Tag(name = "资源文件管理")
 public class ResourceFileController {

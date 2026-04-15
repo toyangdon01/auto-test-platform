@@ -367,23 +367,37 @@ name: my_test
 description: 使用资源文件的测试脚本
 type: shell
 
-# 资源配置（引用已存在的资源文件 ID）
+# 资源配置（推荐使用 resourceMd5，支持跨项目共享）
 resources:
-  - resourceId: 100
+  # 方式一：使用 resourceMd5（推荐，跨项目一致性更好）
+  - resourceMd5: e142c2058313b4646c36fa9bb1b38493
     targetPath: /etc/config.conf
     permissions: "644"
     order: 1
     
+  # 方式二：使用 resourceId（仅适用于同一项目内）
   - resourceId: 101
     targetPath: /opt/data.tar.gz
     permissions: "755"
     order: 2
+    
+  # 方式三：同时提供（导入时优先使用 resourceMd5 匹配）
+  - resourceId: 102
+    resourceMd5: abc123def456789
+    targetPath: /tmp/tool.tar.gz
+    permissions: "755"
+    order: 3
 
 steps:
   - name: run_test
     script: main.sh
     resultParser: true
 ```
+
+**导入逻辑说明**：
+- 导入脚本时，优先使用 `resourceMd5` 查找匹配的资源文件
+- 如果 MD5 匹配失败，再尝试使用 `resourceId`
+- 如果都失败，记录警告并跳过该资源配置
 
 **步骤 3：创建脚本时自动应用配置**
 ```bash

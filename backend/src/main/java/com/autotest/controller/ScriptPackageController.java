@@ -30,7 +30,7 @@ import java.time.LocalDate;
 @Slf4j
 @Tag(name = "scripts/package", description = "脚本包管理")
 @RestController
-@RequestMapping("/scripts/package")
+@RequestMapping("/api/v1/scripts/package")
 @RequiredArgsConstructor
 public class ScriptPackageController {
     

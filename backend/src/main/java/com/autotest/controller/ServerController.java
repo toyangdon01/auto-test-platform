@@ -29,7 +29,7 @@ import java.util.Map;
  */
 @Tag(name = "servers", description = "服务器管理")
 @RestController
-@RequestMapping("/servers")
+@RequestMapping("/api/v1/servers")
 @RequiredArgsConstructor
 public class ServerController {
 

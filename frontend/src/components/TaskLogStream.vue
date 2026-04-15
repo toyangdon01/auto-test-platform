@@ -109,7 +109,7 @@ function connect() {
 
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
   const host = window.location.host
-  const wsUrl = `${protocol}//${host}/api/v1/ws/task-log/${props.taskId}`
+  const wsUrl = `${protocol}//${host}/ws/task-log/${props.taskId}`
   
   console.log('[WebSocket] 连接:', wsUrl)
   terminal?.writeln(`\x1b[33m正在连接日志服务器...\x1b[0m`)

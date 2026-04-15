@@ -270,10 +270,41 @@ steps:
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `resourceId` | integer | 平台资源文件 ID（必填） |
+| `resourceId` | integer | 平台资源文件 ID（可选，与 resourceMd5 二选一） |
+| `resourceMd5` | string | 资源文件 MD5 值（可选，与 resourceId 二选一，**推荐用于跨项目共享**） |
 | `targetPath` | string | 目标路径（默认：/tmp） |
 | `permissions` | string | 文件权限（默认：644） |
 | `order` | integer | 上传顺序（默认：0） |
+
+**跨项目共享说明**：
+
+- **`resourceId`**：适用于同一项目内的资源引用
+- **`resourceMd5`**：推荐使用，通过 MD5 值匹配资源文件，支持跨项目共享脚本
+
+**示例**：
+```yaml
+resources:
+  # 方式一：使用 resourceId（适用于同一项目）
+  - resourceId: 100
+    targetPath: /etc/config.conf
+    permissions: "644"
+    
+  # 方式二：使用 resourceMd5（推荐，支持跨项目）
+  - resourceMd5: e142c2058313b4646c36fa9bb1b38493
+    targetPath: /opt/package.tar.gz
+    permissions: "755"
+    
+  # 方式三：同时提供（导入时优先使用 resourceMd5 匹配）
+  - resourceId: 101
+    resourceMd5: abc123def456
+    targetPath: /tmp/data.dat
+    permissions: "644"
+```
+
+**导入逻辑**：
+1. 导入脚本时，优先使用 `resourceMd5` 查找匹配的资源文件
+2. 如果 MD5 匹配失败，再尝试使用 `resourceId`
+3. 如果都失败，记录警告并跳过该资源配置
 
 **工作流程**：
 1. 上传脚本包时，平台解析 `resources` 配置

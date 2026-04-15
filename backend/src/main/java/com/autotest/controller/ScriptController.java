@@ -44,7 +44,7 @@ import java.util.*;
 @Slf4j
 @Tag(name = "scripts", description = "脚本管理")
 @RestController
-@RequestMapping("/scripts")
+@RequestMapping("/api/v1/scripts")
 @RequiredArgsConstructor
 public class ScriptController {
 

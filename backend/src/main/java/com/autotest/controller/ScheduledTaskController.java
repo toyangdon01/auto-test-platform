@@ -19,7 +19,7 @@ import java.util.Map;
  */
 @Tag(name = "定时任务管理")
 @RestController
-@RequestMapping("/scheduled-tasks")
+@RequestMapping("/api/v1/scheduled-tasks")
 @RequiredArgsConstructor
 public class ScheduledTaskController {
 

@@ -155,7 +155,7 @@ function connectWebSocket() {
   // 构建 WebSocket URL
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
   const host = window.location.host
-  const wsUrl = `${protocol}//${host}/api/v1/webshell/${props.serverId}`
+  const wsUrl = `${protocol}//${host}/webshell/${props.serverId}`
 
   terminal?.writeln(`\x1b[33m连接地址: ${wsUrl}\x1b[0m`)
 

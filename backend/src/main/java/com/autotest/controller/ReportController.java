@@ -29,7 +29,7 @@ import java.util.Map;
  */
 @Tag(name = "报告管理")
 @RestController
-@RequestMapping("/reports")
+@RequestMapping("/api/v1/reports")
 @RequiredArgsConstructor
 public class ReportController {
 

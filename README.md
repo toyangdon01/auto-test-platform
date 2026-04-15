@@ -46,11 +46,16 @@
 git clone <repository-url>
 cd auto-test-platform
 
-# 2. 一键打包（Windows）
-./build.ps1
+# 2. 一键打包
+# Windows
+.\build.ps1
+
+# Linux/Mac
+chmod +x build.sh
+./build.sh
 
 # 3. 启动服务
-java -jar backend/target/auto-test-platform-1.0.0.jar
+java -jar backend/target/auto-test-platform-1.0.0-SNAPSHOT.jar
 
 # 4. 访问系统
 # 浏览器打开 http://localhost:8080
@@ -125,11 +130,18 @@ cd frontend && npm run dev
 
 ### 完整打包（前后端合并）
 
-```bash
-./build.ps1
+**Windows：**
+```powershell
+.\build.ps1
 ```
 
-输出文件：`backend/target/auto-test-platform-1.0.0.jar`
+**Linux/Mac：**
+```bash
+chmod +x build.sh
+./build.sh
+```
+
+输出文件：`backend/target/auto-test-platform-1.0.0-SNAPSHOT.jar`
 
 ### 单独打包
 
@@ -157,13 +169,16 @@ npm run build
 
 ```bash
 # 指定端口
-java -jar auto-test-platform-1.0.0.jar --server.port=9000
+java -jar auto-test-platform-1.0.0-SNAPSHOT.jar --server.port=9000
 
 # 指定数据库路径
-java -jar auto-test-platform-1.0.0.jar --spring.datasource.url="jdbc:sqlite:/data/test_platform.db"
+java -jar auto-test-platform-1.0.0-SNAPSHOT.jar --spring.datasource.url="jdbc:sqlite:/data/test_platform.db"
 
-# 后台运行
-nohup java -jar auto-test-platform-1.0.0.jar > app.log 2>&1 &
+# 后台运行（Linux/Mac）
+nohup java -jar auto-test-platform-1.0.0-SNAPSHOT.jar > app.log 2>&1 &
+
+# 后台运行（Windows PowerShell）
+Start-Process java -ArgumentList "-jar","auto-test-platform-1.0.0-SNAPSHOT.jar" -RedirectStandardOutput "app.log" -RedirectStandardError "error.log"
 ```
 
 ## 项目结构
@@ -195,7 +210,8 @@ auto-test-platform/
 │
 ├── docs/                       # 文档目录
 ├── scripts/                    # 脚本目录
-└── build.ps1                   # 打包脚本
+├── build.ps1                   # Windows 打包脚本
+└── build.sh                    # Linux/Mac 打包脚本
 ```
 
 ## 配置说明
@@ -260,12 +276,14 @@ cp test_platform_backup.db ~/.autotest/test_platform.db
 
 ### 1. 端口被占用
 
-```bash
-# Windows 查找并结束进程
+**Windows：**
+```powershell
 netstat -ano | findstr :8080
 taskkill /PID <PID> /F
+```
 
-# Linux
+**Linux/Mac：**
+```bash
 lsof -i :8080
 kill -9 <PID>
 ```
@@ -299,6 +317,12 @@ rm ~/.autotest/test_platform.db
 - **数据库迁移**：PostgreSQL → SQLite（零配置）
 - **打包优化**：前后端合并，单进程运行
 - **部署简化**：无需安装数据库服务
+- **跨平台支持**：新增 Linux/Mac 打包脚本
+
+### v2.0.1 (2026-04-15)
+- **路径优化**：移除 context-path，支持根路径访问
+- **WebSocket 修复**：更新前端 WebSocket 连接路径
+- **文档更新**：完善打包部署说明
 
 ## 许可证
 

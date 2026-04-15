@@ -36,7 +36,7 @@ import java.util.Map;
  */
 @Tag(name = "tasks", description = "任务管理")
 @RestController
-@RequestMapping("/tasks")
+@RequestMapping("/api/v1/tasks")
 @RequiredArgsConstructor
 public class TaskController {
 

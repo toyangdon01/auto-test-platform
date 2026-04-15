@@ -437,10 +437,38 @@ public class ScriptConfigService {
             config.setParameters(params);
         }
         
-        // 设置步骤配置（需要转换类型）
+        // 设置步骤配置（需要转换类型），并为步骤资源添加 MD5 值
         if (version.getSteps() != null && !version.getSteps().isEmpty()) {
             @SuppressWarnings("unchecked")
             Map<String, Object> stepsMap = (Map<String, Object>) version.getSteps();
+            
+            // 为每个步骤的资源添加 resourceMd5
+            for (Map.Entry<String, Object> entry : stepsMap.entrySet()) {
+                if ("_meta".equals(entry.getKey())) continue;
+                
+                if (entry.getValue() instanceof Map) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> stepConfig = (Map<String, Object>) entry.getValue();
+                    
+                    Object resourcesObj = stepConfig.get("resources");
+                    if (resourcesObj instanceof List) {
+                        @SuppressWarnings("unchecked")
+                        List<Map<String, Object>> stepResources = (List<Map<String, Object>>) resourcesObj;
+                        
+                        for (Map<String, Object> res : stepResources) {
+                            Object resourceIdObj = res.get("resourceId");
+                            if (resourceIdObj instanceof Number) {
+                                Long resourceId = ((Number) resourceIdObj).longValue();
+                                ResourceFile resourceFile = resourceFileMapper.selectById(resourceId);
+                                if (resourceFile != null && resourceFile.getChecksum() != null) {
+                                    res.put("resourceMd5", resourceFile.getChecksum());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            
             config.setSteps(stepsMap);
         }
         
@@ -532,9 +560,59 @@ public class ScriptConfigService {
             version.setParameters(params);
         }
         
-        // 应用步骤配置
+        // 应用步骤配置（处理步骤资源中的 resourceMd5）
         if (config.getSteps() != null && !config.getSteps().isEmpty()) {
-            version.setSteps(config.getSteps());
+            @SuppressWarnings("unchecked")
+            Map<String, Object> stepsMap = (Map<String, Object>) config.getSteps();
+            
+            // 处理每个步骤的资源
+            for (Map.Entry<String, Object> entry : stepsMap.entrySet()) {
+                if ("_meta".equals(entry.getKey())) continue;
+                
+                if (entry.getValue() instanceof Map) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> stepConfig = (Map<String, Object>) entry.getValue();
+                    
+                    Object resourcesObj = stepConfig.get("resources");
+                    if (resourcesObj instanceof List) {
+                        @SuppressWarnings("unchecked")
+                        List<Map<String, Object>> stepResources = (List<Map<String, Object>>) resourcesObj;
+                        
+                        for (Map<String, Object> res : stepResources) {
+                            // 优先使用 resourceMd5 查找（跨项目一致性更好）
+                            String resourceMd5 = (String) res.get("resourceMd5");
+                            Long resourceId = null;
+                            
+                            if (resourceMd5 != null && !resourceMd5.isEmpty()) {
+                                ResourceFile resourceFile = resourceFileMapper.selectOne(
+                                    new LambdaQueryWrapper<ResourceFile>()
+                                        .eq(ResourceFile::getChecksum, resourceMd5)
+                                );
+                                if (resourceFile != null) {
+                                    resourceId = resourceFile.getId();
+                                    log.info("步骤资源通过 MD5 找到：md5={}, resourceId={}, step={}", 
+                                            resourceMd5, resourceId, entry.getKey());
+                                } else {
+                                    log.warn("步骤资源文件不存在：md5={}, step={}", resourceMd5, entry.getKey());
+                                }
+                            }
+                            
+                            // 如果 MD5 查找失败，再尝试使用 resourceId
+                            if (resourceId == null && res.get("resourceId") instanceof Number) {
+                                resourceId = ((Number) res.get("resourceId")).longValue();
+                                log.info("步骤资源使用配置中的 resourceId: {}, step={}", resourceId, entry.getKey());
+                            }
+                            
+                            // 更新 resourceId
+                            if (resourceId != null) {
+                                res.put("resourceId", resourceId);
+                            }
+                        }
+                    }
+                }
+            }
+            
+            version.setSteps(stepsMap);
         }
         
         // 应用资源配置（从 autotest.yaml 解析）

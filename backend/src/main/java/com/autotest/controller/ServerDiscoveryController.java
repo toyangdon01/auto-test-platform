@@ -14,7 +14,7 @@ import java.util.*;
  */
 @Slf4j
 @RestController
-@RequestMapping("/servers/discovery")
+@RequestMapping("/api/v1/servers/discovery")
 @RequiredArgsConstructor
 public class ServerDiscoveryController {
 
