@@ -1,0 +1,84 @@
+version: '1.0'
+name: pipeline-20260416
+displayName: pipeline-20260416
+triggers:
+  trigger: manual
+  push:
+    tags:
+      prefix:
+        - ''
+stages:
+  - name: stage-da9c0001
+    displayName: build
+    strategy: naturally
+    trigger: auto
+    executor: []
+    steps:
+      - step: build@nodejs
+        name: build_nodejs
+        displayName: Nodejs 构建
+        nodeVersion: 18.16.0
+        commands:
+          - '# 设置NPM源，提升安装速度'
+          - npm config set registry https://registry.npmmirror.com
+          - ''
+          - cd frontend
+          - npm install
+          - npm run build
+          - mkdir -p ../backend/src/main/resources/static
+          - cp -r dist/* ../backend/src/main/resources/static/
+        artifacts:
+          - name: BUILD_ARTIFACT
+            path:
+              - ./frontend/dist
+        caches:
+          - ~/.npm
+          - ~/.yarn
+        notify: []
+        strategy:
+          retry: '0'
+      - step: build@maven
+        name: build_maven
+        displayName: Maven 构建
+        jdkVersion: '17'
+        mavenVersion: 3.3.9
+        commands:
+          - cd ../backend
+          - mvn package -DskipTests
+          - mkdir -p ../dist
+          - cp target/*.jar ../dist/auto-test-platform-1.0.0.jar
+        artifacts:
+          - name: BUILD_ARTIFACT_JAR
+            path:
+              - ./dist/auto-test-platform-1.0.0.jar
+        settings: []
+        caches:
+          - ~/.m2
+        notify: []
+        strategy:
+          retry: '0'
+        dependsOn: build_nodejs
+  - name: stage-70ae0014
+    displayName: release
+    strategy: naturally
+    trigger: auto
+    executor: []
+    steps:
+      - step: publish@general_artifacts
+        name: publish_general_artifacts
+        displayName: 上传制品
+        dependArtifact: BUILD_ARTIFACT_JAR
+        artifactName: auto-test-platform
+        notify: []
+        strategy:
+          retry: '0'
+      - step: publish@release_artifacts
+        name: publish_release_artifacts
+        displayName: 发布
+        dependArtifact: auto-test-platform
+        version: 1.0.0.0
+        autoIncrement: true
+        notify: []
+        strategy:
+          retry: '0'
+        dependsOn: publish_general_artifacts
