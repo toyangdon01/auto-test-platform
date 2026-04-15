@@ -1,3 +1,5 @@
+
+
 # 自动化测试管理平台
 
 一个轻量级的自动化测试管理平台，用于管理和执行远程服务器上的测试脚本，收集测试结果和性能指标。
@@ -14,18 +16,26 @@
 ## 技术栈
 
 ### 后端
-- **Java 17** + **Spring Boot 3.2**
-- **MyBatis-Plus 3.5** - ORM 框架
-- **SQLite** - 嵌入式数据库（零配置）
-- **JSch** - SSH 远程执行
-- **WebSocket** - 实时日志推送、终端
+
+| 技术 | 说明 |
+|------|------|
+| Java 17 | 运行环境 |
+| Spring Boot 3.2 | Web 框架 |
+| MyBatis-Plus 3.5 | ORM 框架 |
+| SQLite | 嵌入式数据库（零配置） |
+| JSch | SSH 远程执行 |
+| WebSocket | 实时日志推送、终端 |
 
 ### 前端
-- **Vue 3** + **Vite 5**
-- **Element Plus** - UI 组件库
-- **Pinia** - 状态管理
-- **Vue Router** - 路由管理
-- **xterm.js** - 终端模拟
+
+| 技术 | 说明 |
+|------|------|
+| Vue 3 | 前端框架 |
+| Vite 5 | 构建工具 |
+| Element Plus | UI 组件库 |
+| Pinia | 状态管理 |
+| Vue Router | 路由管理 |
+| xterm.js | 终端模拟 |
 
 ## 环境要求
 
