@@ -1,7 +1,7 @@
 
 # 设置NPM源，提升安装速度
 npm config set registry https://registry.npmmirror.com
-
+echo ${HOME}
 cd frontend
 npm install
 npm run build
@@ -11,25 +11,40 @@ echo "前端构建完成"
 
 #JDK环境
 cd ..
-mkdir -p temp-linux/jdk dist/auto-test-platform-linux-arm64 
-curl -L  https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.9%2B9/OpenJDK17U-jdk_x64_linux_hotspot_17.0.9_9.tar.gz -o temp-linux/jdk.tar.gz
+mkdir -p temp-linux/jdk
 
-tar -xzf temp-linux/jdk.tar.gz -C temp-linux/jdk/
+if [ ! -f /root/temp/jdk.tar.gz ];then
+  mkdir -p /root/temp
+  curl -L  https://gh-proxy.org/https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.9%2B9/OpenJDK17U-jdk_x64_linux_hotspot_17.0.9_9.tar.gz -o /root/temp/jdk.tar.gz
+fi
+
+tar -xzf /root/temp/jdk.tar.gz -C temp-linux/jdk/
 JDK_DIR="$(pwd)/temp-linux/jdk/jdk-17.0.9+9"
 
+#MAVEN
+if [ ! -f /root/temp/maven.tar.gz ];then
+  mkdir /root/temp
+  curl -L https://dlcdn.apache.org/maven/maven-3/3.9.14/binaries/apache-maven-3.9.14-bin.tar.gz -o /root/temp/maven.tar.gz
+fi
+tar -xzvf /root/temp/maven.tar.gz
+
 export JAVA_HOME="$JDK_DIR/"
-export PATH="$JAVA_HOME/bin:$PATH"
+export PATH="$(pwd)/apache-maven-3.9.14/bin:$JAVA_HOME/bin:$PATH"
 cd backend
 mvn package -DskipTests
 mkdir -p ../dist
-cp target/*.jar ../dist/auto-test-platform-1.0.0.jar
-echo "后端构建完成“
+cp target/auto-test-platform-1.0.0-SNAPSHOT.jar ../dist/auto-test-platform.jar
+cd ..
+echo "后端构建完成"
 
 #打包linux
-cd ..
-curl -L  https://gh-proxy.org/https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.9%2B9/OpenJDK17U-jre_aarch64_linux_hotspot_17.0.9_9.tar.gz -o temp-linux/jre.tar.gz
-tar -xzf temp-linux/jre.tar.gz -C dist/auto-test-platform-linux-arm64
-cp dist/auto-test-platform-1.0.0.jar dist/auto-test-platform-linux-arm64/auto-test-platform.jar
+mkdir -p dist/auto-test-platform-linux-arm64 
+if [ ! -f /root/temp/jre.tar.gz ];then
+  mkdir /root/temp
+  curl -L  https://gh-proxy.org/https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.9%2B9/OpenJDK17U-jre_aarch64_linux_hotspot_17.0.9_9.tar.gz -o /root/temp/jre.tar.gz
+fi
+tar -xzf /root/temp/jre.tar.gz -C dist/auto-test-platform-linux-arm64
+cp dist/auto-test-platform.jar dist/auto-test-platform-linux-arm64/auto-test-platform.jar
 cat > dist/auto-test-platform-linux-arm64/start.sh << 'EOF'
 #!/bin/bash
 JRE_DIR="./jdk-17.0.9+9"
@@ -47,18 +62,20 @@ EOF
 cd dist && tar -czf auto-test-platform-linux-arm64.tar.gz auto-test-platform-linux-arm64 && cd ..
 echo "Linux ARM64 打包完成"
 
-#打包windows
-mkdir -p temp-windows dist/auto-test-platform-windows-x64
-curl -L  https://gh-proxy.org/https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.9%2B9.1/OpenJDK17U-jre_x64_windows_hotspot_17.0.9_9.zip -o temp-windows/jre.zip
-unzip temp-windows/jre.zip
 cd ..
+#打包windows
+mkdir -p  dist/auto-test-platform-windows-x64
+if [ ! -f /root/temp/jre_w.tar.gz ];then
+  mkdir /root/temp
+  curl -L  https://gh-proxy.org/https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.9%2B9.1/OpenJDK17U-jre_x64_windows_hotspot_17.0.9_9.zip -o /root/temp/jre_w.zip
+fi
+unzip /root/temp/jre_w.zip
 
 # 整理目录
-JRE_DIR=$(ls temp-windows | grep -i jdk | grep -i jre | head -1)
 mv jdk-17.0.9+9-jre dist/auto-test-platform-windows-x64/jdk-17.0.9+9-jre
 
 # 复制 JAR
-cp dist/auto-test-platform-1.0.0.jar dist/auto-test-platform-windows-x64/auto-test-platform.jar
+cp dist/auto-test-platform.jar dist/auto-test-platform-windows-x64/auto-test-platform.jar
 
 # 创建启动脚本
 cat > dist/auto-test-platform-windows-x64/start.bat << 'EOF'
@@ -82,5 +99,6 @@ cd dist
 zip -r auto-test-platform-windows-x64.zip auto-test-platform-windows-x64
 cd ..
 
+rm -f dist/auto-test-platform-windows-x64
 
 echo "Windows x86 打包完成"
