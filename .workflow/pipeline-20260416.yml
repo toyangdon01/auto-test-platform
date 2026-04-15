@@ -130,6 +130,7 @@ stages:
           - ~/.npm
           - ~/.yarn
           - ~/.m2
+          - ~/temp
         notify: []
         strategy:
           retry: '0'
