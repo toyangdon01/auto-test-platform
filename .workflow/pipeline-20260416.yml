@@ -124,8 +124,9 @@ stages:
         artifacts:
           - name: BUILD_ARTIFACT
             path:
-              - ./dist/auto-test-platform-1.0.0.jar
+              - ./dist/auto-test-platform.jar
               - ./dist/auto-test-platform-windows-x64.zip
+              - ./dist/auto-test-platform-linux-arm64.tar.gz
         caches:
           - ~/.npm
           - ~/.yarn
