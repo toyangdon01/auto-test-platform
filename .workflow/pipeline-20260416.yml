@@ -19,7 +19,6 @@ stages:
         displayName: Nodejs 构建
         nodeVersion: 18.16.0
         commands:
-          - ''
           - '# 设置NPM源，提升安装速度'
           - npm config set registry https://registry.npmmirror.com
           - echo ${HOME}
@@ -28,14 +27,13 @@ stages:
           - npm run build
           - mkdir -p ../backend/src/main/resources/static
           - cp -r dist/* ../backend/src/main/resources/static/
+          - cd ..
           - echo "前端构建完成"
           - ''
           - '#JDK环境'
-          - cd ..
+          - mkdir -p /root/temp
           - mkdir -p temp-linux/jdk
-          - ''
           - if [ ! -f /root/temp/jdk.tar.gz ];then
-          - '  mkdir -p /root/temp'
           - '  curl -L  https://gh-proxy.org/https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.9%2B9/OpenJDK17U-jdk_x64_linux_hotspot_17.0.9_9.tar.gz -o /root/temp/jdk.tar.gz'
           - fi
           - ''
@@ -44,7 +42,6 @@ stages:
           - ''
           - '#MAVEN'
           - if [ ! -f /root/temp/maven.tar.gz ];then
-          - '  mkdir /root/temp'
           - '  curl -L https://dlcdn.apache.org/maven/maven-3/3.9.14/binaries/apache-maven-3.9.14-bin.tar.gz -o /root/temp/maven.tar.gz'
           - fi
           - tar -xzvf /root/temp/maven.tar.gz
@@ -61,7 +58,6 @@ stages:
           - '#打包linux'
           - 'mkdir -p dist/auto-test-platform-linux-arm64 '
           - if [ ! -f /root/temp/jre.tar.gz ];then
-          - '  mkdir /root/temp'
           - '  curl -L  https://gh-proxy.org/https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.9%2B9/OpenJDK17U-jre_aarch64_linux_hotspot_17.0.9_9.tar.gz -o /root/temp/jre.tar.gz'
           - fi
           - tar -xzf /root/temp/jre.tar.gz -C dist/auto-test-platform-linux-arm64
@@ -80,10 +76,11 @@ stages:
           - 1. 运行 ./start.sh
           - 2. 启动后访问 http://localhost:8080
           - EOF
-          - cd dist && tar -czf auto-test-platform-linux-arm64.tar.gz auto-test-platform-linux-arm64 && cd ..
+          - cd dist && tar -czf auto-test-platform-linux-arm64.tar.gz auto-test-platform-linux-arm64
+          - rm -rf auto-test-platform-linux-arm64
+          - cd ..
           - echo "Linux ARM64 打包完成"
           - ''
-          - cd ..
           - '#打包windows'
           - mkdir -p  dist/auto-test-platform-windows-x64
           - if [ ! -f /root/temp/jre_w.tar.gz ];then
