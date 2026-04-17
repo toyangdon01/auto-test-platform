@@ -1690,7 +1690,7 @@ public class TaskExecutionService {
                     }
                 }
                 
-                if (allDependenciesMet && "skipped".equals(step.getStatus())) {
+                if (allDependenciesMet) {
                     // 更新步骤状态为重试中
                     step.setStatus("retrying");
                     step.setStartedAt(LocalDateTime.now());

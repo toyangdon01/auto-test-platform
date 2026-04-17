@@ -22,9 +22,6 @@
           <el-button v-if="task?.status !== 'pending' && task?.status !== 'running'" type="primary" @click="handleExecute">
             <el-icon><VideoPlay /></el-icon>再次执行
           </el-button>
-          <el-button v-if="task?.status === 'failed' || task?.status === 'completed_with_errors'" type="primary" @click="handleRetry">
-            <el-icon><RefreshRight /></el-icon>重试
-          </el-button>
           <el-button @click="fetchDetail">
             <el-icon><Refresh /></el-icon>刷新
           </el-button>
