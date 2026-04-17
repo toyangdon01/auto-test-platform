@@ -674,9 +674,17 @@ public class OnlineImportServiceImpl implements OnlineImportService {
         Files.walkFileTree(scriptDir, new SimpleFileVisitor<Path>() {
             @Override
             public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                String relativePath = scriptDir.relativize(file).toString();
+                String fileName = file.getFileName().toString();
+                String extension = fileName.contains(".") 
+                    ? fileName.substring(fileName.lastIndexOf(".") + 1).toLowerCase() 
+                    : "";
+                
                 Map<String, Object> fileInfo = new HashMap<>();
-                fileInfo.put("path", scriptDir.relativize(file).toString());
+                fileInfo.put("name", fileName);
+                fileInfo.put("path", relativePath);
                 fileInfo.put("size", attrs.size());
+                fileInfo.put("type", extension);
                 fileList.add(fileInfo);
                 totalSize[0] += attrs.size();
                 return FileVisitResult.CONTINUE;
