@@ -153,6 +153,166 @@ Content-Type: application/json
 
 ---
 
+**详细字段说明**:
+
+#### 1. steps（执行步骤）- Map<String, Object>
+
+定义脚本的执行步骤，支持两种格式：对象格式（推荐）和数组格式。
+
+**对象格式（推荐）**:
+```json
+{
+  "prepare": {
+    "displayName": "准备环境",
+    "script": "scripts/prepare.sh",
+    "dependsOn": [],
+    "params": [...],
+    "resultParser": true,
+    "resultCollector": false
+  },
+  "run_test": {
+    "displayName": "执行测试",
+    "script": "main.sh",
+    "dependsOn": ["prepare"]
+  }
+}
+```
+
+**子字段说明**:
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| displayName | string | 否 | 步骤显示名称 |
+| script | string | 是 | 要执行的脚本文件路径（相对于脚本包根目录） |
+| dependsOn | string[] | 否 | 依赖的步骤名称列表，用于构建执行顺序 |
+| params | array | 否 | 步骤级参数，详见下方 params 说明 |
+| resultParser | boolean | 否 | 是否解析结果（默认 false） |
+| resultCollector | boolean | 否 | 是否收集结果文件（默认 false） |
+| startupProbe | object | 否 | 启动探测配置 |
+| fileCollectEnabled | boolean | 否 | 是否启用文件收集 |
+| fileCollects | array | 否 | 收集的文件列表 |
+| resources | array | 否 | 步骤级资源配置 |
+| timeout | integer | 否 | 步骤超时时间（秒） |
+| retryConfig | object | 否 | 步骤级重试配置 |
+
+---
+
+#### 2. parameters（参数配置）- List<Map<String, Object>>
+
+定义脚本的全局参数，会作为环境变量传递给脚本。
+
+**示例**:
+```json
+[
+  {
+    "name": "RUNTIME",
+    "type": "string",
+    "default": "60",
+    "description": "测试时长（秒）"
+  },
+  {
+    "name": "SIZE",
+    "type": "string",
+    "default": "5G",
+    "description": "测试文件大小"
+  }
+]
+```
+
+**子字段说明**:
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| name | string | 是 | 参数名称（将作为环境变量名） |
+| type | string | 否 | 参数类型：string / number（默认 string） |
+| default | any | 否 | 默认值 |
+| description | string | 否 | 参数描述 |
+
+---
+
+#### 3. fileList（文件列表）- List<Map<String, Object>>
+
+定义脚本包中包含的文件列表。
+
+**示例**:
+```json
+[
+  {
+    "name": "main.sh",
+    "path": "main.sh",
+    "type": "script",
+    "language": "shell"
+  },
+  {
+    "name": "config.json",
+    "path": "config/config.json",
+    "type": "file"
+  }
+]
+```
+
+**子字段说明**:
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| name | string | 是 | 文件显示名称 |
+| path | string | 是 | 文件相对路径 |
+| type | string | 否 | 文件类型：script / file（默认 file） |
+| language | string | 否 | 脚本语言：shell / python（type=script 时使用） |
+| size | integer | 否 | 文件大小（字节） |
+
+---
+
+#### 4. params（步骤级参数）- List<Map<String, Object>>
+
+定义单个步骤的参数，覆盖全局 parameters。
+
+**示例**:
+```json
+[
+  {
+    "name": "TEST_MODE",
+    "defaultValue": "randrw",
+    "description": "测试模式"
+  }
+]
+```
+
+**子字段说明**:
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| name | string | 是 | 参数名称 |
+| defaultValue | any | 否 | 默认值（覆盖全局 default） |
+| value | any | 否 | 固定值（优先级高于 defaultValue） |
+| description | string | 否 | 参数描述 |
+| required | boolean | 否 | 是否必填 |
+
+---
+
+#### 5. retryConfig（重试配置）- Map<String, Object>
+
+定义步骤或脚本的错误重试策略。
+
+**示例**:
+```json
+{
+  "enabled": true,
+  "maxAttempts": 3,
+  "delaySeconds": 5,
+  "backoffMultiplier": 2,
+  "retryOnErrors": ["connection_timeout", "execution_failed"]
+}
+```
+
+**子字段说明**:
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| enabled | boolean | 否 | 是否启用重试（默认 false） |
+| maxAttempts | integer | 否 | 最大重试次数（默认 3） |
+| delaySeconds | integer | 否 | 重试间隔秒数（默认 5） |
+| backoffMultiplier | number | 否 | 退避倍数（默认 1.5） |
+| retryOnErrors | string[] | 否 | 重试的错误类型列表 |
+| cascadeExecution | boolean | 否 | 是否级联执行后续步骤 |
+
+---
+
 ### 1.4 更新脚本
 
 ```
