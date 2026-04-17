@@ -126,10 +126,10 @@
       <!-- 步骤 3：导入结果 -->
       <div v-if="activeStep === 2">
         <el-result
-          :icon="importSuccess ? 'success' : 'warning'"
-          :icon-color="importSuccess ? '#67c23a' : '#e6a23c'"
-          :title="importSuccess ? '导入成功' : '导入完成'"
-          :sub-title="importSuccess ? '编排已成功创建' : '编排已创建，但存在部分警告'"
+          :icon="importSuccess ? 'success' : 'error'"
+          :icon-color="importSuccess ? '#67c23a' : '#f56c6c'"
+          :title="importSuccess ? '导入成功' : '导入失败'"
+          :sub-title="importSuccess ? '编排已成功创建' : importError"
         >
           <template #extra>
             <div v-if="importSuccess" class="success-info">
@@ -138,14 +138,6 @@
                 <el-descriptions-item label="任务数量">{{ pipelineResult?.taskCount }} 个</el-descriptions-item>
               </el-descriptions>
             </div>
-            
-            <div v-if="importWarnings?.length" class="warnings-summary" style="margin-top: 16px;">
-              <el-alert type="warning" :closable="false" title="警告信息">
-                <div v-for="w in importWarnings" :key="w" class="warning-text">
-                  ⚠️ {{ w }}
-                </div>
-              </el-alert>
-            </div>
           </template>
         </el-result>
       </div>
@@ -153,15 +145,14 @@
     
     <template #footer>
       <el-button @click="visible = false" v-if="activeStep < 2">取消</el-button>
-      <el-button @click="prevStep" v-if="activeStep > 0 && activeStep < 2">上一步</el-button>
       <el-button 
         type="primary" 
         @click="nextStep" 
-        v-if="activeStep < 2"
+        v-if="activeStep === 0"
         :loading="loading"
         :disabled="!canProceed"
       >
-        {{ activeStep === 0 ? '预览' : '导入' }}
+        导入
       </el-button>
       <el-button @click="visible = false" v-if="activeStep === 2">关闭</el-button>
     </template>
@@ -195,11 +186,11 @@ const preview = ref<{
   }>
 } | null>(null)
 
-const previewWarnings = ref<string[]>([])
+const previewError = ref<string>('')
 
 // 导入结果
 const importSuccess = ref(true)
-const importWarnings = ref<string[]>([])
+const importError = ref<string>('')
 const pipelineResult = ref<{
   name: string
   taskCount: number
@@ -219,15 +210,15 @@ const canProceed = computed(() => {
       return yamlContent.value && yamlContent.value.trim().length > 0
     }
   }
-  return true
+  return false
 })
 
 const open = () => {
   activeStep.value = 0
   preview.value = null
-  previewWarnings.value = []
+  previewError.value = ''
   importSuccess.value = true
-  importWarnings.value = []
+  importError.value = ''
   pipelineResult.value = null
   selectedFile.value = null
   yamlContent.value = ''
@@ -247,9 +238,7 @@ const nextStep = async () => {
   }
 }
 
-const prevStep = () => {
-  activeStep.value--
-}
+
 
 const previewYaml = async () => {
   loading.value = true
@@ -263,7 +252,7 @@ const previewYaml = async () => {
       yamlText = yamlContent.value
     }
     
-    // 调用后端 API 解析 YAML
+    // 调用后端 API 解析 YAML（预览时也会创建，后续改为单独的预览 API）
     const response = await request.post('/api/v1/pipelines/import', yamlText, {
       headers: { 'Content-Type': 'text/plain' }
     })
@@ -280,9 +269,17 @@ const previewYaml = async () => {
           timeout: t.timeout ? Math.round(t.timeout / 1000) : 86400
         }))
       }
-      activeStep.value = 1
+      importSuccess.value = true
+      pipelineResult.value = {
+        name: response.data.name,
+        taskCount: response.data.tasks?.length || 0
+      }
+      activeStep.value = 2  // 直接跳到结果页
     } else {
-      ElMessage.error(response.message || 'YAML 解析失败')
+      previewError.value = response.message || 'YAML 解析失败'
+      importSuccess.value = false
+      importError.value = previewError.value
+      activeStep.value = 2
     }
   } catch (error: any) {
     console.error('预览失败:', error)
@@ -302,49 +299,18 @@ const previewYaml = async () => {
       }
     }
     
-    ElMessage.error(errorMsg)
+    previewError.value = errorMsg
+    importSuccess.value = false
+    importError.value = errorMsg
+    activeStep.value = 2
   } finally {
     loading.value = false
   }
 }
 
 const importYaml = async () => {
-  loading.value = true
-  try {
-    let yamlText = ''
-    
-    if (importType.value === 'file') {
-      if (!selectedFile.value) return
-      yamlText = await readFileAsText(selectedFile.value)
-    } else {
-      yamlText = yamlContent.value
-    }
-    
-    // 调用后端 API 导入 YAML
-    const response = await request.post('/api/v1/pipelines/import', yamlText, {
-      headers: { 'Content-Type': 'text/plain' }
-    })
-    
-    if (response.code === 0) {
-      pipelineResult.value = {
-        name: response.data.name,
-        taskCount: response.data.tasks?.length || 0
-      }
-      importSuccess.value = true
-      activeStep.value = 2
-    } else {
-      importSuccess.value = false
-      importWarnings.value = [response.message || '导入失败']
-      activeStep.value = 2
-    }
-  } catch (error: any) {
-    console.error('导入失败:', error)
-    importSuccess.value = false
-    importWarnings.value = [error.message || '导入失败']
-    activeStep.value = 2
-  } finally {
-    loading.value = false
-  }
+  // 预览时已经导入了，这里直接显示结果
+  activeStep.value = 2
 }
 
 const readFileAsText = (file: File): Promise<string> => {
