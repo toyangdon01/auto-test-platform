@@ -117,16 +117,14 @@ stages:
           - zip -r auto-test-platform-windows-x64.zip auto-test-platform-windows-x64
           - cd ..
           - ''
-          - rm -f dist/auto-test-platform-windows-x64
+          - rm -rf dist/auto-test-platform-windows-x64
           - ''
           - echo "Windows x86 打包完成"
           - ''
         artifacts:
           - name: BUILD_ARTIFACT
             path:
-              - ./dist/auto-test-platform.jar
-              - ./dist/auto-test-platform-windows-x64.zip
-              - ./dist/auto-test-platform-linux-arm64.tar.gz
+              - ./dist
         caches:
           - ~/.npm
           - ~/.yarn
