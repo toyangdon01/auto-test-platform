@@ -2,10 +2,16 @@
   <div class="page-card">
     <div class="page-header">
       <h3 class="page-title">任务编排</h3>
-      <el-button type="primary" @click="$router.push('/pipelines/create')">
-        <el-icon><Plus /></el-icon>
-        新建编排
-      </el-button>
+      <div class="header-actions">
+        <el-button type="success" @click="showImportDialog">
+          <el-icon><Download /></el-icon>
+          导入 YAML
+        </el-button>
+        <el-button type="primary" @click="$router.push('/pipelines/create')">
+          <el-icon><Plus /></el-icon>
+          新建编排
+        </el-button>
+      </div>
     </div>
 
     <el-table :data="pipelines" v-loading="loading" stripe>
@@ -48,6 +54,9 @@
       @current-change="loadPipelines"
       style="margin-top: 16px; justify-content: flex-end"
     />
+    
+    <!-- YAML 导入对话框 -->
+    <PipelineImportDialog ref="importDialog" @refresh="loadPipelines" />
   </div>
 </template>
 
@@ -55,9 +64,10 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus } from '@element-plus/icons-vue'
+import { Plus, Download } from '@element-plus/icons-vue'
 import { listPipelines, deletePipeline, executePipeline } from '@/api/pipeline'
 import type { Pipeline } from '@/api/pipeline'
+import PipelineImportDialog from '@/components/PipelineImportDialog.vue'
 
 const router = useRouter()
 const loading = ref(false)
@@ -65,6 +75,9 @@ const pipelines = ref<Pipeline[]>([])
 const page = ref(1)
 const size = ref(10)
 const total = ref(0)
+
+const importDialogVisible = ref(false)
+const importDialog = ref()
 
 function formatTime(time: string) {
   if (!time) return '-'
@@ -119,7 +132,24 @@ async function handleDelete(row: Pipeline) {
   }
 }
 
+function showImportDialog() {
+  importDialog.value?.open()
+}
+
 onMounted(() => {
   loadPipelines()
 })
 </script>
+
+<style scoped>
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.header-actions {
+  display: flex;
+  gap: 12px;
+}
+</style>
