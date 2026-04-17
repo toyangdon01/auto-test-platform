@@ -48,7 +48,7 @@ const handleExport = async () => {
   loading.value = true
   
   try {
-    const response = await axios.post('/api/v1/scripts/package/export', {
+    const response = await axios.post('/api/v1/scripts/import/export', {
       scriptIds: scriptIds.value,
       includeResources: options.includeResources,
       format: 'zip'

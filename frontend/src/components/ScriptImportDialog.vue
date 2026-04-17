@@ -297,7 +297,7 @@ const previewPackage = async () => {
       const formData = new FormData()
       formData.append('file', selectedFile.value)
       
-      const response = await axios.post('/api/v1/scripts/package/import/preview', formData, {
+      const response = await axios.post('/api/v1/scripts/import/preview', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       })
       preview.value = response.data.data
@@ -354,7 +354,7 @@ const importPackage = async () => {
       formData.append('file', selectedFile.value)
       formData.append('conflictStrategy', conflictStrategy.value)
       
-      const response = await axios.post('/api/v1/scripts/package/import', formData, {
+      const response = await axios.post('/api/v1/scripts/import/execute', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       })
       importResult.value = response.data.data

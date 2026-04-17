@@ -84,7 +84,7 @@ export const scriptApi = {
     selectedScripts?: string[]
     conflictStrategy?: 'SKIP' | 'OVERWRITE' | 'RENAME'
   }) {
-    return request.post('/scripts/import/online/import', data)
+    return request.post('/scripts/import/online/execute', data)
   },
 }
 
