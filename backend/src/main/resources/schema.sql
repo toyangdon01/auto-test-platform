@@ -296,23 +296,6 @@ CREATE INDEX IF NOT EXISTS idx_test_results_server_id ON test_results(server_id)
 CREATE INDEX IF NOT EXISTS idx_test_results_result ON test_results(result);
 CREATE INDEX IF NOT EXISTS idx_test_results_created_at ON test_results(created_at);
 
--- 测试报告表
-CREATE TABLE IF NOT EXISTS reports (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    task_id BIGINT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
-    title VARCHAR(200) NOT NULL,
-    summary TEXT,
-    conclusion VARCHAR(50),
-    report_data TEXT,  -- JSON
-    file_path VARCHAR(500),
-    file_format VARCHAR(20),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS idx_reports_task_id ON reports(task_id);
-CREATE INDEX IF NOT EXISTS idx_reports_created_at ON reports(created_at);
-CREATE INDEX IF NOT EXISTS idx_reports_conclusion_created ON reports(conclusion, created_at DESC);
-
 -- 结果判定规则表
 CREATE TABLE IF NOT EXISTS result_rules (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

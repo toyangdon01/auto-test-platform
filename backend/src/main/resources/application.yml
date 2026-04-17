@@ -84,7 +84,6 @@ autotest:
   # 存储路径配置（跨平台兼容）
   storage:
     scripts-path: ${user.home}/auto-test/scripts
-    reports-path: ${user.home}/auto-test/reports
     temp-path: ${user.home}/auto-test/temp
     results-path: ${user.home}/auto-test/results
   
