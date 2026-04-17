@@ -1,11 +1,13 @@
 package com.autotest.service;
 
+import com.autotest.config.ScriptConfig;
 import com.autotest.dto.ExportOptions;
 import com.autotest.dto.ImportResult;
 import com.autotest.dto.PackageManifest;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.nio.file.Path;
 
 /**
  * 脚本包服务
@@ -38,6 +40,19 @@ public interface ScriptPackageService {
      * @return 包预览信息
      */
     PackageManifest previewPackage(MultipartFile file) throws IOException;
+    
+    /**
+     * 从目录导入单个脚本
+     *
+     * @param scriptDir 脚本目录
+     * @param config 脚本配置
+     * @param scriptName 脚本名称
+     * @param tempDir 临时目录（用于资源文件）
+     * @param strategy 冲突处理策略
+     * @param result 导入结果
+     */
+    void importScriptFromDirectory(Path scriptDir, ScriptConfig config, String scriptName, 
+                                   Path tempDir, ConflictStrategy strategy, ImportResult result) throws IOException;
     
     /**
      * 冲突处理策略

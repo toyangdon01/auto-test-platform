@@ -255,6 +255,16 @@ public class ScriptPackageServiceImpl implements ScriptPackageService {
             throw new IOException("autotest.yaml 解析失败：" + e.getMessage());
         }
         
+        // 调用公共方法
+        importScriptFromDirectory(scriptDir, config, scriptName, tempDir, strategy, result);
+    }
+    
+    /**
+     * 从目录导入单个脚本（公共方法，供在线导入复用）
+     */
+    @Override
+    public void importScriptFromDirectory(Path scriptDir, ScriptConfig config, String scriptName, 
+                                           Path tempDir, ConflictStrategy strategy, ImportResult result) throws IOException {
         // 验证必要字段
         if (config.getName() == null || config.getName().isEmpty()) {
             result.addWarning(scriptName, "配置缺少 name 字段，使用目录名");
