@@ -2,6 +2,7 @@ package com.autotest.service;
 
 import com.autotest.entity.Server;
 import com.jcraft.jsch.*;
+import lombok.extern.slf4j.Slf4j;
 
 import java.io.*;
 import java.nio.charset.StandardCharsets;
@@ -13,6 +14,7 @@ import java.util.function.Consumer;
  *
  * @author auto-test-platform
  */
+@Slf4j
 public class SshService {
 
     // 默认超时值
@@ -57,14 +59,13 @@ public class SshService {
             session = createSession(jsch, server);
             session.setTimeout(defaultTimeout);
             
-            System.out.println("[SSH] Connecting to " + server.getHost() + ":" + server.getPort() + " as " + server.getUsername());
+            log.info("[SSH] Connecting to {}:{} as {}", server.getHost(), server.getPort(), server.getUsername());
             session.connect();
-            System.out.println("[SSH] Connected successfully!");
+            log.info("[SSH] Connected successfully!");
 
             return session.isConnected();
         } catch (JSchException e) {
-            System.out.println("[SSH] Connection failed: " + e.getMessage());
-            e.printStackTrace();
+            log.error("[SSH] Connection failed: {}", e.getMessage(), e);
             return false;
         } finally {
             if (session != null && session.isConnected()) {
