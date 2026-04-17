@@ -1036,7 +1036,6 @@ async function handleRetryStep() {
   
   retryDialogVisible.value = false
   retrying.value = true
-  retryLogVisible.value = true
   
   try {
     const res = await request.post(`/tasks/${taskId}/steps/${retryStep_data.value.id}/retry`, null, {
