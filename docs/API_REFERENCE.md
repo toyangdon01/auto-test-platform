@@ -136,11 +136,20 @@ Content-Type: application/json
 |------|------|------|------|
 | name | string | 是 | 脚本名称，唯一 |
 | description | string | 否 | 描述 |
-| testCategory | string | 是 | 测试分类：system/database/network/performance/functional |
-| scriptType | string | 是 | 脚本类型：shell/python |
+| testCategory | string | 否 | 测试分类：system/database/network/performance/functional |
+| scriptType | string | 否 | 脚本类型：shell/python（默认 shell） |
 | tempFilePath | string | 否 | 上传返回的临时路径 |
+| steps | array | 否 | 执行步骤配置（若 autotest.yaml 中有则自动解析） |
+| parameters | object | 否 | 参数定义（若 autotest.yaml 中有则自动解析） |
+| fileList | array | 否 | 文件列表 |
 
 **响应**: 返回创建的脚本信息，如果包含 `autotest.yaml` 会自动解析配置。
+
+**自动解析规则**:
+- 如果 `tempFilePath` 指向的目录包含 `autotest.yaml`，系统会自动：
+  1. 解析 steps（执行步骤）
+  2. 解析 parameters（参数配置）
+  3. 解析 retryConfig（重试配置）
 
 ---
 
