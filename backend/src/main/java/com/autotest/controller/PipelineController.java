@@ -4,11 +4,14 @@ import com.autotest.common.ApiResponse;
 import com.autotest.entity.Pipeline;
 import com.autotest.entity.PipelineRun;
 import com.autotest.entity.PipelineTask;
+import com.autotest.service.PipelineImportService;
 import com.autotest.service.PipelineService;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 
@@ -18,6 +21,7 @@ import java.util.Map;
 public class PipelineController {
 
     private final PipelineService pipelineService;
+    private final PipelineImportService pipelineImportService;
 
     /**
      * 创建编排
@@ -206,5 +210,36 @@ public class PipelineController {
     public ApiResponse<Void> cancelPipelineRun(@PathVariable Long runId) {
         pipelineService.cancelPipelineRun(runId);
         return ApiResponse.success(null);
+    }
+
+    // ==================== YAML 导入导出 ====================
+
+    /**
+     * 从 YAML 字符串导入编排
+     */
+    @PostMapping("/import")
+    public ApiResponse<Pipeline> importFromYaml(@RequestBody String yamlContent) {
+        return ApiResponse.success(pipelineImportService.importFromYaml(yamlContent));
+    }
+
+    /**
+     * 从文件上传导入编排
+     */
+    @PostMapping("/import/file")
+    public ApiResponse<Pipeline> importFromFile(@RequestParam("file") MultipartFile file) {
+        try {
+            String yamlContent = new String(file.getBytes(), StandardCharsets.UTF_8);
+            return ApiResponse.success(pipelineImportService.importFromYaml(yamlContent));
+        } catch (Exception e) {
+            return ApiResponse.error("文件读取失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 导出编排为 YAML
+     */
+    @GetMapping("/{id}/export")
+    public ApiResponse<String> exportToYaml(@PathVariable Long id) {
+        return ApiResponse.success(pipelineImportService.exportToYaml(id));
     }
 }
