@@ -39,7 +39,10 @@ public class ServerController {
 
     // ==================== 分组管理（必须在 /{id} 之前） ====================
 
-    @Operation(summary = "获取服务器分组列表")
+    @Operation(
+        summary = "获取服务器分组列表",
+        description = "获取所有服务器分组，包含每个分组的服务器数量"
+    )
     @GetMapping("/groups")
     public ApiResponse<List<ServerGroup>> listGroups() {
         List<ServerGroup> groups = serverGroupMapper.selectList(null);
@@ -94,7 +97,19 @@ public class ServerController {
         return ApiResponse.success(serverService.getServerDetail(id));
     }
 
-    @Operation(summary = "添加服务器")
+    @Operation(
+        summary = "添加服务器",
+        description = "添加新的目标服务器。\n" +
+                     "\n**认证方式：**\n" +
+                     "- password: 使用密码认证，需要填写 username 和 password\n" +
+                     "- key: 使用密钥认证，需要填写 username 和 privateKey\n" +
+                     "\n**字段说明：**\n" +
+                     "- name: 服务器名称\n" +
+                     "- host: 主机地址（IP或域名）\n" +
+                     "- port: SSH端口，默认22\n" +
+                     "- authType: 认证类型（password/key）\n" +
+                     "- groupId: 所属分组ID"
+    )
     @PostMapping
     public ApiResponse<Server> createServer(@Valid @RequestBody ServerCreateRequest request) {
         return ApiResponse.success(serverService.createServer(request));
@@ -140,7 +155,15 @@ public class ServerController {
         return ApiResponse.success();
     }
 
-    @Operation(summary = "测试连接")
+    @Operation(
+        summary = "测试连接",
+        description = "测试与服务器的 SSH 连接。\n" +
+                     "\n**测试内容：**\n" +
+                     "1. SSH 连接是否可达\n" +
+                     "2. 认证是否成功\n" +
+                     "\n**返回值：**\n" +
+                     "- connected: true/false"
+    )
     @PostMapping("/{id}/test")
     public ApiResponse<Map<String, Object>> testConnection(@PathVariable Long id) {
         boolean connected = serverService.testConnection(id);
