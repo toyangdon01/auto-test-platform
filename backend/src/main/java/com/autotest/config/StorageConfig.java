@@ -23,9 +23,6 @@ public class StorageConfig {
     @Value("${autotest.storage.scripts-path}")
     private String scriptsPath;
 
-    @Value("${autotest.storage.reports-path}")
-    private String reportsPath;
-
     @Value("${autotest.storage.temp-path}")
     private String tempPath;
 
@@ -34,10 +31,6 @@ public class StorageConfig {
 
     public String getScriptsPath() {
         return scriptsPath;
-    }
-
-    public String getReportsPath() {
-        return reportsPath;
     }
 
     public String getTempPath() {
@@ -56,7 +49,6 @@ public class StorageConfig {
         return args -> {
             List<String> paths = Arrays.asList(
                 scriptsPath.replace("${user.home}", System.getProperty("user.home")),
-                reportsPath.replace("${user.home}", System.getProperty("user.home")),
                 tempPath.replace("${user.home}", System.getProperty("user.home")),
                 resultsPath.replace("${user.home}", System.getProperty("user.home"))
             );
