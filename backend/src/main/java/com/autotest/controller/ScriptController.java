@@ -55,7 +55,10 @@ public class ScriptController {
     private final TaskMapper taskMapper;
     private final TaskService taskService;
 
-    @Operation(summary = "获取脚本列表")
+    @Operation(
+        summary = "获取脚本列表",
+        description = "分页获取脚本列表，支持按名称、分类、状态筛选"
+    )
     @GetMapping
     public ApiResponse<PageResult<Script>> listScripts(
             @RequestParam(defaultValue = "1") Integer page,
@@ -84,7 +87,10 @@ public class ScriptController {
         return ApiResponse.success(PageResult.of(scriptMapper.selectPage(pageObj, wrapper)));
     }
 
-    @Operation(summary = "获取脚本详情")
+    @Operation(
+        summary = "获取脚本详情",
+        description = "根据ID获取脚本详细信息，包括版本、步骤配置、参数定义等"
+    )
     @GetMapping("/{id}")
     public ApiResponse<Script> getScript(@PathVariable Long id) {
         Script script = scriptMapper.selectById(id);
@@ -113,7 +119,12 @@ public class ScriptController {
         return ApiResponse.success(script);
     }
 
-    @Operation(summary = "上传脚本文件")
+    @Operation(
+        summary = "上传脚本文件",
+        description = "上传脚本文件（ZIP包或单文件），返回临时路径用于后续创建脚本。\n" +
+                     "支持格式：.zip、.sh、.py、.yaml等。\n" +
+                     "ZIP包内可包含 autotest.yaml 配置文件，系统会自动解析。"
+    )
     @PostMapping("/upload")
     public ApiResponse<Map<String, Object>> uploadScriptFile(
             @RequestParam("file") MultipartFile file) throws IOException {
@@ -143,7 +154,22 @@ public class ScriptController {
         return ApiResponse.success(script);
     }
 
-    @Operation(summary = "创建脚本")
+    @Operation(
+        summary = "创建脚本",
+        description = "创建新脚本。\n" +
+                     "\n**创建流程：**\n" +
+                     "1. 先调用 POST /scripts/upload 上传脚本文件，获取 tempFilePath\n" +
+                     "2. 使用 tempFilePath 创建脚本记录\n" +
+                     "\n**请求体说明：**\n" +
+                     "- name: 脚本名称，必填，唯一\n" +
+                     "- scriptType: 脚本类型（shell/python）\n" +
+                     "- testCategory: 测试分类（system/database/network/performance/functional）\n" +
+                     "- tempFilePath: 上传返回的临时路径\n" +
+                     "- steps: 执行步骤配置（可选，若 autotest.yaml 中有则自动解析）\n" +
+                     "- parameters: 参数定义（可选）\n" +
+                     "\n**自动解析：**\n" +
+                     "如果 tempFilePath 指向的目录包含 autotest.yaml，系统会自动解析配置"
+    )
     @PostMapping
     public ApiResponse<ScriptUploadResult> createScript(@RequestBody Script script) {
         script.setCurrentVersion("v1.0.0");
@@ -428,7 +454,12 @@ public class ScriptController {
         }
     }
 
-    @Operation(summary = "更新脚本")
+    @Operation(
+        summary = "更新脚本",
+        description = "更新脚本基本信息和配置。\n" +
+                     "可以更新：名称、描述、分类、超时时间、步骤配置、参数定义等。\n" +
+                     "更新后会创建新版本记录。"
+    )
     @PutMapping("/{id}")
     public ApiResponse<Void> updateScript(@PathVariable Long id, @RequestBody Script script) throws IOException {
         script.setId(id);
@@ -488,7 +519,11 @@ public class ScriptController {
         return ApiResponse.success();
     }
 
-    @Operation(summary = "删除脚本")
+    @Operation(
+        summary = "删除脚本",
+        description = "删除脚本及其关联的版本记录、文件。\n" +
+                     "**注意：** 会级联删除关联此脚本的任务记录。"
+    )
     @DeleteMapping("/{id}")
     public ApiResponse<Void> deleteScript(@PathVariable Long id) throws IOException {
         // 查询使用此脚本的所有任务

@@ -45,19 +45,38 @@ public class TaskController {
     private final TaskStepMapper taskStepMapper;
     private final ServerMapper serverMapper;
 
-    @Operation(summary = "获取任务列表")
+    @Operation(
+        summary = "获取任务列表",
+        description = "分页获取任务列表，支持按名称、状态、脚本ID筛选"
+    )
     @GetMapping
     public ApiResponse<PageResult<Task>> listTasks(TaskQueryRequest request) {
         return ApiResponse.success(taskService.listTasks(request));
     }
 
-    @Operation(summary = "获取任务详情")
+    @Operation(
+        summary = "获取任务详情",
+        description = "获取任务详细信息，包括执行状态、服务器列表、步骤状态等"
+    )
     @GetMapping("/{id}")
     public ApiResponse<TaskDetailResponse> getTask(@PathVariable Long id) {
         return ApiResponse.success(taskService.getTaskDetail(id));
     }
 
-    @Operation(summary = "创建任务")
+    @Operation(
+        summary = "创建任务",
+        description = "创建新的测试任务。\n" +
+                     "\n**请求体说明：**\n" +
+                     "- name: 任务名称\n" +
+                     "- scriptId: 关联的脚本ID\n" +
+                     "- scriptVersion: 脚本版本（默认 v1.0.0）\n" +
+                     "- executionMode: 执行模式（immediate-立即执行/scheduled-定时执行）\n" +
+                     "- serverIds: 目标服务器ID列表\n" +
+                     "- parameters: 脚本参数值\n" +
+                     "\n**执行流程：**\n" +
+                     "1. 创建任务记录\n" +
+                     "2. 如果是 immediate 模式，自动触发执行"
+    )
     @PostMapping
     public ApiResponse<Task> createTask(@Valid @RequestBody TaskCreateRequest request) {
         return ApiResponse.success(taskService.createTask(request));
@@ -76,7 +95,16 @@ public class TaskController {
         return ApiResponse.success();
     }
 
-    @Operation(summary = "执行任务")
+    @Operation(
+        summary = "执行任务",
+        description = "触发任务开始执行。\n" +
+                     "\n**执行过程：**\n" +
+                     "1. 分配任务到各目标服务器\n" +
+                     "2. 按步骤执行脚本\n" +
+                     "3. 收集执行日志和结果\n" +
+                     "\n**可通过 WebSocket 实时查看日志：**\n" +
+                     "ws://host/api/v1/ws/logs/{taskId}"
+    )
     @PostMapping("/{id}/execute")
     public ApiResponse<Void> executeTask(@PathVariable Long id) {
         taskService.executeTask(id);
