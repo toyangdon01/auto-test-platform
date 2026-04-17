@@ -1533,10 +1533,6 @@ public class TaskExecutionService {
                 log.debug("已删除步骤 {} 的旧测试结果", taskStep.getStepName());
             }
             
-            // 7.2 清空日志缓存
-            logCacheService.clearTaskLogs(taskId);
-            log.debug("已清空任务 {} 的日志缓存", taskId);
-            
             // 8. 创建执行上下文
             ExecutionContext context = new ExecutionContext(taskId, line -> {
                 logCacheService.appendLog(taskId, line);

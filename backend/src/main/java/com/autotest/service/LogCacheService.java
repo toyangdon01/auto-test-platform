@@ -92,6 +92,17 @@ public class LogCacheService {
                 }
             }
         }
+        
+        /**
+         * 清空日志内容
+         */
+        public void clear() {
+            synchronized (lock) {
+                buffer.setLength(0);
+                totalLines = 0;
+                completed = false;
+            }
+        }
     }
 
     /**
@@ -168,10 +179,14 @@ public class LogCacheService {
 
     /**
      * 清空任务日志缓存（重试时使用）
+     * 只清空日志内容，保留 WebSocket 会话
      */
     public void clearTaskLogs(Long taskId) {
-        logBuffers.remove(taskId);
-        log.debug("已清空任务 {} 的日志缓存", taskId);
+        LogBuffer buffer = logBuffers.get(taskId);
+        if (buffer != null) {
+            buffer.clear();
+            log.debug("已清空任务 {} 的日志缓存", taskId);
+        }
     }
 
     /**
