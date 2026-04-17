@@ -197,21 +197,6 @@ const routes: RouteRecordRaw[] = [
       },
     ],
   },
-
-  {
-    path: '/settings',
-    component: Layout,
-    redirect: '/settings/config',
-    meta: { title: '系统设置', icon: 'Setting' },
-    children: [
-      {
-        path: 'config',
-        name: 'SystemConfig',
-        component: () => import('@/views/settings/config.vue'),
-        meta: { title: '系统配置' },
-      },
-    ],
-  },
   {
     path: '/:pathMatch(.*)*',
     name: 'NotFound',

@@ -15,9 +15,9 @@ import java.util.function.Consumer;
  */
 public class SshService {
 
-    // 默认超时值（可被 setDefaultTimeout 覆盖）
-    private static int defaultTimeout = 30000; // 30秒
-    private static int defaultExecTimeout = 60000; // 执行超时 60秒
+    // 默认超时值
+    private static int defaultTimeout = 60000; // 连接超时 60秒
+    private static int defaultExecTimeout = 86400000; // 执行超时 24小时
 
     /**
      * 设置默认连接超时（毫秒）
