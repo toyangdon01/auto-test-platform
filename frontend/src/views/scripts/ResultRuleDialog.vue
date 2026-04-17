@@ -252,13 +252,10 @@ watch(() => props.rule, (newRule) => {
 
 // 加载脚本文件列表
 async function loadScriptFiles() {
-  console.log('loadScriptFiles called, scriptId:', props.scriptId)
   if (!props.scriptId) return
   try {
     const response = await scriptApi.listFiles(props.scriptId)
-    console.log('API response:', response)
     scriptFiles.value = response.data || []
-    console.log('scriptFiles loaded:', scriptFiles.value.length, 'files')
   } catch (error) {
     console.error('加载脚本文件列表失败:', error)
     scriptFiles.value = []

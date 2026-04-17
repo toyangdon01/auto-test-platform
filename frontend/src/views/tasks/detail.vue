@@ -526,7 +526,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { 
   VideoPlay, VideoPause, RefreshRight, Refresh, Loading,
-  Monitor, Document, DataAnalysis, DataLine, CopyDocument, ArrowDown,
+  Monitor, Document, DataLine, CopyDocument, ArrowDown,
   CircleCheck, CircleClose, Clock, Warning, Setting
 } from '@element-plus/icons-vue'
 import request from '@/utils/request'
@@ -779,11 +779,6 @@ async function fetchSteps() {
     if (res.code === 0) {
       // 过滤掉 _meta 步骤
       taskSteps.value = (res.data || []).filter((step: TaskStep) => step.stepName !== '_meta')
-      console.log('步骤数据:', taskSteps.value)
-      // 打印每个步骤的 output 状态
-      taskSteps.value.forEach((step: TaskStep) => {
-        console.log(`步骤 ${step.id} (${step.stepName}): status=${step.status}, output长度=${step.output?.length || 0}`)
-      })
     }
   } catch (e: any) {
     console.error('获取步骤数据失败', e)
@@ -846,7 +841,6 @@ function showStepDetail(step: TaskStep) {
   // 从最新的 taskSteps 中获取步骤数据，确保显示最新的输出
   const latestStep = taskSteps.value.find(s => s.id === step.id)
   currentStep.value = latestStep || step
-  console.log('步骤详情 - stepId:', step.id, 'output长度:', latestStep?.output?.length, 'output:', latestStep?.output?.substring(0, 100))
   stepDetailVisible.value = true
 }
 
@@ -1217,7 +1211,6 @@ function startPolling() {
           currentStep.value = latestStep
           // 调试日志
           if (latestStep.output && latestStep.output.length > oldOutputLen) {
-            console.log('实时刷新步骤输出 - stepId:', latestStep.id, 'output长度:', latestStep.output.length)
             // 自动滚动到输出框底部
             nextTick(() => {
               const outputBox = document.querySelector('.output-box .output-content')

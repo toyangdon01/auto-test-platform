@@ -188,7 +188,7 @@
 import { ref, reactive, onMounted, onUnmounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Loading, VideoPlay, VideoPause, Delete, RefreshRight, Warning, Edit, Monitor } from '@element-plus/icons-vue'
+import { Plus, Loading, VideoPlay, VideoPause, Delete, Warning, Edit, Monitor } from '@element-plus/icons-vue'
 import request from '@/utils/request'
 import { formatTime, formatDuration } from '@/utils/format'
 import TaskLogStream from '@/components/TaskLogStream.vue'

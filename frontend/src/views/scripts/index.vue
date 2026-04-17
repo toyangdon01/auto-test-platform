@@ -71,8 +71,6 @@
           <el-button type="primary" link @click="handleDetail(row)">详情</el-button>
           <el-button type="primary" link @click="handleRun(row)">执行</el-button>
           <el-button type="primary" link @click="handleEdit(row)">编辑</el-button>
-          <!-- 版本功能暂时隐藏 -->
-          <!-- <el-button type="primary" link @click="handleVersions(row)">版本</el-button> -->
           <el-button type="primary" link @click="handleExport(row)">导出</el-button>
           <el-button type="danger" link @click="handleDelete(row)">删除</el-button>
         </template>
@@ -98,13 +96,6 @@
       :script="currentScript"
       @refresh="fetchData"
     /> -->
-
-    <!-- 解析规则配置弹窗 -->
-    <ParseRuleConfig
-      v-model="parseDialogVisible"
-      :script="currentScript"
-      @refresh="fetchData"
-    />
 
     <!-- 脚本详情弹窗 -->
     <el-dialog
@@ -278,7 +269,6 @@ import { TEST_CATEGORIES, getCategoryLabel } from '@/config/categories'
 import axios from 'axios'
 // 版本功能暂时隐藏
 // import VersionManager from './VersionManager.vue'
-import ParseRuleConfig from './ParseRuleConfig.vue'
 import ScriptImportDialog from '@/components/ScriptImportDialog.vue'
 import ScriptExportDialog from '@/components/ScriptExportDialog.vue'
 
@@ -297,9 +287,6 @@ const queryParams = reactive({
 // 版本功能暂时隐藏
 // const versionDialogVisible = ref(false)
 const currentScript = ref<Script | null>(null)
-
-// 解析规则配置
-const parseDialogVisible = ref(false)
 
 // 脚本详情
 const detailDialogVisible = ref(false)
@@ -442,17 +429,6 @@ function handleEditFromDetail() {
     detailDialogVisible.value = false
     router.push(`/scripts/edit/${detailScript.value.id}`)
   }
-}
-
-// 版本功能暂时隐藏
-// function handleVersions(row: Script) {
-//   currentScript.value = row
-//   versionDialogVisible.value = true
-// }
-
-function handleParseRules(row: Script) {
-  currentScript.value = row
-  parseDialogVisible.value = true
 }
 
 async function handleDelete(row: Script) {
