@@ -185,8 +185,9 @@ Content-Type: application/json
 | script | string | 是 | 要执行的脚本文件路径（相对于脚本包根目录） |
 | dependsOn | string[] | 否 | 依赖的步骤名称列表，用于构建执行顺序 |
 | params | array | 否 | 步骤级参数，详见下方 params 说明 |
-| resultParser | boolean | 否 | 是否解析结果（默认 false） |
+| resultParser | boolean | 否 | 是否解析结果（默认 false），启用后自动设置 resultCollector=true |
 | resultCollector | boolean | 否 | 是否收集结果文件（默认 false） |
+| parseRule | object | 否 | 结果解析规则，详见下方 parseRule 说明 |
 | startupProbe | object | 否 | 启动探测配置 |
 | fileCollectEnabled | boolean | 否 | 是否启用文件收集 |
 | fileCollects | array | 否 | 收集的文件列表 |
@@ -313,6 +314,120 @@ Content-Type: application/json
 
 ---
 
+#### 6. parseRule（结果解析规则）- Map<String, Object>
+
+定义如何解析步骤执行结果。
+
+**示例**:
+```json
+{
+  "parserType": "builtin",
+  "builtinFormat": "json",
+  "inputSource": "stdout",
+  "filePattern": "*.json",
+  "scriptSource": "inline",
+  "scriptContent": "return {'status': 'pass', 'data': output}"
+}
+```
+
+**子字段说明**:
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| parserType | string | 是 | 解析器类型：builtin（内置解析）/ script（自定义脚本） |
+| builtinFormat | string | 否 | 内置格式：json / text / xml / csv（parserType=builtin 时必填） |
+| inputSource | string | 否 | 输入来源：stdout / stderr / file（默认 stdout） |
+| filePattern | string | 否 | 文件匹配模式（inputSource=file 时使用） |
+| scriptSource | string | 否 | 脚本来源：inline（内联）/ path（文件路径），parserType=script 时使用 |
+| scriptLanguage | string | 否 | 脚本语言：python / shell（默认 python） |
+| scriptContent | string | 否 | 内联脚本内容 |
+| scriptPath | string | 否 | 脚本文件路径 |
+
+---
+
+#### 7. resources（资源配置）- List<Map<String, Object>>
+
+定义步骤执行前需要上传到服务器的配置文件或依赖文件。
+
+**示例**:
+```json
+[
+  {
+    "resourceId": 100,
+    "targetPath": "/etc/fio.conf",
+    "permissions": "644",
+    "order": 1
+  }
+]
+```
+
+**子字段说明**:
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| resourceId | integer | 是 | 资源文件 ID（对应 resource_files 表） |
+| targetPath | string | 是 | 上传到服务器的目标路径 |
+| permissions | string | 否 | 文件权限（默认 644） |
+| order | integer | 否 | 上传顺序（数字越小越先上传） |
+
+---
+
+#### 8. fileCollects（结果文件收集）- List<Map<String, Object>>
+
+定义步骤执行完成后需要从服务器收集的文件。
+
+**示例**:
+```json
+[
+  {
+    "name": "测试结果 JSON",
+    "path": "/tmp/results.json",
+    "type": "file",
+    "required": true
+  },
+  {
+    "name": "错误日志",
+    "path": "/tmp/error*.log",
+    "type": "pattern",
+    "required": false
+  }
+]
+```
+
+**子字段说明**:
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| name | string | 是 | 文件显示名称 |
+| path | string | 是 | 服务器上的文件路径（支持通配符 *） |
+| type | string | 否 | 文件类型：file（单个文件）/ pattern（匹配模式）/ directory（目录） |
+| required | boolean | 否 | 是否必需（默认 false，收集失败是否导致步骤失败） |
+
+---
+
+#### 9. startupProbe（启动探测）- Map<String, Object>
+
+定义步骤执行前的健康检查探测。
+
+**示例**:
+```json
+{
+  "enabled": true,
+  "command": "curl -f http://localhost:8080/health",
+  "intervalSeconds": 5,
+  "timeoutSeconds": 30,
+  "failureThreshold": 3
+}
+```
+
+**子字段说明**:
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| enabled | boolean | 否 | 是否启用探测（默认 false） |
+| command | string | 是 | 探测命令（返回 0 表示健康） |
+| intervalSeconds | integer | 否 | 探测间隔秒数（默认 5） |
+| timeoutSeconds | integer | 否 | 探测超时秒数（默认 30） |
+| failureThreshold | integer | 否 | 失败次数阈值（默认 3，超过则步骤失败） |
+
+---
+
 ### 1.4 更新脚本
 
 ```
@@ -426,6 +541,67 @@ Content-Type: application/json
 | scriptVersion | string | 是 | 脚本版本，通常为 "v1.0.0" |
 | executionMode | string | 是 | 执行模式：immediate（立即）/scheduled（定时） |
 | serverIds | array | 是 | 目标服务器ID列表 |
+| sharedParams | object | 否 | 共享参数，传递给所有步骤（作为环境变量） |
+| stepParams | object | 否 | 步骤级参数，按步骤名称覆盖共享参数 |
+| stepServerMapping | object | 否 | 步骤-服务器映射，指定每个步骤在哪些服务器执行 |
+
+**参数传递规则**:
+```
+最终参数 = sharedParams（共享参数） + stepParams[stepName]（步骤级参数覆盖）
+```
+
+#### sharedParams（共享参数）- Map<String, Object>
+
+任务级别的参数，会作为环境变量传递给所有步骤。
+
+**示例**:
+```json
+{
+  "ENVIRONMENT": "production",
+  "LOG_LEVEL": "info",
+  "TIMEOUT": "300"
+}
+```
+
+**使用方式**: 参数名作为环境变量名，值作为环境变量值。执行时会转换为：`export ENVIRONMENT="production"; export LOG_LEVEL="info"; ...`
+
+---
+
+#### stepParams（步骤级参数）- Map<String, Map<String, Object>>
+
+每个步骤特有的参数，会覆盖共享参数中同名的值。
+
+**示例**:
+```json
+{
+  "prepare": {
+    "SKIP_CHECK": "true"
+  },
+  "run_test": {
+    "TEST_MODE": "randrw",
+    "IODEPTH": "64"
+  }
+}
+```
+
+**使用方式**: 外层 key 是步骤名称，内层是参数名值对。步骤级参数优先级高于共享参数。
+
+---
+
+#### stepServerMapping（步骤-服务器映射）- Map<String, List<Long>>
+
+指定每个步骤在哪些服务器上执行。
+
+**示例**:
+```json
+{
+  "prepare": [1, 2],
+  "run_test": [1, 2, 3],
+  "cleanup": [1]
+}
+```
+
+**使用方式**: 外层 key 是步骤名称，value 是服务器 ID 列表。如果未指定某个步骤，则在所有服务器上执行。
 
 ---
 
