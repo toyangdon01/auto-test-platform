@@ -1034,11 +1034,14 @@ function showRetryDialog(step: TaskStep) {
 async function handleRetryStep() {
   if (!retryStep_data.value) return
   
+  const stepId = retryStep_data.value.id
   retryDialogVisible.value = false
+  stepDetailVisible.value = false  // 关闭步骤详情弹窗
+  currentStep.value = null  // 清空步骤详情数据
   retrying.value = true
   
   try {
-    const res = await request.post(`/tasks/${taskId}/steps/${retryStep_data.value.id}/retry`, null, {
+    const res = await request.post(`/tasks/${taskId}/steps/${stepId}/retry`, null, {
       params: { cascade: retryCascade.value }
     })
     
