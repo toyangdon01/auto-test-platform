@@ -284,11 +284,29 @@ public class ScriptPackageServiceImpl implements ScriptPackageService {
                 updateScript(existing.getId(), scriptDir, config, tempDir, scriptName, result);
                 return;
             }
-            // RENAME: 继续创建新脚本，使用新名称
+            // RENAME: 生成新名称（加时间戳）
+            scriptName = generateUniqueName(scriptName);
         }
         
         // 创建新脚本
         createScript(scriptName, scriptDir, config, tempDir, result);
+    }
+    
+    /**
+     * 生成唯一的脚本名称
+     */
+    private String generateUniqueName(String baseName) {
+        String newName = baseName + "_" + System.currentTimeMillis();
+        int counter = 1;
+        
+        // 确保新名称不冲突
+        while (scriptMapper.selectOne(
+            new LambdaQueryWrapper<Script>().eq(Script::getName, newName)
+        ) != null) {
+            newName = baseName + "_" + System.currentTimeMillis() + "_" + counter++;
+        }
+        
+        return newName;
     }
     
     /**
