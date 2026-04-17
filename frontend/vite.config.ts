@@ -33,6 +33,11 @@ export default defineConfig({
         changeOrigin: true,
         ws: true, // 启用 WebSocket 代理
       },
+      '/ws': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+        ws: true, // 启用 WebSocket 代理
+      },
     },
   },
   build: {
