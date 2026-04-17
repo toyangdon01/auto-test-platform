@@ -1510,13 +1510,13 @@ public class TaskExecutionService {
                 return result;
             }
             
-            // 6. 更新任务状态为 retrying
+            // 6. 更新任务状态为 running
             String oldTaskStatus = task.getStatus();
-            task.setStatus("retrying");
+            task.setStatus("running");
             taskMapper.updateById(task);
             
-            // 7. 更新步骤状态为 retrying
-            taskStep.setStatus("retrying");
+            // 7. 更新步骤状态为 running
+            taskStep.setStatus("running");
             taskStep.setStartedAt(LocalDateTime.now());
             taskStep.setFinishedAt(null);
             taskStep.setExitCode(null);
@@ -1691,8 +1691,8 @@ public class TaskExecutionService {
                 }
                 
                 if (allDependenciesMet) {
-                    // 更新步骤状态为重试中
-                    step.setStatus("retrying");
+                    // 更新步骤状态为执行中
+                    step.setStatus("running");
                     step.setStartedAt(LocalDateTime.now());
                     step.setFinishedAt(null);
                     taskStepMapper.updateById(step);
