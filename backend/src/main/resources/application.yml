@@ -81,12 +81,12 @@ mybatis-plus:
 
 # 平台自定义配置
 autotest:
-  # 存储路径配置
+  # 存储路径配置（跨平台兼容）
   storage:
-    scripts-path: C:/data/auto-test/scripts
-    reports-path: C:/data/auto-test/reports
-    temp-path: C:/data/auto-test/temp
-    results-path: C:/data/auto-test/results
+    scripts-path: ${user.home}/auto-test/scripts
+    reports-path: ${user.home}/auto-test/reports
+    temp-path: ${user.home}/auto-test/temp
+    results-path: ${user.home}/auto-test/results
   
   # SSH 连接配置
   ssh:
