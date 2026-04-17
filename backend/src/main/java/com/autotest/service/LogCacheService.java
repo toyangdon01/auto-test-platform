@@ -167,6 +167,14 @@ public class LogCacheService {
     }
 
     /**
+     * 清空任务日志缓存（重试时使用）
+     */
+    public void clearTaskLogs(Long taskId) {
+        logBuffers.remove(taskId);
+        log.debug("已清空任务 {} 的日志缓存", taskId);
+    }
+
+    /**
      * 注册 WebSocket 会话（Jakarta WebSocket Session）
      */
     public void registerSession(Long taskId, Session session) {

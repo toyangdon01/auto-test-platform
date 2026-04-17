@@ -1524,6 +1524,19 @@ public class TaskExecutionService {
             taskStep.setErrorMessage(null);
             taskStepMapper.updateById(taskStep);
             
+            // 7.1 删除旧的测试结果（如果有）
+            if (taskStep.getServerId() != null) {
+                LambdaQueryWrapper<TestResult> query = new LambdaQueryWrapper<>();
+                query.eq(TestResult::getTaskId, taskId)
+                     .eq(TestResult::getServerId, taskStep.getServerId());
+                testResultMapper.delete(query);
+                log.debug("已删除步骤 {} 的旧测试结果", taskStep.getStepName());
+            }
+            
+            // 7.2 清空日志缓存
+            logCacheService.clearTaskLogs(taskId);
+            log.debug("已清空任务 {} 的日志缓存", taskId);
+            
             // 8. 创建执行上下文
             ExecutionContext context = new ExecutionContext(taskId, line -> {
                 logCacheService.appendLog(taskId, line);
@@ -1714,6 +1727,11 @@ public class TaskExecutionService {
                     context.log("执行下游步骤: " + step.getStepName());
                     boolean success = executeStepOnServer(context, task, server, script, scriptVersion, stepConfig, isLocal);
                     context.log("下游步骤 " + step.getStepName() + " 执行结果: " + (success ? "成功" : "失败"));
+                    
+                    // 递归执行该步骤的下游步骤（级联传递）
+                    if (success) {
+                        executeDownstreamSteps(task, step, scriptVersion, context);
+                    }
                 }
             }
         }
