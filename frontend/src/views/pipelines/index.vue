@@ -213,8 +213,13 @@ tasks:
       RUNTIME: 60
       SIZE: 5G
     stepParams:                   # 可选：步骤参数（仅特定步骤使用）
-      run_test:
-        TEST_MODE: randrw
+      prepare:
+        CLEANUP_OLD: true
+      run_test:                   # 步骤名作为 key
+        TEST_MODE: randrw         # 该步骤的参数
+        BLOCK_SIZE: 4k
+      cleanup:
+        KEEP_LOG: true
 
   # ---------------- 任务 3 ----------------
   - name: 结果收集
@@ -223,6 +228,10 @@ tasks:
     timeout: 600
     stepServerMapping:
       collect: [test-server-1]
+    stepParams:                   # 可选：不同步骤使用不同参数
+      collect:
+        OUTPUT_FORMAT: json
+        INCLUDE_META: true
 
 # ==================== 字段说明 ====================
 #
