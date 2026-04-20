@@ -358,6 +358,37 @@ public class PipelineImportServiceImpl implements PipelineImportService {
                 }
             }
         }
+        
+        // 获取所有服务器信息用于导出服务器名称
+        Map<Long, String> serverIdToName = new HashMap<>();
+        Set<Long> allServerIds = new HashSet<>();
+        for (PipelineTask task : tasks) {
+            if (task.getStepServerMapping() != null && !task.getStepServerMapping().isEmpty()) {
+                try {
+                    Map<String, List<Object>> mapping = jsonMapper.readValue(
+                        task.getStepServerMapping(),
+                        jsonMapper.getTypeFactory().constructMapType(Map.class, String.class, List.class));
+                    for (List<Object> serverList : mapping.values()) {
+                        if (serverList != null) {
+                            for (Object obj : serverList) {
+                                if (obj instanceof Number) {
+                                    allServerIds.add(((Number) obj).longValue());
+                                }
+                            }
+                        }
+                    }
+                } catch (Exception e) {
+                    log.warn("解析 stepServerMapping 获取服务器ID失败", e);
+                }
+            }
+        }
+        // 批量查询服务器名称
+        for (Long serverId : allServerIds) {
+            Server server = serverMapper.selectById(serverId);
+            if (server != null) {
+                serverIdToName.put(serverId, server.getName());
+            }
+        }
 
         return tasks.stream().map(task -> {
             TaskYamlConfig config = new TaskYamlConfig();
@@ -386,7 +417,7 @@ public class PipelineImportServiceImpl implements PipelineImportService {
                 }
             }
             
-            // 步骤服务器映射（过滤掉自动生成的 default）
+            // 步骤服务器映射（过滤掉自动生成的 default，ID 转名称）
             if (task.getStepServerMapping() != null && !task.getStepServerMapping().isEmpty()) {
                 try {
                     Map<String, List<Object>> mapping = jsonMapper.readValue(
@@ -399,8 +430,28 @@ public class PipelineImportServiceImpl implements PipelineImportService {
                             // 只有 default，不导出 stepServerMapping
                             log.debug("跳过自动生成的 default stepServerMapping");
                         } else {
-                            // 有真正的步骤映射，导出
-                            config.setStepServerMapping(mapping);
+                            // 有真正的步骤映射，将服务器 ID 转换为名称
+                            Map<String, List<Object>> nameMapping = new HashMap<>();
+                            for (Map.Entry<String, List<Object>> entry : mapping.entrySet()) {
+                                List<Object> serverNames = new ArrayList<>();
+                                if (entry.getValue() != null) {
+                                    for (Object obj : entry.getValue()) {
+                                        if (obj instanceof Number) {
+                                            Long serverId = ((Number) obj).longValue();
+                                            String serverName = serverIdToName.get(serverId);
+                                            if (serverName != null) {
+                                                serverNames.add(serverName);
+                                            } else {
+                                                serverNames.add(obj); // 未找到名称，保留原值
+                                            }
+                                        } else {
+                                            serverNames.add(obj); // 非 ID 值直接保留
+                                        }
+                                    }
+                                }
+                                nameMapping.put(entry.getKey(), serverNames);
+                            }
+                            config.setStepServerMapping(nameMapping);
                         }
                     }
                 } catch (Exception e) {
