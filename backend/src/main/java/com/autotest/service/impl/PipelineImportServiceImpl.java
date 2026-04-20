@@ -265,6 +265,7 @@ public class PipelineImportServiceImpl implements PipelineImportService {
     /**
      * 转换服务器引用为ID列表
      * 支持名称和ID混合使用
+     * 如果 serverNameToId 中找不到，则回退到数据库查询
      */
     private List<Long> convertToServerIds(List<Object> refs, Map<String, Long> serverNameToId) {
         List<Long> result = new ArrayList<>();
@@ -278,7 +279,15 @@ public class PipelineImportServiceImpl implements PipelineImportService {
                 String name = (String) ref;
                 Long id = serverNameToId.get(name);
                 if (id == null) {
-                    throw new BusinessException("服务器不存在: " + name);
+                    // 回退：从数据库查找服务器
+                    Server server = serverMapper.selectOne(
+                        new LambdaQueryWrapper<Server>().eq(Server::getName, name)
+                    );
+                    if (server != null) {
+                        id = server.getId();
+                    } else {
+                        throw new BusinessException("服务器不存在: " + name);
+                    }
                 }
                 result.add(id);
             }
