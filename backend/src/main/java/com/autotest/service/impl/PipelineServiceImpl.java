@@ -497,16 +497,36 @@ public class PipelineServiceImpl implements PipelineService {
     }
 
     @Override
-    @Transactional
     public void cancelPipelineRun(Long runId) {
+        // 不使用事务，避免与正在执行的任务写入冲突
         PipelineRun run = pipelineRunMapper.selectById(runId);
         if (run == null) {
             throw new RuntimeException("PipelineRun not found: " + runId);
         }
 
+        // 更新状态（单独操作，避免长事务）
         run.setStatus("cancelled");
         run.setFinishedAt(LocalDateTime.now());
-        pipelineRunMapper.updateById(run);
+        
+        // 重试机制
+        int retries = 3;
+        while (retries > 0) {
+            try {
+                pipelineRunMapper.updateById(run);
+                break;
+            } catch (Exception e) {
+                retries--;
+                if (retries == 0) {
+                    log.error("取消 PipelineRun 失败: {}", e.getMessage());
+                    throw e;
+                }
+                try {
+                    Thread.sleep(1000);  // 等待 1 秒后重试
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+        }
 
         // 取消关联的任务
         List<PipelineRunTask> runTasks = pipelineRunTaskMapper.selectList(
