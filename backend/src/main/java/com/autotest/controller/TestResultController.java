@@ -55,8 +55,9 @@ public class TestResultController {
             @Parameter(description = "任务ID") @RequestParam(required = false) Long taskId,
             @Parameter(description = "服务器ID") @RequestParam(required = false) Long serverId,
             @Parameter(description = "结果状态") @RequestParam(required = false) String result,
-            @Parameter(description = "脚本ID") @RequestParam(required = false) Long scriptId) {
-        return ApiResponse.success(testResultService.getPage(page, pageSize, taskId, serverId, result, scriptId));
+            @Parameter(description = "脚本ID") @RequestParam(required = false) Long scriptId,
+            @Parameter(description = "关键词") @RequestParam(required = false) String keyword) {
+        return ApiResponse.success(testResultService.getPage(page, pageSize, taskId, serverId, result, scriptId, keyword));
     }
 
     @GetMapping("/{id}")
@@ -151,7 +152,7 @@ public class TestResultController {
             HttpServletResponse response) throws IOException {
         
         // 获取结果数据
-        PageResult<TestResult> pageResult = testResultService.getPage(1, 10000, taskId, serverId, null, null);
+        PageResult<TestResult> pageResult = testResultService.getPage(1, 10000, taskId, serverId, null, null, null);
         List<TestResult> results = pageResult.getItems();
         
         // 设置响应头

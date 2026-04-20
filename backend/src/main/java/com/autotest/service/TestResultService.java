@@ -23,9 +23,10 @@ public interface TestResultService {
      * @param serverId 服务器ID（可选）
      * @param result   结果状态（可选）
      * @param scriptId 脚本ID（可选）
+     * @param keyword 关键词（可选）
      * @return 分页结果
      */
-    PageResult<TestResult> getPage(int page, int pageSize, Long taskId, Long serverId, String result, Long scriptId);
+    PageResult<TestResult> getPage(int page, int pageSize, Long taskId, Long serverId, String result, Long scriptId, String keyword);
 
     /**
      * 获取测试结果详情

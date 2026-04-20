@@ -44,7 +44,7 @@ export interface PipelineRunTask {
 
 // 获取编排列表
 export function listPipelines(params: { page?: number; size?: number; keyword?: string }) {
-  return request.get('/pipelines', { params })
+  return request.get('/pipelines', params)
 }
 
 // 获取编排详情
@@ -100,7 +100,7 @@ export function executePipeline(pipelineId: number, serverMapping?: Record<numbe
 
 // 获取执行记录列表
 export function listPipelineRuns(params: { pipelineId?: number; page?: number; size?: number }) {
-  return request.get('/pipelines/runs', { params })
+  return request.get('/pipelines/runs', params)
 }
 
 // 获取执行详情

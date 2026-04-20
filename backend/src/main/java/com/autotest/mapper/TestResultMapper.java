@@ -48,17 +48,25 @@ public interface TestResultMapper extends BaseMapper<TestResult> {
             "  <if test='taskId != null'>" +
             "    AND r.task_id = #{taskId}" +
             "  </if>" +
+            "  <if test='serverId != null'>" +
+            "    AND r.server_id = #{serverId}" +
+            "  </if>" +
             "  <if test='result != null and result != \"\"'>" +
             "    AND r.result = #{result}" +
             "  </if>" +
             "  <if test='scriptId != null'>" +
             "    AND t.script_id = #{scriptId}" +
             "  </if>" +
+            "  <if test='keyword != null and keyword != \"\"'>" +
+            "    AND (t.name LIKE CONCAT('%', #{keyword}, '%') OR sv.name LIKE CONCAT('%', #{keyword}, '%'))" +
+            "  </if>" +
             "</where>" +
             "ORDER BY r.id DESC" +
             "</script>")
     IPage<TestResult> selectPageWithNames(Page<TestResult> page,
                                            @Param("taskId") Long taskId,
+                                           @Param("serverId") Long serverId,
                                            @Param("result") String result,
-                                           @Param("scriptId") Long scriptId);
+                                           @Param("scriptId") Long scriptId,
+                                           @Param("keyword") String keyword);
 }

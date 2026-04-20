@@ -201,7 +201,7 @@ async function fetchResults() {
       params.scriptId = searchForm.scriptId
     }
 
-    const res = await request.get('/results', { params })
+    const res = await request.get('/results', params)
     if (res.code === 0) {
       results.value = res.data.items
       pagination.total = res.data.total

@@ -33,10 +33,10 @@ public class TestResultServiceImpl implements TestResultService {
     private final ServerMapper serverMapper;
 
     @Override
-    public PageResult<TestResult> getPage(int page, int pageSize, Long taskId, Long serverId, String result, Long scriptId) {
+    public PageResult<TestResult> getPage(int page, int pageSize, Long taskId, Long serverId, String result, Long scriptId, String keyword) {
         // 使用关联查询获取任务名称和脚本名称
         IPage<TestResult> pageResult = testResultMapper.selectPageWithNames(
-                new Page<>(page, pageSize), taskId, result, scriptId);
+                new Page<>(page, pageSize), taskId, serverId, result, scriptId, null);
 
         return PageResult.of(pageResult);
     }

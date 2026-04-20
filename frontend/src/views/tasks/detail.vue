@@ -1168,7 +1168,7 @@ async function showResult(row: any) {
   
   try {
     const res = await request.get('/results', {
-      params: { taskId, serverId: row.serverId }
+      taskId, serverId: row.serverId
     })
     if (res.code === 0 && res.data.items.length > 0) {
       currentResult.value = res.data.items[0]

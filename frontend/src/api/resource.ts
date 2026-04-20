@@ -60,7 +60,7 @@ export const resourceApi = {
     fileType?: string
     category?: string
   }) {
-    return request.get<{ records: ResourceFile[], total: number }>('/resources', { params })
+    return request.get<{ records: ResourceFile[], total: number }>('/resources', params)
   },
 
   // 获取详情
