@@ -471,7 +471,6 @@ public class TaskServiceImpl implements TaskService {
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
     public void cancelTask(Long id) {
         Task task = taskMapper.selectById(id);
         if (task == null) {
