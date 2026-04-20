@@ -25,7 +25,12 @@ spring:
     url: jdbc:sqlite:${user.home}/.autotest/test_platform.db?foreign_keys=on&journal_mode=WAL
     # SQLite 不需要用户名密码
     hikari:
-      maximum-pool-size: 1  # SQLite 单连接即可
+      maximum-pool-size: 2  # SQLite 连接池，读可以并行，写需要独占
+      minimum-idle: 1
+      connection-timeout: 60000  # 获取连接超时 60 秒
+      idle-timeout: 300000  # 空闲连接超时 5 分钟
+      max-lifetime: 1800000  # 连接最大生命周期 30 分钟
+      leak-detection-threshold: 60000  # 连接泄漏检测 60 秒
   
   # Redis 配置
   data:
