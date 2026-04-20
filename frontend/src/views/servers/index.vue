@@ -3,6 +3,10 @@
     <div class="page-header">
       <h3 class="page-title">服务器列表</h3>
       <div class="header-actions">
+        <el-button type="info" @click="handleExport">
+          <el-icon><Download /></el-icon>
+          导出服务器
+        </el-button>
         <!-- 批量操作按钮 -->
         <template v-if="selectedIds.length > 0">
           <el-button type="danger" @click="handleBatchDelete">
@@ -245,7 +249,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Search, Monitor, QuestionFilled, Delete, Check, Close } from '@element-plus/icons-vue'
+import { Plus, Search, Monitor, QuestionFilled, Delete, Check, Close, Download } from '@element-plus/icons-vue'
 import { serverApi, serverGroupApi, type Server, type ServerGroup, type ServerCreateParams } from '@/api/server'
 import { formatTime } from '@/utils/format'
 import request from '@/utils/request'
@@ -321,6 +325,29 @@ async function fetchGroups() {
   const res = await serverGroupApi.list()
   if (res.code === 0) {
     groups.value = res.data
+  }
+}
+
+// 导出服务器列表
+async function handleExport() {
+  try {
+    const res = await serverApi.exportServers()
+    if (res.code === 0 && res.data) {
+      const blob = new Blob([res.data], { type: 'text/yaml;charset=utf-8' })
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `servers-export-${new Date().toISOString().slice(0, 10)}.yaml`
+      document.body.appendChild(link)
+      link.click()
+      setTimeout(() => {
+        document.body.removeChild(link)
+        window.URL.revokeObjectURL(url)
+      }, 100)
+      ElMessage.success('导出成功')
+    }
+  } catch (e) {
+    ElMessage.error('导出失败')
   }
 }
 

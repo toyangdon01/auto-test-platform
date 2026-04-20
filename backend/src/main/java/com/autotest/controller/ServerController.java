@@ -11,6 +11,10 @@ import com.autotest.mapper.ServerGroupMapper;
 import com.autotest.mapper.ServerMapper;
 import com.autotest.service.ServerService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
+import com.fasterxml.jackson.dataformat.yaml.YAMLGenerator;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -18,9 +22,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 /**
  * 服务器管理控制器
@@ -205,5 +207,54 @@ public class ServerController {
     public ApiResponse<Void> batchDisableServers(@RequestBody List<Long> ids) {
         serverService.batchUpdateEnabled(ids, false);
         return ApiResponse.success();
+    }
+
+    // ==================== 导出功能 ====================
+
+    @Operation(summary = "导出服务器列表为 YAML")
+    @GetMapping("/export")
+    public ApiResponse<String> exportServers() {
+        List<Server> servers = serverMapper.selectList(
+            new LambdaQueryWrapper<Server>().orderByDesc(Server::getId)
+        );
+        
+        ObjectMapper yamlMapper = new ObjectMapper(
+            new YAMLFactory()
+                .disable(YAMLGenerator.Feature.WRITE_DOC_START_MARKER)
+        );
+        yamlMapper.setSerializationInclusion(JsonInclude.Include.NON_NULL);
+        
+        List<Map<String, Object>> serverConfigs = new ArrayList<>();
+        for (Server server : servers) {
+            Map<String, Object> config = new LinkedHashMap<>();
+            config.put("name", server.getName());
+            config.put("host", server.getHost());
+            if (server.getPort() != null && server.getPort() != 22) {
+                config.put("port", server.getPort());
+            }
+            config.put("username", server.getUsername());
+            config.put("authType", server.getAuthType() != null ? server.getAuthType() : "password");
+            // authSecret 不导出（敏感信息）
+            if (server.getGroupId() != null) {
+                config.put("groupId", server.getGroupId());
+            }
+            if (server.getTags() != null && !server.getTags().isEmpty()) {
+                config.put("tags", server.getTags());
+            }
+            if (server.getRemark() != null && !server.getRemark().isEmpty()) {
+                config.put("remark", server.getRemark());
+            }
+            serverConfigs.add(config);
+        }
+        
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("servers", serverConfigs);
+        
+        try {
+            String yaml = yamlMapper.writerWithDefaultPrettyPrinter().writeValueAsString(result);
+            return ApiResponse.success(yaml);
+        } catch (Exception e) {
+            return ApiResponse.error("导出失败: " + e.getMessage());
+        }
     }
 }

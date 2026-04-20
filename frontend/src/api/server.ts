@@ -50,6 +50,11 @@ export const serverApi = {
     return request.get<PageResult<Server>>('/servers', params)
   },
 
+  // 导出服务器列表
+  exportServers() {
+    return request.get<string>('/servers/export')
+  },
+
   // 获取服务器详情
   get(id: number) {
     return request.get<Server>(`/servers/${id}`)
