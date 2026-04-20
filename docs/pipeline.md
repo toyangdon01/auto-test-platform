@@ -165,6 +165,13 @@ pipelines (编排定义)
 | `PUT` | `/api/v1/pipelines/{id}/tasks/{taskId}` | 更新编排任务 |
 | `DELETE` | `/api/v1/pipelines/{id}/tasks/{taskId}` | 删除编排任务 |
 
+### YAML 导入导出
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `POST` | `/api/v1/pipelines/import` | 导入 YAML 创建编排 |
+| `GET` | `/api/v1/pipelines/{id}/export` | 导出编排为 YAML |
+
 ### 执行管理
 
 | 方法 | 路径 | 说明 |
@@ -216,6 +223,8 @@ backend/src/main/java/com/autotest/
 frontend/src/
 ├── api/
 │   └── pipeline.ts
+├── components/
+│   └── PipelineImportDialog.vue   # YAML 导入对话框
 └── views/pipelines/
     ├── index.vue        # 编排列表
     ├── editor.vue       # 创建/编辑编排
@@ -266,3 +275,101 @@ frontend/src/
 
 4. **数据库连接**
    - DAG 执行采用异步方式，避免长时间占用数据库连接
+
+---
+
+## YAML 导入导出
+
+### 功能说明
+
+支持通过 YAML 文件导入/导出编排配置，方便编排的分享和版本管理。
+
+### 导入 YAML
+
+点击编排列表页面的「导入 YAML」按钮，上传 YAML 文件即可创建编排。
+
+### 导出 YAML
+
+在编排列表页面点击任务的「导出」按钮，下载 YAML 配置文件。
+
+### 导入模板
+
+点击「导入模板」按钮下载配置模板，包含详细注释说明。
+
+### YAML 格式示例
+
+```yaml
+# 基本信息
+name: 示例流水线
+
+description: 这是一个示例流水线
+
+maxParallel: 3
+
+# 服务器定义（可选，已存在则更新）
+servers:
+  - name: test-server-1
+    host: 192.168.1.100
+    username: root
+    authSecret: your-password
+
+# 任务列表
+tasks:
+  - name: 环境准备
+    script: env-check
+    timeout: 300
+    stepServerMapping:
+      check: [test-server-1]
+
+  - name: 执行测试
+    script: performance-test
+    dependsOn: [环境准备]
+    stepServerMapping:
+      prepare: [test-server-1]
+      run_test: [test-server-2]
+    sharedParams:
+      RUNTIME: 60
+    stepParams:
+      run_test:
+        TEST_MODE: randrw
+```
+
+### 字段说明
+
+| 字段 | 必填 | 说明 |
+|------|------|------|
+| `name` | 是 | 编排名称 |
+| `description` | 否 | 描述 |
+| `maxParallel` | 否 | 最大并行数，默认 5 |
+| `servers` | 否 | 服务器定义列表 |
+| `tasks` | 是 | 任务配置列表 |
+
+### 任务字段说明
+
+| 字段 | 必填 | 说明 |
+|------|------|------|
+| `name` | 是 | 任务名称 |
+| `script` | 是 | 脚本名称（需存在于平台） |
+| `timeout` | 否 | 超时时间（秒） |
+| `dependsOn` | 否 | 依赖任务名称列表 |
+| `stepServerMapping` | 是 | 步骤服务器映射 |
+| `sharedParams` | 否 | 共享参数 |
+| `stepParams` | 否 | 步骤参数 |
+
+### stepServerMapping 格式
+
+```yaml
+stepServerMapping:
+  step_1: [server-1]           # 单台服务器
+  step_2: [server-1, server-2] # 多台服务器并行执行
+```
+
+- **key**: 步骤名称（必须与脚本定义一致）
+- **value**: 服务器列表（支持名称或 ID）
+
+### 关键点
+
+1. **只使用 `stepServerMapping`**：不再使用 `serverIds` 字段
+2. **步骤支持多服务器**：一个步骤可以绑定多台服务器并行执行
+3. **导出过滤空值**：空对象、空数组、`default` 映射不会导出
+4. **脚本必须定义步骤**：无步骤的脚本无法创建任务
