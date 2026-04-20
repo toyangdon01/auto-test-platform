@@ -253,7 +253,7 @@ const previewYaml = async () => {
     }
     
     // 调用后端 API 解析 YAML（预览时也会创建，后续改为单独的预览 API）
-    const response = await request.post('/api/v1/pipelines/import', yamlText, {
+    const response = await request.post('/pipelines/import', yamlText, {
       headers: { 'Content-Type': 'text/plain' }
     })
     
