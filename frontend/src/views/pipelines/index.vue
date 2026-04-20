@@ -5,7 +5,7 @@
       <div class="header-actions">
         <el-button type="info" @click="downloadTemplate">
           <el-icon><Document /></el-icon>
-          导出模板
+          导入模板
         </el-button>
         <el-button type="success" @click="showImportDialog">
           <el-icon><Download /></el-icon>
