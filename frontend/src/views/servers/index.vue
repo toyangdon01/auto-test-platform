@@ -333,11 +333,11 @@ async function handleExport() {
   try {
     const res = await serverApi.exportServers()
     if (res.code === 0 && res.data) {
-      const blob = new Blob([res.data], { type: 'text/yaml;charset=utf-8' })
+      const blob = new Blob(['\ufeff' + res.data], { type: 'text/csv;charset=utf-8' })
       const url = window.URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
-      link.download = `servers-export-${new Date().toISOString().slice(0, 10)}.yaml`
+      link.download = `servers-export-${new Date().toISOString().slice(0, 10)}.csv`
       document.body.appendChild(link)
       link.click()
       setTimeout(() => {

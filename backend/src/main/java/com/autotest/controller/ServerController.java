@@ -11,10 +11,6 @@ import com.autotest.mapper.ServerGroupMapper;
 import com.autotest.mapper.ServerMapper;
 import com.autotest.service.ServerService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
-import com.fasterxml.jackson.dataformat.yaml.YAMLGenerator;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -22,7 +18,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
-import java.util.*;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * 服务器管理控制器
@@ -211,50 +209,44 @@ public class ServerController {
 
     // ==================== 导出功能 ====================
 
-    @Operation(summary = "导出服务器列表为 YAML")
+    @Operation(summary = "导出服务器列表为 CSV")
     @GetMapping("/export")
     public ApiResponse<String> exportServers() {
         List<Server> servers = serverMapper.selectList(
             new LambdaQueryWrapper<Server>().orderByDesc(Server::getId)
         );
         
-        ObjectMapper yamlMapper = new ObjectMapper(
-            new YAMLFactory()
-                .disable(YAMLGenerator.Feature.WRITE_DOC_START_MARKER)
-        );
-        yamlMapper.setSerializationInclusion(JsonInclude.Include.NON_NULL);
+        StringBuilder csv = new StringBuilder();
+        // CSV 表头
+        csv.append("name,host,port,username,authType,authSecret,groupId,tags\n");
         
-        List<Map<String, Object>> serverConfigs = new ArrayList<>();
         for (Server server : servers) {
-            Map<String, Object> config = new LinkedHashMap<>();
-            config.put("name", server.getName());
-            config.put("host", server.getHost());
-            if (server.getPort() != null && server.getPort() != 22) {
-                config.put("port", server.getPort());
-            }
-            config.put("username", server.getUsername());
-            config.put("authType", server.getAuthType() != null ? server.getAuthType() : "password");
-            // authSecret 不导出（敏感信息）
-            if (server.getGroupId() != null) {
-                config.put("groupId", server.getGroupId());
-            }
-            if (server.getTags() != null && !server.getTags().isEmpty()) {
-                config.put("tags", server.getTags());
-            }
-            if (server.getRemark() != null && !server.getRemark().isEmpty()) {
-                config.put("remark", server.getRemark());
-            }
-            serverConfigs.add(config);
+            csv.append(escapeCsv(server.getName())).append(",");
+            csv.append(escapeCsv(server.getHost())).append(",");
+            csv.append(server.getPort() != null ? server.getPort() : 22).append(",");
+            csv.append(escapeCsv(server.getUsername())).append(",");
+            csv.append(escapeCsv(server.getAuthType() != null ? server.getAuthType() : "password")).append(",");
+            // authSecret 不导出（敏感信息），保留空
+            csv.append(",");
+            csv.append(server.getGroupId() != null ? server.getGroupId() : "").append(",");
+            csv.append(server.getTags() != null ? escapeCsv(String.join(";", server.getTags())) : "");
+            csv.append("\n");
         }
         
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("servers", serverConfigs);
-        
-        try {
-            String yaml = yamlMapper.writerWithDefaultPrettyPrinter().writeValueAsString(result);
-            return ApiResponse.success(yaml);
-        } catch (Exception e) {
-            return ApiResponse.error("导出失败: " + e.getMessage());
+        return ApiResponse.success(csv.toString());
+    }
+    
+    /**
+     * CSV 字段转义
+     */
+    private String escapeCsv(String value) {
+        if (value == null) {
+            return "";
         }
+        // 如果包含逗号、引号或换行，需要用双引号包裹并转义内部双引号
+        if (value.contains(",") || value.contains("\"") || value.contains("\n")) {
+            return "\"" + value.replace("\"", "\"\"") + "\"";
+        }
+        return value;
     }
 }
