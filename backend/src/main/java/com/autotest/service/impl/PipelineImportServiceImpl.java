@@ -336,8 +336,8 @@ public class PipelineImportServiceImpl implements PipelineImportService {
         config.setTasks(convertTasksToConfig(tasks));
 
         try {
-            // 配置忽略 null 值
-            yamlMapper.setSerializationInclusion(JsonInclude.Include.NON_NULL);
+            // 配置忽略 null 和空值
+            yamlMapper.setSerializationInclusion(JsonInclude.Include.NON_EMPTY);
             return yamlMapper.writeValueAsString(config);
         } catch (JsonProcessingException e) {
             throw new BusinessException("YAML 序列化失败: " + e.getMessage());
@@ -386,33 +386,49 @@ public class PipelineImportServiceImpl implements PipelineImportService {
                 }
             }
             
-            // 步骤服务器映射
+            // 步骤服务器映射（过滤掉自动生成的 default）
             if (task.getStepServerMapping() != null && !task.getStepServerMapping().isEmpty()) {
                 try {
                     Map<String, List<Object>> mapping = jsonMapper.readValue(
                         task.getStepServerMapping(), 
                         jsonMapper.getTypeFactory().constructMapType(Map.class, String.class, List.class));
-                    config.setStepServerMapping(mapping);
+                    
+                    // 检查是否只有 "default" 键（自动生成的，不应导出）
+                    if (mapping != null && !mapping.isEmpty()) {
+                        if (mapping.size() == 1 && mapping.containsKey("default")) {
+                            // 只有 default，不导出 stepServerMapping
+                            log.debug("跳过自动生成的 default stepServerMapping");
+                        } else {
+                            // 有真正的步骤映射，导出
+                            config.setStepServerMapping(mapping);
+                        }
+                    }
                 } catch (Exception e) {
                     log.warn("解析 stepServerMapping 失败", e);
                 }
             }
             
-            // 共享参数
+            // 共享参数（空对象不导出）
             if (task.getSharedParams() != null && !task.getSharedParams().isEmpty()) {
                 try {
-                    config.setSharedParams(jsonMapper.readValue(task.getSharedParams(), 
-                        jsonMapper.getTypeFactory().constructMapType(Map.class, String.class, Object.class)));
+                    Map<String, Object> params = jsonMapper.readValue(task.getSharedParams(), 
+                        jsonMapper.getTypeFactory().constructMapType(Map.class, String.class, Object.class));
+                    if (params != null && !params.isEmpty()) {
+                        config.setSharedParams(params);
+                    }
                 } catch (Exception e) {
                     log.warn("解析 sharedParams 失败", e);
                 }
             }
             
-            // 步骤参数
+            // 步骤参数（空对象不导出）
             if (task.getStepParams() != null && !task.getStepParams().isEmpty()) {
                 try {
-                    config.setStepParams(jsonMapper.readValue(task.getStepParams(), 
-                        jsonMapper.getTypeFactory().constructMapType(Map.class, String.class, Map.class)));
+                    Map<String, Map<String, Object>> params = jsonMapper.readValue(task.getStepParams(), 
+                        jsonMapper.getTypeFactory().constructMapType(Map.class, String.class, Map.class));
+                    if (params != null && !params.isEmpty()) {
+                        config.setStepParams(params);
+                    }
                 } catch (Exception e) {
                     log.warn("解析 stepParams 失败", e);
                 }
