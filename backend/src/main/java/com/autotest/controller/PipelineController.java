@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -263,8 +264,22 @@ public class PipelineController {
                      "```"
     )
     @PostMapping("/import")
-    public ApiResponse<Pipeline> importFromYaml(@RequestBody String yamlContent) {
-        return ApiResponse.success(pipelineImportService.importFromYaml(yamlContent));
+    public ApiResponse<Map<String, Object>> importFromYaml(@RequestBody String yamlContent) {
+        Pipeline pipeline = pipelineImportService.importFromYaml(yamlContent);
+        
+        // 获取任务数量
+        List<PipelineTask> tasks = pipelineService.getPipelineTasks(pipeline.getId());
+        
+        Map<String, Object> result = new HashMap<>();
+        result.put("id", pipeline.getId());
+        result.put("name", pipeline.getName());
+        result.put("description", pipeline.getDescription());
+        result.put("maxParallel", pipeline.getMaxParallel());
+        result.put("enabled", pipeline.getEnabled());
+        result.put("createdAt", pipeline.getCreatedAt());
+        result.put("taskCount", tasks.size());
+        
+        return ApiResponse.success(result);
     }
 
     /**

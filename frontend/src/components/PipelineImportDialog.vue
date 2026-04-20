@@ -258,21 +258,10 @@ const previewYaml = async () => {
     })
     
     if (response.code === 0) {
-      preview.value = {
-        name: response.data.name,
-        description: response.data.description || '',
-        maxParallel: response.data.maxParallel || 5,
-        tasks: (response.data.tasks || []).map((t: any) => ({
-          name: t.name,
-          scriptId: t.scriptId,
-          dependsOn: t.dependsOn ? JSON.parse(t.dependsOn) : [],
-          timeout: t.timeout ? Math.round(t.timeout / 1000) : 86400
-        }))
-      }
       importSuccess.value = true
       pipelineResult.value = {
         name: response.data.name,
-        taskCount: response.data.tasks?.length || 0
+        taskCount: response.data.taskCount || 0
       }
       activeStep.value = 2  // 直接跳到结果页
     } else {
