@@ -69,7 +69,7 @@ function formatTime(time: string) {
   return time.replace('T', ' ').substring(0, 16)
 }
 
-async function loadRun() {
+async function loadRun(silent = false) {
   try {
     const runId = Number(route.params.runId)
     const res = await getPipelineRun(runId)
@@ -77,12 +77,16 @@ async function loadRun() {
       run.value = res.data
     }
   } catch (e) {
-    console.error('加载执行详情失败:', e)
+    if (!silent) {
+      console.error('加载执行详情失败:', e)
+    }
   }
 }
 
-async function loadTasks() {
-  loading.value = true
+async function loadTasks(silent = false) {
+  if (!silent) {
+    loading.value = true
+  }
   try {
     const runId = Number(route.params.runId)
     const res = await getPipelineRunTasks(runId)
@@ -92,7 +96,9 @@ async function loadTasks() {
   } catch (e) {
     console.error('加载任务列表失败:', e)
   } finally {
-    loading.value = false
+    if (!silent) {
+      loading.value = false
+    }
   }
 }
 
@@ -111,10 +117,10 @@ async function handleCancel() {
 function startPolling() {
   pollTimer = window.setInterval(() => {
     if (run.value?.status === 'running') {
-      loadRun()
-      loadTasks()
+      loadRun(true)  // 静默加载，不显示 loading
+      loadTasks(true)
     }
-  }, 3000)
+  }, 10000)  // 10秒轮询一次
 }
 
 function stopPolling() {
