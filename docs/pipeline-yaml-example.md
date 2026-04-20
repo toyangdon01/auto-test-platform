@@ -70,7 +70,9 @@ tasks:
 #
 # stepServerMapping 格式说明：
 #   key   - 步骤名称（必须与脚本中定义的步骤名称一致）
-#   value - 服务器列表（支持服务器名称或 ID）
+#   value - 服务器列表
+#     导入时：支持服务器名称或 ID
+#     导出时：输出服务器名称（更易读）
 #
 # 示例：
 #   stepServerMapping:
