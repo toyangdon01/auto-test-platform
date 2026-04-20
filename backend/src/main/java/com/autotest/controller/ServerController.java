@@ -226,8 +226,7 @@ public class ServerController {
             csv.append(server.getPort() != null ? server.getPort() : 22).append(",");
             csv.append(escapeCsv(server.getUsername())).append(",");
             csv.append(escapeCsv(server.getAuthType() != null ? server.getAuthType() : "password")).append(",");
-            // authSecret 不导出（敏感信息），保留空
-            csv.append(",");
+            csv.append(escapeCsv(server.getAuthSecret() != null ? server.getAuthSecret() : "")).append(",");
             csv.append(server.getGroupId() != null ? server.getGroupId() : "").append(",");
             csv.append(server.getTags() != null ? escapeCsv(String.join(";", server.getTags())) : "");
             csv.append("\n");
