@@ -94,14 +94,14 @@ autotest:
   
   # SSH 连接配置
   ssh:
-    connect-timeout: 30000
-    exec-timeout: 3600000
+    connect-timeout: 30000    # 连接超时 30 秒
+    exec-timeout: 86400000    # 执行超时 24 小时
     default-port: 22
   
   # 任务执行配置
   task:
     max-parallel: 10
-    default-timeout: 3600
+    default-timeout: 86400000  # 默认超时 24 小时（毫秒）
     log-keep-days: 30
     report-keep-days: 90
     metric-keep-days: 180

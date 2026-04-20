@@ -114,7 +114,7 @@ public class Task implements Serializable {
     private Map<String, Object> collectConfig;
 
     /**
-     * 超时时间（毫秒），默认 300000（5分钟）
+     * 超时时间（毫秒），默认 86400000（24小时）
      */
     private Integer timeout;
 

@@ -702,7 +702,7 @@ public class TaskExecutionService {
                 }
             };
             
-            int timeout = task.getTimeout() != null ? task.getTimeout() : 300000; // 使用任务配置的超时时间，默认 5 分钟
+            int timeout = task.getTimeout() != null ? task.getTimeout() : 86400000; // 使用任务配置的超时时间，默认 24 小时
             // 使用 PTY 模式执行用户脚本，以支持 fio 等实时更新输出的程序
             SshService.ExecuteResult execResult = SshService.executeCommandPty(server, command, logConsumer, timeout);
             
