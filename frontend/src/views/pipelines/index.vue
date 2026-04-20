@@ -3,6 +3,10 @@
     <div class="page-header">
       <h3 class="page-title">任务编排</h3>
       <div class="header-actions">
+        <el-button type="info" @click="downloadTemplate">
+          <el-icon><Document /></el-icon>
+          导出模板
+        </el-button>
         <el-button type="success" @click="showImportDialog">
           <el-icon><Download /></el-icon>
           导入 YAML
@@ -65,7 +69,7 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Download } from '@element-plus/icons-vue'
+import { Plus, Download, Document } from '@element-plus/icons-vue'
 import { listPipelines, deletePipeline, executePipeline, exportPipeline } from '@/api/pipeline'
 import type { Pipeline } from '@/api/pipeline'
 import PipelineImportDialog from '@/components/PipelineImportDialog.vue'
@@ -158,6 +162,78 @@ async function handleDelete(row: Pipeline) {
 
 function showImportDialog() {
   importDialog.value?.open()
+}
+
+function downloadTemplate() {
+  const template = `# Pipeline YAML 配置模板
+# 用于通过 YAML 文件创建任务编排
+
+# ==================== 基本信息 ====================
+name: 示例流水线
+description: 这是一个示例流水线
+maxParallel: 3                    # 最大并行数，默认 5
+
+# ==================== 服务器定义（可选） ====================
+# - 定义新服务器，平台不存在时自动创建
+# - 已存在（按 name 匹配）则更新
+servers:
+  - name: test-server-1
+    host: 192.168.1.100
+    port: 22                      # 默认 22
+    username: root
+    authType: password            # password | ssh_key，默认 password
+    authSecret: your-password     # 密码或私钥内容
+    tags: [test]                  # 可选，标签列表
+    remark: 测试服务器             # 可选，备注
+
+  - name: test-server-2
+    host: 192.168.1.101
+    username: root
+    authSecret: your-password
+
+# ==================== 任务列表 ====================
+tasks:
+  - name: 环境准备
+    script: env-check             # 脚本名称（必须存在于平台中）
+    timeout: 300                  # 超时时间（秒）
+    stepServerMapping:            # 步骤服务器映射
+      check: [test-server-1]
+
+  - name: 执行测试
+    script: performance-test
+    dependsOn: [环境准备]         # 依赖任务（可选）
+    timeout: 1800
+    stepServerMapping:
+      prepare: [test-server-1]
+      run_test: [test-server-1, test-server-2]
+      cleanup: [test-server-1]
+    sharedParams:                 # 共享参数（可选）
+      RUNTIME: 60
+      SIZE: 5G
+    stepParams:                   # 步骤参数（可选）
+      run_test:
+        TEST_MODE: randrw
+
+  - name: 结果收集
+    script: result-summary
+    dependsOn: [执行测试]
+    timeout: 600
+    stepServerMapping:
+      collect: [test-server-1]
+`
+
+  const blob = new Blob([template], { type: 'text/yaml;charset=utf-8' })
+  const url = window.URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = 'pipeline-template.yaml'
+  document.body.appendChild(link)
+  link.click()
+  setTimeout(() => {
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
+  }, 100)
+  ElMessage.success('模板下载成功')
 }
 
 onMounted(() => {
