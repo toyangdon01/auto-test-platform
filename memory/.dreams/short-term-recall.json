@@ -1,0 +1,102 @@
+{
+  "version": 1,
+  "updatedAt": "2026-04-16T17:10:48.616Z",
+  "entries": {
+    "memory:memory/2026-04-13.md:75:120": {
+      "key": "memory:memory/2026-04-13.md:75:120",
+      "path": "memory/2026-04-13.md",
+      "startLine": 75,
+      "endLine": 120,
+      "source": "memory",
+      "snippet": "3. **存储管理：** 空间充足（93GB），根分区紧张但不影响 Termux 4. **浏览器：** 用 Selenium + Chromium，不用 Playwright 5. **服务持久化：** Android 可能杀进程，重要服务要能自动重启 --- ## 浏览器控制研究 ### 问题 想让 OpenClaw 在 Termux/Android 环境下操作浏览器。 ### 尝试过程 1. **OpenClaw 内置 browser 工具** - 依赖 Playwright - Playwright 官方不支持 Android (`Error: Unsupported platform: android`) - 结果：❌ 无法使用 2. **Python playwright 包** - `pip3 install playwright` 返回 `No matching distribution found` - Android 不在支持平台列表中 - 结果：❌ 无法安装 3. **Selenium + 本地 Chromium** ✅ - Selenium 4.43.0 安装成功 - Chromium 146 已安装在 `/data/data/com.termux/files/usr/lib/chromium/chrome` - chromedriver 在同目录下 - 测试通过：可以打开网页、获取标题、截图、执行 JS ### 解决方案 创建了 **browser_server.py** -",
+      "recallCount": 2,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 1.3323574568383814,
+      "maxScore": 0.7076756811053098,
+      "firstRecalledAt": "2026-04-16T15:26:53.765Z",
+      "lastRecalledAt": "2026-04-16T17:10:48.616Z",
+      "queryHashes": [
+        "ee0d2802a183",
+        "9866a0fefdb1"
+      ],
+      "recallDays": [
+        "2026-04-16",
+        "2026-04-17"
+      ],
+      "conceptTags": [
+        "termux/android",
+        "4.43.0",
+        "browser-server.py",
+        "存储",
+        "管理",
+        "空间",
+        "充足",
+        "93gb"
+      ]
+    },
+    "memory:memory/2026-04-13.md:1:44": {
+      "key": "memory:memory/2026-04-13.md:1:44",
+      "path": "memory/2026-04-13.md",
+      "startLine": 1,
+      "endLine": 44,
+      "source": "memory",
+      "snippet": "# 2026-04-13 ## 环境概述 **平台：** Termux on Android（无 root） **系统：** Linux 4.14.190 (aarch64) Android **用户：** `u0_a280`（普通应用沙盒用户） **CPU：** 8 核 ARM64 **内存：** 7.3GB total，约 3.1GB available **存储：** /data 分区 111GB，可用 93GB ✅（根分区紧张但 Termux 数据在 /data） --- ## 重要限制与注意事项 ### 1. 无 Root 权限 - ❌ 无 `sudo`，无法提权 - ❌ 无法访问 `/system`、`/data/data` 下其他应用目录 - ❌ 无法使用 `iptables`、`systemctl` 等系统命令 - ❌ 无法绑定 1024 以下端口 ### 2. 文件系统 - ✅ 可写：`$HOME`、`$TMPDIR`、`/sdcard`（如果授权） - ❌ `/tmp` 不存在！必须用 `$TMPDIR`（指向 `/data/data/com.termux/files/usr/tmp`） - ❌ 根文件系统只读 - ⚠️ 根分区紧张（仅 309MB），但 Termux 数据在 /data 分区（93GB 可用） ### 3. 包管理 - 用 `pkg` 而非 `apt`（虽然 apt 链接存在） - 安装命令：`pkg install <package>` - 搜索：`pkg search <keyword>` ### 4. 平台兼容性 -",
+      "recallCount": 2,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 1.389250236727193,
+      "maxScore": 0.6946251183635965,
+      "firstRecalledAt": "2026-04-16T15:26:53.765Z",
+      "lastRecalledAt": "2026-04-16T15:27:00.897Z",
+      "queryHashes": [
+        "ee0d2802a183",
+        "3e231b2397ab"
+      ],
+      "recallDays": [
+        "2026-04-16"
+      ],
+      "conceptTags": [
+        "4.14.190",
+        "u0-a280",
+        "7.3gb",
+        "3.1gb",
+        "data/data",
+        "环境",
+        "概述",
+        "平台"
+      ]
+    },
+    "memory:memory/2026-04-13.md:111:162": {
+      "key": "memory:memory/2026-04-13.md:111:162",
+      "path": "memory/2026-04-13.md",
+      "startLine": 111,
+      "endLine": 162,
+      "source": "memory",
+      "snippet": "```bash python3 ~/scripts/browser_server.py --http 8765 & ``` **API 端点:** - `GET /open?url=<url>` - 打开网页 - `GET /title` - 获取当前页面标题和 URL - `GET /html` - 获取页面源码 - `GET /screenshot?path=<path>` - 截图保存 - `GET /find?selector=<css>` - 查找元素 - `GET /click?selector=<css>` - 点击元素 - `GET /type?selector=<css>&text=<text>` - 输入文本 - `GET /evaluate?js=<code>` - 执行 JavaScript - `GET /quit` - 关闭浏览器 **注意事项:** - 某些网站会检测 headless 浏览器触发验证码 - 复杂交互可以用 `evaluate` 执行 JS 绕过 - URL 中的特殊字符需要 URL 编码（如 `#` → `%23`） ### 配置更新 更新了 `openclaw.json` 添加 browser 配置： ```json \"browser\": { \"enabled\": true, \"executablePath\": \"/data/data/com.termux/files/usr/lib/chromium/chrome\", \"headless\": true, \"noSandbox\": true } ```",
+      "recallCount": 1,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 0.6185380894829328,
+      "maxScore": 0.6185380894829328,
+      "firstRecalledAt": "2026-04-16T17:10:48.616Z",
+      "lastRecalledAt": "2026-04-16T17:10:48.616Z",
+      "queryHashes": [
+        "9866a0fefdb1"
+      ],
+      "recallDays": [
+        "2026-04-17"
+      ],
+      "conceptTags": [
+        "scripts/browser-server.py",
+        "openclaw.json",
+        "bash",
+        "python3",
+        "scripts",
+        "browser-server.py",
+        "http",
+        "api"
+      ]
+    }
+  }
+}
