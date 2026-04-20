@@ -28,11 +28,6 @@ public class TaskYamlConfig {
     private Long scriptId;
 
     /**
-     * 服务器引用列表（名称或ID）
-     */
-    private List<Object> serverIds;
-
-    /**
      * 依赖任务名称列表
      */
     private List<String> dependsOn;

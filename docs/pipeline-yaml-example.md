@@ -22,7 +22,6 @@ servers:
   - name: test-server-2
     host: 192.168.1.101
     username: root
-    # authType 省略，默认 password
     authSecret: your-password
 
   - name: test-server-3
@@ -39,14 +38,11 @@ tasks:
   - name: 磁盘性能测试
     script: fio-disk-test         # 脚本名称，必须存在于平台中
     
-    # 服务器分配（名称或 ID）
-    serverIds: [test-server-1, test-server-2]
+    dependsOn: []                 # 依赖任务名称列表（可选）
     
-    dependsOn: []                 # 依赖任务名称列表
+    timeout: 1800                 # 超时时间（秒，可选）
     
-    timeout: 1800                 # 超时时间（秒）
-    
-    # 步骤服务器映射（可选）
+    # 步骤服务器映射（每个步骤使用不同服务器）
     stepServerMapping:
       prepare: [test-server-1]
       run_test: [test-server-1, test-server-2]
@@ -65,7 +61,9 @@ tasks:
     script: iperf3-network-test
     dependsOn: [磁盘性能测试]      # 依赖上一个任务
     timeout: 600
-    serverIds: [test-server-2]
+    stepServerMapping:
+      server: [test-server-2]
+      client: [test-server-3]
     sharedParams:
       DURATION: 30
 
@@ -73,4 +71,30 @@ tasks:
     script: result-summary
     dependsOn: [磁盘性能测试, 网络性能测试]
     timeout: 300
-    serverIds: [test-server-1]
+    stepServerMapping:
+      collect: [test-server-1]
+
+# ==================== 字段说明 ====================
+# 
+# 任务配置字段（tasks 列表中的每一项）：
+#
+# 必填字段：
+#   - name: 任务名称
+#   - script 或 scriptId: 脚本名称或ID
+#   - stepServerMapping: 步骤服务器映射
+#
+# 可选字段：
+#   - dependsOn: 依赖任务名称列表
+#   - timeout: 超时时间（秒）
+#   - sharedParams: 共享参数
+#   - stepParams: 步骤参数
+#
+# stepServerMapping 格式：
+#   key: 步骤名称（必须与脚本中定义的步骤名称一致）
+#   value: 服务器列表（名称或ID）
+#
+# 示例：
+#   stepServerMapping:
+#     step_1: [server-1]              # 名称引用
+#     step_2: [1, 2]                  # ID引用
+#     step_3: [server-1, 2, server-3] # 混合引用

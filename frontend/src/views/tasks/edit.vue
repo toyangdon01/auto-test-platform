@@ -33,7 +33,7 @@
       <!-- Step 2: 选择服务器（按步骤分配） -->
       <div v-show="currentStep === 1" class="step-panel">
         <div v-if="scriptSteps.length === 0" class="no-steps">
-          <el-empty description="脚本未定义执行步骤" />
+          <el-empty description="脚本未定义执行步骤，无法创建任务" />
         </div>
         
         <div v-else class="step-server-assignment">
@@ -376,13 +376,7 @@ function loadScriptSteps(script: Script) {
     })
   }
   
-  scriptSteps.value = steps.length > 0 ? steps : [{
-    name: 'default',
-    displayName: '执行脚本',
-    params: [],
-    dependsOn: [],
-    resultCollector: true
-  }]
+  scriptSteps.value = steps
   
   // 初始化步骤服务器配置
   stepServerConfigs.value = scriptSteps.value.map(step => ({
@@ -451,13 +445,17 @@ async function fetchServers() {
 async function handleSubmit() {
   await formRef.value?.validate()
   
+  // 检查是否有步骤
+  if (scriptSteps.value.length === 0) {
+    ElMessage.error('脚本未定义执行步骤，无法创建任务')
+    return
+  }
+  
   // 检查所有步骤是否都已分配服务器
-  if (scriptSteps.value.length > 0) {
-    const unassignedSteps = stepServerConfigs.value.filter(c => !c.serverId && c.serverId !== -1)
-    if (unassignedSteps.length > 0) {
-      ElMessage.error(`请为步骤 "${unassignedSteps[0].displayName}" 选择服务器`)
-      return
-    }
+  const unassignedSteps = stepServerConfigs.value.filter(c => !c.serverId && c.serverId !== -1)
+  if (unassignedSteps.length > 0) {
+    ElMessage.error(`请为步骤 "${unassignedSteps[0].displayName}" 选择服务器`)
+    return
   }
   
   submitting.value = true

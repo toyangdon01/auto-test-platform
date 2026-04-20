@@ -14,9 +14,11 @@ import com.autotest.service.PipelineImportService;
 import com.autotest.service.PipelineService;
 import com.autotest.service.ServerService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
+import com.fasterxml.jackson.dataformat.yaml.YAMLGenerator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -40,7 +42,12 @@ public class PipelineImportServiceImpl implements PipelineImportService {
     private final ServerMapper serverMapper;
     private final ScriptMapper scriptMapper;
     private final ObjectMapper jsonMapper = new ObjectMapper();
-    private final ObjectMapper yamlMapper = new ObjectMapper(new YAMLFactory());
+    
+    // YAML mapper 配置：忽略 null 值，不输出文档分隔符
+    private final ObjectMapper yamlMapper = new ObjectMapper(
+        new YAMLFactory()
+            .disable(YAMLGenerator.Feature.WRITE_DOC_START_MARKER)
+    );
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -221,12 +228,6 @@ public class PipelineImportServiceImpl implements PipelineImportService {
                 task.setTimeout(config.getTimeout().longValue() * 1000);
             }
 
-            // 服务器ID列表
-            if (config.getServerIds() != null && !config.getServerIds().isEmpty()) {
-                List<Long> serverIds = convertToServerIds(config.getServerIds(), serverNameToId);
-                task.setServerIds(toJsonString(serverIds));
-            }
-
             // 依赖任务
             if (config.getDependsOn() != null && !config.getDependsOn().isEmpty()) {
                 task.setDependsOn(toJsonString(config.getDependsOn()));
@@ -237,6 +238,12 @@ public class PipelineImportServiceImpl implements PipelineImportService {
                 Map<String, List<Long>> mapping = convertStepServerMapping(
                     config.getStepServerMapping(), serverNameToId);
                 task.setStepServerMapping(toJsonString(mapping));
+                // serverIds 从 stepServerMapping 中自动提取
+                Set<Long> allServerIds = new HashSet<>();
+                for (List<Long> serverList : mapping.values()) {
+                    allServerIds.addAll(serverList);
+                }
+                task.setServerIds(toJsonString(new ArrayList<>(allServerIds)));
             }
 
             // 共享参数
@@ -319,11 +326,18 @@ public class PipelineImportServiceImpl implements PipelineImportService {
 
         PipelineYamlConfig config = new PipelineYamlConfig();
         config.setName(pipeline.getName());
-        config.setDescription(pipeline.getDescription());
-        config.setMaxParallel(pipeline.getMaxParallel());
+        // 只设置非 null 值
+        if (pipeline.getDescription() != null && !pipeline.getDescription().isEmpty()) {
+            config.setDescription(pipeline.getDescription());
+        }
+        if (pipeline.getMaxParallel() != null && pipeline.getMaxParallel() != 5) {
+            config.setMaxParallel(pipeline.getMaxParallel());
+        }
         config.setTasks(convertTasksToConfig(tasks));
 
         try {
+            // 配置忽略 null 值
+            yamlMapper.setSerializationInclusion(JsonInclude.Include.NON_NULL);
             return yamlMapper.writeValueAsString(config);
         } catch (JsonProcessingException e) {
             throw new BusinessException("YAML 序列化失败: " + e.getMessage());
@@ -334,15 +348,35 @@ public class PipelineImportServiceImpl implements PipelineImportService {
      * 转换 PipelineTask 列表为配置
      */
     private List<TaskYamlConfig> convertTasksToConfig(List<PipelineTask> tasks) {
+        // 获取所有脚本信息用于导出脚本名称
+        Map<Long, String> scriptIdToName = new HashMap<>();
+        for (PipelineTask task : tasks) {
+            if (!scriptIdToName.containsKey(task.getScriptId())) {
+                Script script = scriptMapper.selectById(task.getScriptId());
+                if (script != null) {
+                    scriptIdToName.put(task.getScriptId(), script.getName());
+                }
+            }
+        }
+
         return tasks.stream().map(task -> {
             TaskYamlConfig config = new TaskYamlConfig();
             config.setName(task.getName());
-            config.setScriptId(task.getScriptId());
-            config.setTimeout(task.getTimeout() != null ? task.getTimeout().intValue() / 1000 : null);
-
-            if (task.getServerIds() != null && !task.getServerIds().isEmpty()) {
-                config.setServerIds(parseJsonArray(task.getServerIds()));
+            
+            // 导出脚本名称而不是 ID
+            String scriptName = scriptIdToName.get(task.getScriptId());
+            if (scriptName != null) {
+                config.setScript(scriptName);
+            } else {
+                config.setScriptId(task.getScriptId());
             }
+            
+            // 超时时间（毫秒 → 秒）
+            if (task.getTimeout() != null) {
+                config.setTimeout(task.getTimeout().intValue() / 1000);
+            }
+
+            // 依赖任务
             if (task.getDependsOn() != null && !task.getDependsOn().isEmpty()) {
                 try {
                     config.setDependsOn(jsonMapper.readValue(task.getDependsOn(), 
@@ -351,6 +385,20 @@ public class PipelineImportServiceImpl implements PipelineImportService {
                     log.warn("解析 dependsOn 失败", e);
                 }
             }
+            
+            // 步骤服务器映射
+            if (task.getStepServerMapping() != null && !task.getStepServerMapping().isEmpty()) {
+                try {
+                    Map<String, List<Object>> mapping = jsonMapper.readValue(
+                        task.getStepServerMapping(), 
+                        jsonMapper.getTypeFactory().constructMapType(Map.class, String.class, List.class));
+                    config.setStepServerMapping(mapping);
+                } catch (Exception e) {
+                    log.warn("解析 stepServerMapping 失败", e);
+                }
+            }
+            
+            // 共享参数
             if (task.getSharedParams() != null && !task.getSharedParams().isEmpty()) {
                 try {
                     config.setSharedParams(jsonMapper.readValue(task.getSharedParams(), 
@@ -359,6 +407,8 @@ public class PipelineImportServiceImpl implements PipelineImportService {
                     log.warn("解析 sharedParams 失败", e);
                 }
             }
+            
+            // 步骤参数
             if (task.getStepParams() != null && !task.getStepParams().isEmpty()) {
                 try {
                     config.setStepParams(jsonMapper.readValue(task.getStepParams(), 
@@ -370,18 +420,5 @@ public class PipelineImportServiceImpl implements PipelineImportService {
 
             return config;
         }).collect(Collectors.toList());
-    }
-
-    /**
-     * 解析 JSON 数组为 List<Object>
-     */
-    private List<Object> parseJsonArray(String json) {
-        try {
-            return jsonMapper.readValue(json,
-                jsonMapper.getTypeFactory().constructCollectionType(List.class, Object.class));
-        } catch (Exception e) {
-            log.warn("解析 JSON 数组失败", e);
-            return null;
-        }
     }
 }

@@ -39,6 +39,7 @@
           <el-button type="primary" size="small" @click="handleExecute(row)">执行</el-button>
           <el-button type="default" size="small" @click="handleRuns(row)">执行记录</el-button>
           <el-button type="default" size="small" @click="handleEdit(row)">编辑</el-button>
+          <el-button type="warning" size="small" @click="handleExport(row)">导出</el-button>
           <el-button type="danger" size="small" @click="handleDelete(row)">删除</el-button>
         </template>
       </el-table-column>
@@ -65,7 +66,7 @@ import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Download } from '@element-plus/icons-vue'
-import { listPipelines, deletePipeline, executePipeline } from '@/api/pipeline'
+import { listPipelines, deletePipeline, executePipeline, exportPipeline } from '@/api/pipeline'
 import type { Pipeline } from '@/api/pipeline'
 import PipelineImportDialog from '@/components/PipelineImportDialog.vue'
 
@@ -117,6 +118,29 @@ function handleEdit(row: Pipeline) {
 
 function handleRuns(row: Pipeline) {
   router.push(`/pipelines/runs?pipelineId=${row.id}`)
+}
+
+async function handleExport(row: Pipeline) {
+  try {
+    const res = await exportPipeline(row.id)
+    if (res.code === 0 && res.data) {
+      // 创建下载
+      const blob = new Blob([res.data], { type: 'text/yaml;charset=utf-8' })
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `${row.name}.yaml`
+      document.body.appendChild(link)
+      link.click()
+      setTimeout(() => {
+        document.body.removeChild(link)
+        window.URL.revokeObjectURL(url)
+      }, 100)
+      ElMessage.success('导出成功')
+    }
+  } catch (e) {
+    ElMessage.error('导出失败')
+  }
 }
 
 async function handleDelete(row: Pipeline) {

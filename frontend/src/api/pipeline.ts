@@ -117,3 +117,8 @@ export function getPipelineRunTasks(runId: number) {
 export function cancelPipelineRun(runId: number) {
   return request.post(`/pipelines/runs/${runId}/cancel`)
 }
+
+// 导出编排为 YAML
+export function exportPipeline(id: number) {
+  return request.get(`/pipelines/${id}/export`)
+}
