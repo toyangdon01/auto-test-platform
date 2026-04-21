@@ -296,13 +296,15 @@ function applyScriptToTask(script: any, task: TaskConfig) {
     }
   })
   
-  // 设置共享参数默认值
-  task.sharedParams = {}
-  task.scriptParameters.forEach(p => {
-    if (p.default !== undefined) {
-      task.sharedParams[p.name] = p.default
-    }
-  })
+  // 设置共享参数默认值（仅在 empty 时初始化）
+  if (!task.sharedParams || Object.keys(task.sharedParams).length === 0) {
+    task.sharedParams = {}
+    task.scriptParameters.forEach(p => {
+      if (p.default !== undefined) {
+        task.sharedParams[p.name] = p.default
+      }
+    })
+  }
   
   // 如果没有步骤定义，创建默认步骤
   if (steps.length === 0) {
