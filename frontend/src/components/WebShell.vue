@@ -175,8 +175,9 @@ function connectWebSocket() {
 
   socket.onerror = (error) => {
     connected.value = false
-    terminal?.writeln('\x1b[31mWebSocket 连接错误\x1b[0m')
-    ElMessage.error('终端连接失败')
+    const errorMsg = 'WebSocket 连接错误，请检查：\n1. 服务器认证信息是否正确配置\n2. 服务器是否可达\n3. WebSocket 服务是否正常'
+    terminal?.writeln(`\x1b[31m${errorMsg}\x1b[0m`)
+    ElMessage.error('终端连接失败，请查看终端中的错误信息')
     console.error('WebSocket error:', error)
   }
 
