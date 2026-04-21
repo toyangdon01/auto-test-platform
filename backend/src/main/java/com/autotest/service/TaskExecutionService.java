@@ -621,17 +621,25 @@ public class TaskExecutionService {
             params.put("SERVER_NAME", server.getName() != null ? server.getName() : "");
             params.put("SERVER_HOST", server.getHost() != null ? server.getHost() : "");
             
-            // 添加步骤参数定义中的默认值（最低优先级）
+            // 添加用户定义的共享参数
+            if (task.getSharedParams() != null) {
+                params.putAll(task.getSharedParams());
+            }
+            
+            // 添加步骤专属参数（步骤参数会覆盖共享参数）
             // 注意：stepConfig.getParams() 返回的是参数定义数组，格式如：
             // [{"name": "MODE", "defaultValue": "server"}, ...]
+            // 需要从中提取 name 和 defaultValue
             if (stepConfig.getParams() != null) {
                 Object paramsObj = stepConfig.getParams();
+                log.info("Step {} params object type: {}, value: {}", stepName, paramsObj.getClass().getName(), paramsObj);
                 if (paramsObj instanceof List) {
                     @SuppressWarnings("unchecked")
                     List<Map<String, Object>> paramDefs = (List<Map<String, Object>>) paramsObj;
                     for (Map<String, Object> paramDef : paramDefs) {
                         String paramName = (String) paramDef.get("name");
                         Object paramValue = paramDef.get("defaultValue");
+                        log.info("Step param: {} = {}", paramName, paramValue);
                         if (paramName != null && paramValue != null) {
                             params.put(paramName, paramValue);
                         }
@@ -642,11 +650,6 @@ public class TaskExecutionService {
                     Map<String, Object> paramsMap = (Map<String, Object>) paramsObj;
                     params.putAll(paramsMap);
                 }
-            }
-            
-            // 添加用户定义的共享参数（覆盖默认值）
-            if (task.getSharedParams() != null) {
-                params.putAll(task.getSharedParams());
             }
             
             // 构建环境变量
@@ -1310,7 +1313,12 @@ public class TaskExecutionService {
             params.put("TASK_NAME", task.getName() != null ? task.getName() : "");
             params.put("SCRIPT_VERSION", task.getScriptVersion() != null ? task.getScriptVersion() : "");
             
-            // 添加步骤参数定义中的默认值（最低优先级）
+            // 添加用户定义的共享参数
+            if (task.getSharedParams() != null) {
+                params.putAll(task.getSharedParams());
+            }
+            
+            // 添加步骤专属参数
             if (stepConfig.getParams() != null) {
                 Object paramsObj = stepConfig.getParams();
                 if (paramsObj instanceof List) {
@@ -1325,11 +1333,6 @@ public class TaskExecutionService {
                 } else if (paramsObj instanceof Map) {
                     params.putAll((Map<String, Object>) paramsObj);
                 }
-            }
-            
-            // 添加用户定义的共享参数（覆盖默认值）
-            if (task.getSharedParams() != null) {
-                params.putAll(task.getSharedParams());
             }
             
             // 确定要执行的脚本（优先使用步骤配置）
