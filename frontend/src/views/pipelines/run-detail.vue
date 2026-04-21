@@ -1,11 +1,14 @@
 <template>
-  <div class="page-card">
+  <div class="page-card" v-loading="loading">
     <div class="page-header">
-      <h3 class="page-title">执行详情</h3>
-      <div>
-        <el-button v-if="run?.status === 'running'" type="danger" @click="handleCancel">取消执行</el-button>
-        <el-button @click="$router.back()">返回</el-button>
-      </div>
+      <el-page-header @back="$router.back()">
+        <template #content>
+          <span class="title">执行详情</span>
+        </template>
+        <template #extra>
+          <el-button v-if="run?.status === 'running'" type="danger" @click="handleCancel">取消执行</el-button>
+        </template>
+      </el-page-header>
     </div>
 
     <el-descriptions :column="3" border v-if="run" style="margin-bottom: 24px">
