@@ -6,6 +6,7 @@ import com.jcraft.jsch.*;
 import jakarta.websocket.*;
 import jakarta.websocket.server.PathParam;
 import jakarta.websocket.server.ServerEndpoint;
+import jakarta.websocket.server.ServerEndpointConfig;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
@@ -27,7 +28,7 @@ import java.util.concurrent.Executors;
  * @author auto-test-platform
  */
 @Slf4j
-@ServerEndpoint(value = "/webshell/{serverId}", configurator = WebShellConfigurator.class)
+@ServerEndpoint(value = "/webshell/{serverId}", configurator = WebShellEndpoint.SpringConfigurator.class)
 @Component
 public class WebShellEndpoint {
 
@@ -366,5 +367,12 @@ public class WebShellEndpoint {
         public void setUserId(String userId) {
             this.userId = userId;
         }
+    }
+
+    /**
+     * Spring Configurator - 让静态字段注入工作
+     */
+    public static class SpringConfigurator extends ServerEndpointConfig.Configurator {
+        // 使用默认配置，让静态字段注入工作
     }
 }
