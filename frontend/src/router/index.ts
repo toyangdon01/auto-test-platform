@@ -102,13 +102,13 @@ const routes: RouteRecordRaw[] = [
       {
         path: 'create',
         name: 'TaskCreate',
-        component: () => import('@/views/tasks/create.vue'),
+        component: () => import('@/views/tasks/editor.vue'),
         meta: { title: '创建任务', hidden: true },
       },
       {
         path: 'edit/:id',
         name: 'TaskEdit',
-        component: () => import('@/views/tasks/edit.vue'),
+        component: () => import('@/views/tasks/editor.vue'),
         meta: { title: '编辑任务', hidden: true },
       },
       {
@@ -121,7 +121,7 @@ const routes: RouteRecordRaw[] = [
         path: 'scheduled',
         name: 'ScheduledTasks',
         component: () => import('@/views/tasks/scheduled.vue'),
-        meta: { title: '定时任务' },
+        meta: { title: '定时任务管理', hidden: true },
       },
     ],
   },

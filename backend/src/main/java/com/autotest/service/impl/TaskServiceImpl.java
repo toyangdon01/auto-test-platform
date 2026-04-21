@@ -10,6 +10,7 @@ import com.autotest.dto.response.TaskDetailResponse;
 import com.autotest.entity.Script;
 import com.autotest.entity.ScriptVersion;
 import com.autotest.entity.Server;
+import com.autotest.entity.ScheduledTask;
 import com.autotest.entity.Task;
 import com.autotest.entity.TaskServer;
 import com.autotest.entity.TaskStep;
@@ -17,6 +18,7 @@ import com.autotest.entity.TestResult;
 import com.autotest.exception.BusinessException;
 import com.autotest.mapper.ScriptMapper;
 import com.autotest.mapper.ScriptVersionMapper;
+import com.autotest.mapper.ScheduledTaskMapper;
 import com.autotest.mapper.ServerMapper;
 import com.autotest.mapper.TaskMapper;
 import com.autotest.mapper.TaskServerMapper;
@@ -53,6 +55,7 @@ public class TaskServiceImpl implements TaskService {
     private final ScriptMapper scriptMapper;
     private final ScriptVersionMapper scriptVersionMapper;
     private final ServerMapper serverMapper;
+    private final ScheduledTaskMapper scheduledTaskMapper;
     private final TaskExecutionService taskExecutionService;
     private final LogCacheService logCacheService;
 
@@ -319,6 +322,33 @@ public class TaskServiceImpl implements TaskService {
             taskServerMapper.insert(localTaskServer);
         }
         
+        // 如果是定时执行，创建定时任务记录
+        if ("scheduled".equals(request.getExecutionMode())) {
+            ScheduledTask scheduledTask = new ScheduledTask();
+            scheduledTask.setName(task.getName() + "-定时任务");
+            scheduledTask.setTaskId(task.getId());
+            scheduledTask.setStatus("enabled");
+            scheduledTask.setRunCount(0);
+            scheduledTask.setFailCount(0);
+            scheduledTask.setCreatedAt(LocalDateTime.now());
+            scheduledTask.setUpdatedAt(LocalDateTime.now());
+            
+            // 判断是一次性执行还是周期执行
+            if (StringUtils.hasText(request.getScheduledTime())) {
+                // 指定时间执行（一次性）
+                scheduledTask.setScheduleType("once");
+                scheduledTask.setNextRunTime(LocalDateTime.parse(request.getScheduledTime()));
+                log.info("创建一次性定时任务: taskId={}, executeAt={}", task.getId(), request.getScheduledTime());
+            } else if (StringUtils.hasText(request.getCronExpression())) {
+                // Cron 周期执行
+                scheduledTask.setScheduleType("cron");
+                scheduledTask.setCronExpression(request.getCronExpression());
+                log.info("创建周期定时任务: taskId={}, cron={}", task.getId(), request.getCronExpression());
+            }
+            
+            scheduledTaskMapper.insert(scheduledTask);
+        }
+        
         return task;
     }
 
@@ -396,12 +426,7 @@ public class TaskServiceImpl implements TaskService {
         wrapper.eq(TaskServer::getTaskId, id);
         taskServerMapper.delete(wrapper);
         
-        // 删除测试结果（test_results）
-        LambdaQueryWrapper<TestResult> resultWrapper = new LambdaQueryWrapper<>();
-        resultWrapper.eq(TestResult::getTaskId, id);
-        testResultMapper.delete(resultWrapper);
-        
-        // 删除任务
+        // 删除任务（测试结果保留）
         taskMapper.deleteById(id);
     }
 

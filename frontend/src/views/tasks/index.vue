@@ -8,6 +8,10 @@
           active-text="自动刷新"
           @change="toggleAutoRefresh"
         />
+        <el-button @click="$router.push('/tasks/scheduled')">
+          <el-icon><Clock /></el-icon>
+          定时任务
+        </el-button>
         <el-button type="primary" @click="$router.push('/tasks/create')">
           <el-icon><Plus /></el-icon>
           创建任务
@@ -40,10 +44,23 @@
 
       <el-button type="primary" @click="fetchData">查询</el-button>
       <el-button @click="resetQuery">重置</el-button>
+      <el-button 
+        v-if="selectedIds.length > 0" 
+        type="danger" 
+        @click="handleBatchDelete"
+      >
+        批量删除 ({{ selectedIds.length }})
+      </el-button>
     </div>
 
     <!-- 数据表格 -->
-    <el-table v-loading="loading" :data="tableData" stripe>
+    <el-table 
+      v-loading="loading" 
+      :data="tableData" 
+      stripe
+      @selection-change="handleSelectionChange"
+    >
+      <el-table-column type="selection" width="50" />
       <el-table-column prop="name" label="任务名称" min-width="180">
         <template #default="{ row }">
           <el-link type="primary" @click="$router.push(`/tasks/detail/${row.id}`)">
@@ -114,8 +131,11 @@
 
       <el-table-column prop="executionMode" label="执行模式" width="100">
         <template #default="{ row }">
-          <el-tag size="small" effect="plain">
-            {{ row.executionMode === 'immediate' ? '立即执行' : '定时执行' }}
+          <el-tag v-if="row.executionMode === 'scheduled'" type="warning" size="small" effect="plain">
+            定时执行
+          </el-tag>
+          <el-tag v-else type="primary" size="small" effect="plain">
+            立即执行
           </el-tag>
         </template>
       </el-table-column>
@@ -188,7 +208,7 @@
 import { ref, reactive, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Loading, VideoPlay, VideoPause, Delete, Warning, Edit, Monitor } from '@element-plus/icons-vue'
+import { Plus, Loading, VideoPlay, VideoPause, Delete, Warning, Edit, Monitor, Clock } from '@element-plus/icons-vue'
 import request from '@/utils/request'
 import { formatTime, formatDuration } from '@/utils/format'
 import TaskLogStream from '@/components/TaskLogStream.vue'
@@ -199,6 +219,7 @@ const loading = ref(false)
 const tableData = ref<any[]>([])
 const total = ref(0)
 const autoRefresh = ref(true)
+const selectedIds = ref<number[]>([])  // 选中的任务ID
 let refreshTimer: ReturnType<typeof setInterval> | null = null
 
 // 实时日志相关
@@ -393,6 +414,48 @@ async function handleDelete(row: any) {
   } catch (e: any) {
     if (e !== 'cancel') {
       ElMessage.error(e.message || '删除失败')
+    }
+  }
+}
+
+// 表格选择变化
+function handleSelectionChange(selection: any[]) {
+  selectedIds.value = selection.map(item => item.id)
+}
+
+// 批量删除
+async function handleBatchDelete() {
+  if (selectedIds.value.length === 0) {
+    ElMessage.warning('请选择要删除的任务')
+    return
+  }
+  
+  try {
+    await ElMessageBox.confirm(
+      `确定要删除选中的 ${selectedIds.value.length} 个任务吗？`,
+      '批量删除',
+      { type: 'warning' }
+    )
+    
+    // 并行删除
+    const results = await Promise.allSettled(
+      selectedIds.value.map(id => request.delete(`/tasks/${id}`))
+    )
+    
+    const successCount = results.filter(r => r.status === 'fulfilled' && (r.value as any).code === 0).length
+    const failCount = results.length - successCount
+    
+    if (failCount === 0) {
+      ElMessage.success(`成功删除 ${successCount} 个任务`)
+    } else {
+      ElMessage.warning(`成功 ${successCount} 个，失败 ${failCount} 个`)
+    }
+    
+    selectedIds.value = []
+    fetchData()
+  } catch (e: any) {
+    if (e !== 'cancel') {
+      ElMessage.error(e.message || '批量删除失败')
     }
   }
 }

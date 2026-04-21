@@ -1,7 +1,11 @@
 ﻿<template>
   <div class="page-card">
     <div class="page-header">
-      <h3 class="page-title">创建任务</h3>
+      <el-page-header @back="$router.back()">
+        <template #content>
+          <h3 class="page-title">{{ isEdit ? '编辑任务' : '创建任务' }}</h3>
+        </template>
+      </el-page-header>
     </div>
 
     <el-steps :active="currentStep" finish-status="success" class="create-steps">
@@ -14,25 +18,25 @@
     <div class="step-content">
       <!-- Step 1: 选择脚本 -->
       <div v-show="currentStep === 0" class="step-panel">
-        <!-- 如果已预选脚本，显示确认信息 -->
-        <div v-if="preselectedScript" class="preselected-info">
+        <!-- 编辑模式或已预选脚本：显示确认信息 -->
+        <div v-if="isEdit || preselectedScript" class="preselected-info">
           <el-alert type="info" :closable="false" show-icon>
             <template #title>
-              已从脚本中心选择: <strong>{{ selectedScript?.name }}</strong>
+              {{ isEdit ? '任务脚本' : '已从脚本中心选择' }}: <strong>{{ selectedScript?.name }}</strong>
             </template>
           </el-alert>
           <div class="script-detail">
             <p><strong>测试类型:</strong> {{ getCategoryText(selectedScript?.testCategory) }}</p>
-            <p><strong>版本:</strong> {{ selectedScript?.currentVersion }}</p>
+            <p><strong>版本:</strong> {{ formData.scriptVersion || selectedScript?.currentVersion }}</p>
           </div>
-          <div class="preselected-actions">
+          <div v-if="!isEdit" class="preselected-actions">
             <el-button @click="preselectedScript = false">重新选择脚本</el-button>
           </div>
         </div>
         
-        <!-- 脚本列表 -->
+        <!-- 创建模式：脚本列表 -->
         <el-table 
-          v-if="!preselectedScript"
+          v-if="!isEdit && !preselectedScript"
           :data="scripts" 
           highlight-current-row 
           :current-row-key="selectedScript?.id"
@@ -203,6 +207,39 @@
             <el-input v-model="formData.name" placeholder="请输入任务名称" />
           </el-form-item>
           
+          <!-- 执行模式 -->
+          <el-form-item label="执行模式">
+            <el-radio-group v-model="formData.executionMode">
+              <el-radio value="immediate">立即执行</el-radio>
+              <el-radio value="scheduled_once">指定时间</el-radio>
+              <el-radio value="scheduled_cron">周期执行</el-radio>
+            </el-radio-group>
+          </el-form-item>
+          
+          <!-- 指定时间 -->
+          <el-form-item v-if="formData.executionMode === 'scheduled_once'" label="执行时间" required>
+            <el-date-picker
+              v-model="formData.scheduledTime"
+              type="datetime"
+              placeholder="选择执行时间"
+              format="YYYY-MM-DD HH:mm"
+              value-format="YYYY-MM-DDTHH:mm:ss"
+              :disabled-date="(time: Date) => time.getTime() < Date.now() - 86400000"
+            />
+          </el-form-item>
+          
+          <!-- Cron 表达式 -->
+          <el-form-item v-if="formData.executionMode === 'scheduled_cron'" label="Cron表达式" required>
+            <el-input v-model="formData.cronExpression" placeholder="如: 0 0 2 * * ? (每天凌晨2点)" />
+            <div class="cron-quick-select">
+              <span>常用:</span>
+              <el-link type="primary" @click="formData.cronExpression = '0 0 2 * * ?'">每天凌晨2点</el-link>
+              <el-link type="primary" @click="formData.cronExpression = '0 0 */6 * * ?'">每6小时</el-link>
+              <el-link type="primary" @click="formData.cronExpression = '0 0 * * * ?'">每小时</el-link>
+              <el-link type="primary" @click="formData.cronExpression = '0 */30 * * * ?'">每30分钟</el-link>
+            </div>
+          </el-form-item>
+          
           <el-form-item label="超时时间">
             <template #label>
               超时时间
@@ -261,11 +298,17 @@ import { QuestionFilled } from '@element-plus/icons-vue'
 import { scriptApi, taskApi, type Script } from '@/api/script'
 import MetricCollectConfig from '@/components/MetricCollectConfig.vue'
 import { serverApi, type Server } from '@/api/server'
+import request from '@/utils/request'
 
 const router = useRouter()
 const route = useRoute()
 const formRef = ref()
 const currentStep = ref(0)
+const loading = ref(false)
+
+// 编辑模式
+const taskId = computed(() => route.params.id ? Number(route.params.id) : null)
+const isEdit = computed(() => !!taskId.value)
 
 const scripts = ref<Script[]>([])
 const servers = ref<Server[]>([])
@@ -305,7 +348,12 @@ const assignedServerCount = computed(() => {
 
 const formData = reactive({
   name: '',
+  description: '',
+  scriptVersion: '',
   timeout: 86400,  // 默认 24 小时
+  executionMode: 'immediate',  // 执行模式: immediate/scheduled_once/scheduled_cron
+  scheduledTime: '',  // 指定执行时间
+  cronExpression: '',  // Cron 表达式
   // 共享参数值（动态）
   sharedParams: {} as Record<string, any>,
   // 指标采集配置（默认禁用）
@@ -556,12 +604,14 @@ async function handleSubmit() {
   const data = {
     name: formData.name,
     scriptId: selectedScript.value!.id,
-    scriptVersion: selectedScript.value!.currentVersion,
+    scriptVersion: formData.scriptVersion || selectedScript.value!.currentVersion,
     serverIds: allServerIds,
     isLocal: hasLocalExecution,
     stepServerMapping,
     stepParams,
-    executionMode: 'immediate',
+    executionMode: formData.executionMode === 'immediate' ? 'immediate' : 'scheduled',
+    scheduledTime: formData.executionMode === 'scheduled_once' ? formData.scheduledTime : undefined,
+    cronExpression: formData.executionMode === 'scheduled_cron' ? formData.cronExpression : undefined,
     parallelMode: 'sequential',
     maxParallel: 1,
     failureStrategy: 'continue',
@@ -571,31 +621,112 @@ async function handleSubmit() {
     sharedParams: formData.sharedParams,
   }
   
-  const res = await taskApi.create(data)
-  if (res.code === 0) {
-    ElMessage.success('任务创建成功')
-    router.push('/tasks/list')
+  try {
+    let res
+    if (isEdit.value) {
+      res = await request.put(`/tasks/${taskId.value}`, data)
+    } else {
+      res = await taskApi.create(data)
+    }
+    if (res.code === 0) {
+      ElMessage.success(isEdit.value ? '任务更新成功' : '任务创建成功')
+      router.push('/tasks/list')
+    }
+  } catch (e: any) {
+    ElMessage.error(e.message || (isEdit.value ? '更新失败' : '创建失败'))
   }
 }
 
-onMounted(() => {
-  fetchScripts()
-  fetchServers()
+onMounted(async () => {
+  await fetchScripts()
+  await fetchServers()
   
-  // 从 URL 获取预选脚本
-  if (route.query.scriptId) {
+  if (isEdit.value) {
+    // 编辑模式：加载任务数据
+    await loadTaskData()
+  } else if (route.query.scriptId) {
+    // 创建模式：从 URL 获取预选脚本
     const scriptId = Number(route.query.scriptId)
     scriptApi.get(scriptId).then((res) => {
       if (res.code === 0) {
         selectedScript.value = res.data
         formData.name = `${res.data.name}-${new Date().toISOString().slice(0, 10)}`
         preselectedScript.value = true
-        // 加载步骤定义
         loadScriptSteps(res.data)
       }
     })
   }
 })
+
+// 加载任务数据（编辑模式）
+async function loadTaskData() {
+  loading.value = true
+  try {
+    const res = await request.get(`/tasks/${taskId.value}`)
+    if (res.code === 0) {
+      const task = res.data
+      
+      formData.name = task.name
+      formData.description = task.description || ''
+      formData.scriptVersion = task.scriptVersion
+      formData.timeout = Math.round((task.timeout || 86400000) / 1000)
+      formData.sharedParams = task.sharedParams || {}
+      formData.collectConfig = task.collectConfig || { enabled: false }
+      
+      // 获取脚本详情
+      if (task.scriptId) {
+        const scriptRes = await scriptApi.get(task.scriptId)
+        if (scriptRes.code === 0) {
+          selectedScript.value = scriptRes.data
+          loadScriptSteps(scriptRes.data)
+        }
+      }
+      
+      // 恢复步骤服务器配置
+      if (task.stepServerMapping) {
+        setTimeout(() => {
+          restoreStepServerConfigs(task.stepServerMapping, task.stepParams)
+        }, 100)
+      }
+    }
+  } catch (e: any) {
+    ElMessage.error(e.message || '加载任务数据失败')
+  } finally {
+    loading.value = false
+  }
+}
+
+// 恢复步骤服务器配置
+function restoreStepServerConfigs(stepServerMapping: Record<string, number[]>, stepParams?: Record<string, Record<string, any>>) {
+  for (const [stepName, serverIds] of Object.entries(stepServerMapping)) {
+    const configIndex = stepServerConfigs.value.findIndex(c => c.stepName === stepName)
+    if (configIndex >= 0 && serverIds && serverIds.length > 0) {
+      const serverId = typeof serverIds[0] === 'number' ? serverIds[0] : Number(serverIds[0])
+      stepServerConfigs.value[configIndex].serverId = serverId
+      
+      if (serverId === -1) {
+        stepServerConfigs.value[configIndex].serverName = '本地环境'
+        stepServerConfigs.value[configIndex].isLocal = true
+      } else {
+        const server = servers.value.find(s => s.id === serverId)
+        if (server) {
+          stepServerConfigs.value[configIndex].serverName = server.name
+          stepServerConfigs.value[configIndex].isLocal = false
+        }
+      }
+    }
+  }
+  
+  // 恢复步骤参数
+  if (stepParams) {
+    for (const [stepName, params] of Object.entries(stepParams)) {
+      const config = stepServerConfigs.value.find(c => c.stepName === stepName)
+      if (config && params) {
+        config.stepParams = { ...config.stepParams, ...params }
+      }
+    }
+  }
+}
 </script>
 
 <style lang="scss" scoped>
@@ -819,6 +950,16 @@ onMounted(() => {
   margin-left: 12px;
   color: var(--el-text-color-placeholder);
   font-size: 12px;
+}
+
+.cron-quick-select {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  
+  .el-link {
+    margin-left: 12px;
+  }
 }
 
 // 内置参数提示样式

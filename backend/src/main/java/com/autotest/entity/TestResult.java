@@ -28,9 +28,29 @@ public class TestResult implements Serializable {
     private Long taskId;
 
     /**
+     * 任务名称（冗余）
+     */
+    private String taskName;
+
+    /**
+     * 脚本名称（冗余）
+     */
+    private String scriptName;
+
+    /**
      * 服务器ID
      */
     private Long serverId;
+
+    /**
+     * 服务器名称（冗余）
+     */
+    private String serverName;
+
+    /**
+     * 服务器IP（冗余）
+     */
+    private String serverIp;
 
     /**
      * 任务服务器ID
@@ -105,22 +125,4 @@ public class TestResult implements Serializable {
      */
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createdAt;
-    
-    /**
-     * 任务名称（非持久化）
-     */
-    @TableField(exist = false)
-    private String taskName;
-    
-    /**
-     * 脚本名称（非持久化）
-     */
-    @TableField(exist = false)
-    private String scriptName;
-    
-    /**
-     * 服务器名称（非持久化）
-     */
-    @TableField(exist = false)
-    private String serverName;
 }

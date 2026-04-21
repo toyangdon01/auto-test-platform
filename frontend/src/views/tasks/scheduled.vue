@@ -87,24 +87,29 @@
           </el-select>
         </el-form-item>
         <el-form-item label="调度类型" prop="scheduleType">
-          <el-radio-group v-model="form.scheduleType">
-            <el-radio value="cron">Cron表达式</el-radio>
-            <el-radio value="interval">固定间隔</el-radio>
-          </el-radio-group>
-        </el-form-item>
-        <el-form-item v-if="form.scheduleType === 'cron'" label="Cron表达式" prop="cronExpression">
-          <el-input v-model="form.cronExpression" placeholder="如: 0 0 2 * * ? (每天凌晨2点)" />
-          <div class="cron-help">
-            <span>常用: </span>
-            <el-link @click="form.cronExpression = '0 0 2 * * ?'">每天凌晨2点</el-link>
-            <el-link @click="form.cronExpression = '0 0 */6 * * ?'">每6小时</el-link>
-            <el-link @click="form.cronExpression = '0 30 9 * * ?'">每天9:30</el-link>
-          </div>
-        </el-form-item>
-        <el-form-item v-else label="执行间隔" prop="intervalMinutes">
-          <el-input-number v-model="form.intervalMinutes" :min="1" :max="10080" />
-          <span style="margin-left: 8px">分钟</span>
-        </el-form-item>
+            <el-radio-group v-model="form.scheduleType">
+              <el-radio value="cron">Cron表达式</el-radio>
+              <el-radio value="once">指定时间</el-radio>
+            </el-radio-group>
+          </el-form-item>
+          <el-form-item v-if="form.scheduleType === 'cron'" label="Cron表达式" prop="cronExpression">
+            <el-input v-model="form.cronExpression" placeholder="如: 0 0 2 * * ? (每天凌晨2点)" />
+            <div class="cron-help">
+              <span>常用: </span>
+              <el-link @click="form.cronExpression = '0 0 2 * * ?'">每天凌晨2点</el-link>
+              <el-link @click="form.cronExpression = '0 0 */6 * * ?'">每6小时</el-link>
+              <el-link @click="form.cronExpression = '0 0 * * * ?'">每小时</el-link>
+            </div>
+          </el-form-item>
+          <el-form-item v-else label="执行时间" prop="nextRunTime">
+            <el-date-picker
+              v-model="form.nextRunTime"
+              type="datetime"
+              placeholder="选择执行时间"
+              format="YYYY-MM-DD HH:mm"
+              value-format="YYYY-MM-DDTHH:mm:ss"
+            />
+          </el-form-item>
         <el-form-item label="备注">
           <el-input v-model="form.remark" type="textarea" :rows="2" placeholder="任务说明" />
         </el-form-item>
@@ -160,7 +165,7 @@ const form = reactive({
   taskId: null as number | null,
   scheduleType: 'cron',
   cronExpression: '',
-  intervalMinutes: 60,
+  nextRunTime: '',
   remark: ''
 })
 
@@ -201,7 +206,7 @@ function getTaskName(taskId: number) {
 }
 
 function getScheduleTypeName(type: string) {
-  const map: Record<string, string> = { cron: 'Cron', interval: '固定间隔', once: '一次性' }
+  const map: Record<string, string> = { cron: 'Cron', once: '指定时间' }
   return map[type] || type
 }
 
@@ -221,7 +226,7 @@ function handleCreate() {
   form.taskId = null
   form.scheduleType = 'cron'
   form.cronExpression = ''
-  form.intervalMinutes = 60
+  form.nextRunTime = ''
   form.remark = ''
   dialogVisible.value = true
 }
@@ -232,7 +237,7 @@ function handleEdit(row: ScheduledTask) {
   form.taskId = row.taskId
   form.scheduleType = row.scheduleType || 'cron'
   form.cronExpression = row.cronExpression || ''
-  form.intervalMinutes = row.intervalMinutes || 60
+  form.nextRunTime = row.nextRunTime || ''
   form.remark = row.remark || ''
   dialogVisible.value = true
 }

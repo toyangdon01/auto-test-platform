@@ -99,6 +99,11 @@ public class TaskCreateRequest implements Serializable {
     private String executionMode;
 
     /**
+     * Cron 表达式（定时执行时必填）
+     */
+    private String cronExpression;
+
+    /**
      * 定时执行时间
      */
     private String scheduledTime;

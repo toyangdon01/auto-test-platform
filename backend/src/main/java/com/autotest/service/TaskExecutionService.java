@@ -1242,13 +1242,24 @@ public class TaskExecutionService {
         
         TestResult testResult = new TestResult();
         testResult.setTaskId(task.getId());
+        testResult.setTaskName(task.getName());  // 冗余字段
         testResult.setServerId(server.getId());
+        testResult.setServerName(server.getName());  // 冗余字段
+        testResult.setServerIp(server.getHost());  // 冗余字段
         testResult.setTaskServerId(taskServer != null ? taskServer.getId() : null);
         testResult.setResult(taskStep.getExitCode() == 0 ? "pass" : "fail");
         testResult.setExitCode(taskStep.getExitCode());
         testResult.setRawOutput(taskStep.getOutput());
         testResult.setStartedAt(taskStep.getStartedAt());
         testResult.setFinishedAt(taskStep.getFinishedAt());
+        
+        // 获取脚本名称（冗余）
+        if (scriptVersion != null && scriptVersion.getScriptId() != null) {
+            Script script = scriptMapper.selectById(scriptVersion.getScriptId());
+            if (script != null) {
+                testResult.setScriptName(script.getName());
+            }
+        }
         
         if (parseRule != null && fileContent != null && !fileContent.isEmpty()) {
             try {

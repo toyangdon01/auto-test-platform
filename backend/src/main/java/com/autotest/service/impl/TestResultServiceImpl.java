@@ -5,11 +5,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.autotest.common.PageResult;
 import com.autotest.dto.TestResultDetailResponse;
-import com.autotest.entity.Server;
-import com.autotest.entity.Task;
 import com.autotest.entity.TestResult;
-import com.autotest.mapper.ServerMapper;
-import com.autotest.mapper.TaskMapper;
 import com.autotest.mapper.TestResultMapper;
 import com.autotest.service.TestResultService;
 import lombok.RequiredArgsConstructor;
@@ -29,12 +25,10 @@ import java.util.*;
 public class TestResultServiceImpl implements TestResultService {
 
     private final TestResultMapper testResultMapper;
-    private final TaskMapper taskMapper;
-    private final ServerMapper serverMapper;
 
     @Override
     public PageResult<TestResult> getPage(int page, int pageSize, Long taskId, Long serverId, String result, Long scriptId, String keyword) {
-        // 使用关联查询获取任务名称和脚本名称
+        // 冗余字段已存储名称，无需关联查询
         IPage<TestResult> pageResult = testResultMapper.selectPageWithNames(
                 new Page<>(page, pageSize), taskId, serverId, result, scriptId, null);
 
@@ -182,22 +176,11 @@ public class TestResultServiceImpl implements TestResultService {
         response.setFinishedAt(result.getFinishedAt());
         response.setCreatedAt(result.getCreatedAt());
 
-        // 获取任务名称
-        if (result.getTaskId() != null) {
-            Task task = taskMapper.selectById(result.getTaskId());
-            if (task != null) {
-                response.setTaskName(task.getName());
-            }
-        }
-
-        // 获取服务器信息
-        if (result.getServerId() != null) {
-            Server server = serverMapper.selectById(result.getServerId());
-            if (server != null) {
-                response.setServerName(server.getName());
-                response.setServerIp(server.getHost());
-            }
-        }
+        // 使用冗余字段（无需查询关联表）
+        response.setTaskName(result.getTaskName());
+        response.setScriptName(result.getScriptName());
+        response.setServerName(result.getServerName());
+        response.setServerIp(result.getServerIp());
 
         // 解析指标列表
         if (result.getMetrics() != null) {

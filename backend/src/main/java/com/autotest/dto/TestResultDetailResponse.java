@@ -16,11 +16,12 @@ public class TestResultDetailResponse {
 
     private Long id;
 
-    // 任务信息
+    // 任务信息（冗余字段）
     private Long taskId;
     private String taskName;
+    private String scriptName;
 
-    // 服务器信息
+    // 服务器信息（冗余字段）
     private Long serverId;
     private String serverName;
     private String serverIp;

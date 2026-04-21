@@ -104,7 +104,7 @@
 
       <div v-if="currentStep < 3" class="step-actions">
         <el-button v-if="currentStep > 0" @click="currentStep--">上一步</el-button>
-        <el-button v-if="currentStep < 2" type="primary" :disabled="!canNext" @click="currentStep++">
+        <el-button v-if="currentStep < 2" type="primary" @click="nextStep">
           下一步
         </el-button>
         <el-button v-if="currentStep === 2" type="primary" :loading="importing" @click="handleImport">
@@ -146,7 +146,15 @@ function downloadTemplate() {
   URL.revokeObjectURL(link.href)
   
   ElMessage.success('模板下载成功')
-  canNext.value = true
+}
+
+function nextStep() {
+  // 第二步（上传文件）需要检查是否已上传文件
+  if (currentStep.value === 1 && !canNext.value) {
+    ElMessage.warning('请先上传文件')
+    return
+  }
+  currentStep.value++
 }
 
 function handleFileChange(uploadFile: any) {

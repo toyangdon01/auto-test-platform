@@ -271,9 +271,13 @@ CREATE INDEX IF NOT EXISTS idx_task_steps_status ON task_steps(status);
 -- 测试结果表
 CREATE TABLE IF NOT EXISTS test_results (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    task_id BIGINT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
-    server_id BIGINT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
-    task_server_id BIGINT NOT NULL REFERENCES task_servers(id) ON DELETE CASCADE,
+    task_id BIGINT,
+    task_name VARCHAR(255),
+    script_name VARCHAR(255),
+    server_id BIGINT,
+    server_name VARCHAR(255),
+    server_ip VARCHAR(100),
+    task_server_id BIGINT,
     result VARCHAR(20) NOT NULL,
     result_reason TEXT,
     overall_score INTEGER,
