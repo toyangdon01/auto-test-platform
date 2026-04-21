@@ -60,7 +60,7 @@ public class SshService {
             session.setTimeout(defaultTimeout);
             
             log.info("[SSH] Connecting to {}:{} as {}", server.getHost(), server.getPort(), server.getUsername());
-            session.connect();
+            session.connect(defaultTimeout);
             log.info("[SSH] Connected successfully!");
 
             return session.isConnected();
@@ -123,7 +123,7 @@ public class SshService {
             JSch jsch = new JSch();
             session = createSession(jsch, server);
             session.setTimeout(defaultTimeout);
-            session.connect();
+            session.connect(defaultTimeout);
 
             channel = (ChannelExec) session.openChannel("exec");
             channel.setCommand(command);
@@ -135,7 +135,7 @@ public class SshService {
             // PTY 模式下只有标准输出，错误也会混入
             InputStream in = channel.getInputStream();
             
-            channel.connect();
+            channel.connect(defaultTimeout);
             
             StringBuilder stdout = new StringBuilder();
             byte[] buffer = new byte[4096];
@@ -213,7 +213,7 @@ public class SshService {
             JSch jsch = new JSch();
             session = createSession(jsch, server);
             session.setTimeout(defaultTimeout);
-            session.connect();
+            session.connect(defaultTimeout);
 
             // 如果需要保存 PID，使用 nohup 方式执行
             String actualCommand = command;
@@ -229,7 +229,7 @@ public class SshService {
             InputStream in = channel.getInputStream();
             InputStream err = channel.getErrStream();
             
-            channel.connect();
+            channel.connect(defaultTimeout);
             
             // 读取输出
             StringBuilder stdout = new StringBuilder();
@@ -324,10 +324,10 @@ public class SshService {
             JSch jsch = new JSch();
             session = createSession(jsch, server);
             session.setTimeout(defaultTimeout);
-            session.connect();
+            session.connect(defaultTimeout);
 
             channel = (ChannelSftp) session.openChannel("sftp");
-            channel.connect();
+            channel.connect(defaultTimeout);
             
             // 创建远程目录
             int lastSlash = remotePath.lastIndexOf('/');
@@ -362,10 +362,10 @@ public class SshService {
             JSch jsch = new JSch();
             session = createSession(jsch, server);
             session.setTimeout(defaultTimeout);
-            session.connect();
+            session.connect(defaultTimeout);
 
             channel = (ChannelSftp) session.openChannel("sftp");
-            channel.connect();
+            channel.connect(defaultTimeout);
             
             // 创建远程目录
             int lastSlash = remotePath.lastIndexOf('/');
@@ -418,10 +418,10 @@ public class SshService {
             JSch jsch = new JSch();
             session = createSession(jsch, server);
             session.setTimeout(defaultTimeout);
-            session.connect();
+            session.connect(defaultTimeout);
 
             channel = (ChannelSftp) session.openChannel("sftp");
-            channel.connect();
+            channel.connect(defaultTimeout);
             
             // 创建本地目录
             File localFile = new File(localPath);

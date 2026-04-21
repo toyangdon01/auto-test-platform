@@ -7,6 +7,8 @@ import com.autotest.entity.PipelineTask;
 import com.autotest.service.PipelineImportService;
 import com.autotest.service.PipelineService;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -26,6 +28,7 @@ public class PipelineController {
 
     private final PipelineService pipelineService;
     private final PipelineImportService pipelineImportService;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
      * 创建编排
@@ -65,22 +68,22 @@ public class PipelineController {
                 task.setName((String) t.get("name"));
                 task.setScriptId(((Number) t.get("scriptId")).longValue());
                 if (t.get("serverIds") != null) {
-                    task.setServerIds(t.get("serverIds").toString());
+                    task.setServerIds(toJsonString(t.get("serverIds")));
                 }
                 if (t.get("stepServerMapping") != null) {
-                    task.setStepServerMapping(t.get("stepServerMapping").toString());
+                    task.setStepServerMapping(toJsonString(t.get("stepServerMapping")));
                 }
                 if (t.get("stepParams") != null) {
-                    task.setStepParams(t.get("stepParams").toString());
+                    task.setStepParams(toJsonString(t.get("stepParams")));
                 }
                 if (t.get("sharedParams") != null) {
-                    task.setSharedParams(t.get("sharedParams").toString());
+                    task.setSharedParams(toJsonString(t.get("sharedParams")));
                 }
                 if (t.get("timeout") != null) {
                     task.setTimeout(((Number) t.get("timeout")).longValue());
                 }
                 if (t.get("dependsOn") != null) {
-                    task.setDependsOn(t.get("dependsOn").toString());
+                    task.setDependsOn(toJsonString(t.get("dependsOn")));
                 }
                 return task;
             }).toList();
@@ -136,22 +139,22 @@ public class PipelineController {
                 task.setName((String) t.get("name"));
                 task.setScriptId(((Number) t.get("scriptId")).longValue());
                 if (t.get("serverIds") != null) {
-                    task.setServerIds(t.get("serverIds").toString());
+                    task.setServerIds(toJsonString(t.get("serverIds")));
                 }
                 if (t.get("stepServerMapping") != null) {
-                    task.setStepServerMapping(t.get("stepServerMapping").toString());
+                    task.setStepServerMapping(toJsonString(t.get("stepServerMapping")));
                 }
                 if (t.get("stepParams") != null) {
-                    task.setStepParams(t.get("stepParams").toString());
+                    task.setStepParams(toJsonString(t.get("stepParams")));
                 }
                 if (t.get("sharedParams") != null) {
-                    task.setSharedParams(t.get("sharedParams").toString());
+                    task.setSharedParams(toJsonString(t.get("sharedParams")));
                 }
                 if (t.get("timeout") != null) {
                     task.setTimeout(((Number) t.get("timeout")).longValue());
                 }
                 if (t.get("dependsOn") != null) {
-                    task.setDependsOn(t.get("dependsOn").toString());
+                    task.setDependsOn(toJsonString(t.get("dependsOn")));
                 }
                 return task;
             }).toList();
@@ -302,5 +305,16 @@ public class PipelineController {
     @GetMapping("/{id}/export")
     public ApiResponse<String> exportToYaml(@PathVariable Long id) {
         return ApiResponse.success(pipelineImportService.exportToYaml(id));
+    }
+
+    /**
+     * 对象转 JSON 字符串
+     */
+    private String toJsonString(Object obj) {
+        try {
+            return objectMapper.writeValueAsString(obj);
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException("JSON 序列化失败: " + e.getMessage());
+        }
     }
 }
