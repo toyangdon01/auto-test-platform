@@ -66,19 +66,22 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, onMounted, watch } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Download, Document } from '@element-plus/icons-vue'
 import { listPipelines, deletePipeline, executePipeline, exportPipeline } from '@/api/pipeline'
 import type { Pipeline } from '@/api/pipeline'
 import PipelineImportDialog from '@/components/PipelineImportDialog.vue'
 
+const route = useRoute()
 const router = useRouter()
 const loading = ref(false)
 const pipelines = ref<Pipeline[]>([])
-const page = ref(1)
-const size = ref(10)
+
+// 从 URL 查询参数恢复分页状态
+const page = ref(Number(route.query.page) || 1)
+const size = ref(Number(route.query.size) || 10)
 const total = ref(0)
 
 const importDialogVisible = ref(false)
@@ -88,6 +91,17 @@ function formatTime(time: string) {
   if (!time) return '-'
   return time.replace('T', ' ').substring(0, 16)
 }
+
+// 监听分页变化，同步到 URL
+watch([page, size], () => {
+  router.replace({
+    query: {
+      ...route.query,
+      page: page.value,
+      size: size.value,
+    },
+  })
+})
 
 async function loadPipelines() {
   loading.value = true

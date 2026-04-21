@@ -185,14 +185,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, onUnmounted, computed } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, reactive, onMounted, onUnmounted, computed, watch } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Loading, VideoPlay, VideoPause, Delete, Warning, Edit, Monitor } from '@element-plus/icons-vue'
 import request from '@/utils/request'
 import { formatTime, formatDuration } from '@/utils/format'
 import TaskLogStream from '@/components/TaskLogStream.vue'
 
+const route = useRoute()
 const router = useRouter()
 const loading = ref(false)
 const tableData = ref<any[]>([])
@@ -205,14 +206,31 @@ const realtimeLogVisible = ref(false)
 const currentTaskId = ref<number | null>(null)
 
 const queryParams = reactive({
-  page: 1,
-  size: 20,
-  name: '',
-  status: '',
-  scriptId: '',
+  page: Number(route.query.page) || 1,
+  size: Number(route.query.size) || 20,
+  name: route.query.name?.toString() || '',
+  status: route.query.status?.toString() || '',
+  scriptId: route.query.scriptId?.toString() || '',
 })
 
 const scripts = ref<{id: number, name: string}[]>([])
+
+// 监听查询参数变化，同步到 URL
+watch(
+  () => ({ ...queryParams }),
+  (newParams) => {
+    router.replace({
+      query: {
+        page: newParams.page,
+        size: newParams.size,
+        name: newParams.name || undefined,
+        status: newParams.status || undefined,
+        scriptId: newParams.scriptId || undefined,
+      },
+    })
+  },
+  { deep: true }
+)
 
 // 获取脚本列表
 async function fetchScripts() {
