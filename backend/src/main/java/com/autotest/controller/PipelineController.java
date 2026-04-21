@@ -309,8 +309,17 @@ public class PipelineController {
 
     /**
      * 对象转 JSON 字符串
+     * 如果已经是字符串，直接返回；如果是对象，序列化为 JSON
      */
     private String toJsonString(Object obj) {
+        if (obj == null) {
+            return null;
+        }
+        // 如果已经是字符串，直接返回（前端可能已经 stringify）
+        if (obj instanceof String) {
+            return (String) obj;
+        }
+        // 如果是 Map 或 List，序列化为 JSON
         try {
             return objectMapper.writeValueAsString(obj);
         } catch (JsonProcessingException e) {
