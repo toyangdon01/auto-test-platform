@@ -1,5 +1,6 @@
 package com.autotest.service;
 
+import com.autotest.dto.StepStatusCheckResult;
 import com.autotest.entity.*;
 import com.autotest.mapper.*;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
@@ -13,6 +14,7 @@ import org.springframework.stereotype.Service;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -2042,5 +2044,137 @@ public class TaskExecutionService {
         }
         
         taskMapper.updateById(task);
+    }
+    
+    /**
+     * 检查步骤状态（供 TaskStatusCheckService 和 TaskController 共用）
+     */
+    public StepStatusCheckResult checkStepStatus(Task task, TaskStep step, Server server) {
+        String workDir = "/tmp/test_platform/task_" + task.getId();
+        String stepName = step.getStepName();
+        
+        // 判断是否为后台执行步骤
+        boolean isBackground = false;
+        if (task.getStepParams() != null) {
+            Map<String, Object> stepParam = task.getStepParams().get(stepName);
+            if (stepParam != null && Boolean.TRUE.equals(stepParam.get("_BACKGROUND"))) {
+                isBackground = true;
+            }
+        }
+        
+        if (isBackground) {
+            return checkBackgroundStepStatus(server, workDir, stepName);
+        } else {
+            return checkNormalStepStatus(task, step, server, workDir);
+        }
+    }
+    
+    /**
+     * 检查后台步骤状态
+     */
+    private StepStatusCheckResult checkBackgroundStepStatus(Server server, String workDir, String stepName) {
+        String pidFile = workDir + "/" + stepName + ".pid";
+        String outputFile = workDir + "/" + stepName + ".log";
+        String exitCodeFile = workDir + "/" + stepName + ".exit_code";
+        
+        try {
+            // 检查进程是否还在运行
+            String checkCmd = String.format(
+                "PID=$(cat %s 2>/dev/null); " +
+                "if [ -n \"$PID\" ] && ps -p $PID > /dev/null 2>&1; then " +
+                "  echo \"RUNNING\"; " +
+                "else " +
+                "  echo \"STOPPED\"; " +
+                "fi", pidFile);
+            
+            SshService.ExecuteResult result = SshService.executeCommand(
+                server, checkCmd, null, SshService.getDefaultTimeout());
+            
+            String status = result.getOutput().trim();
+            
+            if ("RUNNING".equals(status)) {
+                return StepStatusCheckResult.running();
+            }
+            
+            // 进程已停止，读取退出码和日志
+            Integer exitCode = null;
+            try {
+                SshService.ExecuteResult ecResult = SshService.executeCommand(
+                    server, "cat " + exitCodeFile + " 2>/dev/null", null, 5000);
+                String ecStr = ecResult.getOutput().trim();
+                if (!ecStr.isEmpty()) {
+                    exitCode = Integer.parseInt(ecStr);
+                }
+            } catch (Exception e) {
+                log.warn("读取后台步骤 {} 退出码失败: {}", stepName, e.getMessage());
+            }
+            
+            // 读取完整日志
+            String fullLog = readFullLog(server, outputFile);
+            
+            if (exitCode != null && exitCode == 0) {
+                return StepStatusCheckResult.success("COMPLETED", exitCode, fullLog);
+            } else {
+                String reason = exitCode != null ? 
+                    "EXIT_CODE_NON_ZERO (" + exitCode + ")" : "BACKGROUND_PROCESS_STOPPED";
+                return StepStatusCheckResult.failed(reason, exitCode);
+            }
+            
+        } catch (Exception e) {
+            log.error("检查后台步骤 {} 状态失败: {}", stepName, e.getMessage());
+            return StepStatusCheckResult.running("CHECK_FAILED: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * 检查正常步骤状态
+     */
+    private StepStatusCheckResult checkNormalStepStatus(Task task, TaskStep step, Server server, String workDir) {
+        // 1. 检查超时
+        if (step.getStartedAt() != null && task.getTimeout() != null) {
+            long elapsed = Duration.between(step.getStartedAt(), LocalDateTime.now()).toMillis();
+            if (elapsed > task.getTimeout()) {
+                return StepStatusCheckResult.failed("NORMAL_TIMEOUT");
+            }
+        }
+        
+        // 2. 检查工作目录下是否有相关进程
+        try {
+            // 查找与该任务工作目录相关的进程
+            String checkCmd = String.format(
+                "ps -deo pid,ppid,stat,cmd 2>/dev/null | " +
+                "grep '%s' | grep -v grep | head -10 || echo ''",
+                workDir);
+            
+            SshService.ExecuteResult result = SshService.executeCommand(
+                server, checkCmd, null, 5000);
+            
+            String output = result.getOutput();
+            if (output != null && !output.trim().isEmpty()) {
+                // 仍有相关进程在运行
+                return StepStatusCheckResult.running();
+            }
+            
+            // 进程已消失但状态还是 running，说明异常终止
+            return StepStatusCheckResult.failed("NORMAL_PROCESS_DIED");
+            
+        } catch (Exception e) {
+            log.error("检查正常步骤 {} 状态失败: {}", step.getStepName(), e.getMessage());
+            return StepStatusCheckResult.running("CHECK_FAILED: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * 读取完整日志文件
+     */
+    private String readFullLog(Server server, String outputFile) {
+        try {
+            SshService.ExecuteResult result = SshService.executeCommand(
+                server, "cat " + outputFile + " 2>/dev/null", null, 10000);
+            return result.getOutput();
+        } catch (Exception e) {
+            log.warn("读取日志文件 {} 失败: {}", outputFile, e.getMessage());
+            return null;
+        }
     }
 }

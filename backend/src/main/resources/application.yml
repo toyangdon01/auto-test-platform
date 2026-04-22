@@ -106,6 +106,10 @@ autotest:
     report-keep-days: 90
     metric-keep-days: 180
   
+  # 任务状态检查配置（用于检测异常状态的任务）
+  task-check:
+    interval: 300000  # 检查间隔 5 分钟（毫秒），默认 5 分钟
+  
   # 指标采集配置
   metric:
     default-interval: 5
