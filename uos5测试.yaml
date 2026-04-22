@@ -1,0 +1,169 @@
+name: "uos5测试"
+maxParallel: 5
+tasks:
+  - name: "Unixbench_uos5_64c"
+    script: "Unixbench"
+    timeout: 86400
+    stepServerMapping:
+      step_1:
+        - "uos5-10.0.101.8-64c"
+    sharedParams:
+      testdir: "/root"
+      test_mode: "multi"
+  - name: "Unixbench_1_uos4_32c"
+    script: "Unixbench"
+    timeout: 86400
+    stepServerMapping:
+      step_1:
+        - "uos5-10.0.101.231-32c"
+    sharedParams:
+      testdir: "/root"
+      test_mode: "multi"
+  - name: "FIO-uos5-64c"
+    script: "FIO"
+    dependsOn:
+      - "Unixbench_uos5_64c"
+    timeout: 86400
+    stepServerMapping:
+      step_1:
+        - "uos5-10.0.101.8-64c"
+    sharedParams:
+      FILENAME: "/dev/vdb"
+      SIZE: "5G"
+      IODEPTH: 32
+      NUMJOBS: 8
+      RUNTIME: 120
+      OUTPUT_DIR: "/tmp/fio_results"
+  - name: "FIO-uos5-32c"
+    script: "FIO"
+    dependsOn:
+      - "Unixbench_1_uos4_32c"
+    timeout: 86400
+    stepServerMapping:
+      step_1:
+        - "uos5-10.0.101.231-32c"
+    sharedParams:
+      FILENAME: "/dev/vdb"
+      SIZE: "20G"
+      IODEPTH: 32
+      NUMJOBS: 8
+      RUNTIME: 120
+      OUTPUT_DIR: "/tmp/fio_results"
+  - name: "stream-memory-test-uos5-64c"
+    script: "stream-memory-test"
+    dependsOn:
+      - "FIO-uos5-64c"
+    timeout: 86400
+    stepServerMapping:
+      stream_test:
+        - "uos5-10.0.101.8-64c"
+    sharedParams:
+      TEST_TYPE: "both"
+      STREAM_ARRAY_SIZE: 500000000
+      NTIMES: 20
+  - name: "stream-memory-test_1-uos5-32c"
+    script: "stream-memory-test"
+    dependsOn:
+      - "FIO-uos5-32c"
+    timeout: 86400
+    stepServerMapping:
+      stream_test:
+        - "uos5-10.0.101.231-32c"
+    sharedParams:
+      TEST_TYPE: "both"
+      STREAM_ARRAY_SIZE: 500000000
+      NTIMES: 20
+  - name: "iperf2-uos5-tcp-同"
+    script: "iperf2"
+    dependsOn:
+      - "stream-memory-test-uos5-64c"
+      - "stream-memory-test_1-uos5-32c"
+    timeout: 86400
+    stepServerMapping:
+      step_2:
+        - "uos5-10.0.101.59-64c"
+      run_iperf2:
+        - "uos5-10.0.101.8-64c"
+    sharedParams:
+      PROTOCOL: "tcp"
+      SERVER_PORT: 5001
+      CONCURRENT: "8"
+      DURATION: "120"
+      BANDWIDTH: 0
+      WINDOW_SIZE: 0
+      SERVER_IP: "10.0.101.8"
+    stepParams:
+      run_iperf2:
+        MODE: "server"
+      step_2:
+        MODE: "client"
+  - name: "iperf2-uos5-tcp-异"
+    script: "iperf2"
+    dependsOn:
+      - "iperf2-uos5-tcp-同"
+    timeout: 86400
+    stepServerMapping:
+      step_2:
+        - "uos5-10.0.101.231-32c"
+      run_iperf2:
+        - "uos5-10.0.101.8-64c"
+    sharedParams:
+      PROTOCOL: "tcp"
+      SERVER_PORT: 5001
+      CONCURRENT: "8"
+      DURATION: "120"
+      BANDWIDTH: 0
+      WINDOW_SIZE: 0
+      SERVER_IP: "10.0.101.8"
+    stepParams:
+      run_iperf2:
+        MODE: "server"
+      step_2:
+        MODE: "client"
+  - name: "iperf2-uos5-udp-同"
+    script: "iperf2"
+    dependsOn:
+      - "iperf2-uos5-tcp-同"
+      - "iperf2-uos5-tcp-异"
+    timeout: 86400
+    stepServerMapping:
+      step_2:
+        - "uos5-10.0.101.59-64c"
+      run_iperf2:
+        - "uos5-10.0.101.8-64c"
+    sharedParams:
+      PROTOCOL: "udp"
+      SERVER_PORT: 5001
+      CONCURRENT: "8"
+      DURATION: "120"
+      BANDWIDTH: 0
+      WINDOW_SIZE: 0
+      SERVER_IP: "10.0.101.8"
+    stepParams:
+      run_iperf2:
+        MODE: "server"
+      step_2:
+        MODE: "client"
+  - name: "iperf2-uos5-udp-异"
+    script: "iperf2"
+    dependsOn:
+      - "iperf2-uos5-udp-同"
+    timeout: 86400
+    stepServerMapping:
+      step_2:
+        - "uos5-10.0.101.231-32c"
+      run_iperf2:
+        - "uos5-10.0.101.8-64c"
+    sharedParams:
+      PROTOCOL: "udp"
+      SERVER_PORT: 5001
+      CONCURRENT: "8"
+      DURATION: "120"
+      BANDWIDTH: 0
+      WINDOW_SIZE: 0
+      SERVER_IP: "10.0.101.8"
+    stepParams:
+      run_iperf2:
+        MODE: "server"
+      step_2:
+        MODE: "client"

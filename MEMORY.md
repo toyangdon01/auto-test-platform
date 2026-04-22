@@ -47,6 +47,42 @@ API: `curl http://127.0.0.1:8765/open?url=...`
 
 ---
 
+## Auto-Test-Platform 项目启动
+
+项目路径：`~/workspace/auto-test-platform`
+
+### 开发模式（前后端分离）
+
+```bash
+# 终端 1 - 启动后端
+cd ~/workspace/auto-test-platform/backend
+mvn spring-boot:run
+# 后端地址：http://localhost:8080
+
+# 终端 2 - 启动前端（Termux 专用）
+cd ~/workspace/auto-test-platform/frontend
+env node node_modules/.bin/vite
+# 前端地址：http://localhost:3000
+```
+
+> **注意：** Termux 没有 `/usr/bin/env`，导致 `npm run dev` 无法工作。需要用 `env node node_modules/.bin/vite` 绕过 shebang 问题。
+
+### 生产模式（打包后）
+
+```bash
+# 打包
+./build.sh
+
+# 启动（前后端合并）
+java -jar backend/target/auto-test-platform-1.0.0-SNAPSHOT.jar
+# 访问地址：http://localhost:8080
+```
+
+### 远程仓库
+- Gitee: `git@gitee.com:toyangdon1/auto-test-platform.git`
+
+---
+
 ## Android 进程限制解除
 
 **问题：** Android 12+ 限制最多 32 个子进程

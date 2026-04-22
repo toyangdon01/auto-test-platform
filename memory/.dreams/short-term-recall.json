@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-04-16T17:10:48.616Z",
+  "updatedAt": "2026-04-21T10:49:21.630Z",
   "entries": {
     "memory:memory/2026-04-13.md:75:120": {
       "key": "memory:memory/2026-04-13.md:75:120",
@@ -9,20 +9,23 @@
       "endLine": 120,
       "source": "memory",
       "snippet": "3. **存储管理：** 空间充足（93GB），根分区紧张但不影响 Termux 4. **浏览器：** 用 Selenium + Chromium，不用 Playwright 5. **服务持久化：** Android 可能杀进程，重要服务要能自动重启 --- ## 浏览器控制研究 ### 问题 想让 OpenClaw 在 Termux/Android 环境下操作浏览器。 ### 尝试过程 1. **OpenClaw 内置 browser 工具** - 依赖 Playwright - Playwright 官方不支持 Android (`Error: Unsupported platform: android`) - 结果：❌ 无法使用 2. **Python playwright 包** - `pip3 install playwright` 返回 `No matching distribution found` - Android 不在支持平台列表中 - 结果：❌ 无法安装 3. **Selenium + 本地 Chromium** ✅ - Selenium 4.43.0 安装成功 - Chromium 146 已安装在 `/data/data/com.termux/files/usr/lib/chromium/chrome` - chromedriver 在同目录下 - 测试通过：可以打开网页、获取标题、截图、执行 JS ### 解决方案 创建了 **browser_server.py** -",
-      "recallCount": 2,
+      "recallCount": 4,
       "dailyCount": 0,
       "groundedCount": 0,
-      "totalScore": 1.3323574568383814,
-      "maxScore": 0.7076756811053098,
+      "totalScore": 2.752140504760703,
+      "maxScore": 0.7119838074476822,
       "firstRecalledAt": "2026-04-16T15:26:53.765Z",
-      "lastRecalledAt": "2026-04-16T17:10:48.616Z",
+      "lastRecalledAt": "2026-04-20T12:05:15.843Z",
       "queryHashes": [
         "ee0d2802a183",
-        "9866a0fefdb1"
+        "9866a0fefdb1",
+        "d73b24a699e7",
+        "2d7d1e6c1fb5"
       ],
       "recallDays": [
         "2026-04-16",
-        "2026-04-17"
+        "2026-04-17",
+        "2026-04-20"
       ],
       "conceptTags": [
         "termux/android",
@@ -42,19 +45,21 @@
       "endLine": 44,
       "source": "memory",
       "snippet": "# 2026-04-13 ## 环境概述 **平台：** Termux on Android（无 root） **系统：** Linux 4.14.190 (aarch64) Android **用户：** `u0_a280`（普通应用沙盒用户） **CPU：** 8 核 ARM64 **内存：** 7.3GB total，约 3.1GB available **存储：** /data 分区 111GB，可用 93GB ✅（根分区紧张但 Termux 数据在 /data） --- ## 重要限制与注意事项 ### 1. 无 Root 权限 - ❌ 无 `sudo`，无法提权 - ❌ 无法访问 `/system`、`/data/data` 下其他应用目录 - ❌ 无法使用 `iptables`、`systemctl` 等系统命令 - ❌ 无法绑定 1024 以下端口 ### 2. 文件系统 - ✅ 可写：`$HOME`、`$TMPDIR`、`/sdcard`（如果授权） - ❌ `/tmp` 不存在！必须用 `$TMPDIR`（指向 `/data/data/com.termux/files/usr/tmp`） - ❌ 根文件系统只读 - ⚠️ 根分区紧张（仅 309MB），但 Termux 数据在 /data 分区（93GB 可用） ### 3. 包管理 - 用 `pkg` 而非 `apt`（虽然 apt 链接存在） - 安装命令：`pkg install <package>` - 搜索：`pkg search <keyword>` ### 4. 平台兼容性 -",
-      "recallCount": 2,
+      "recallCount": 3,
       "dailyCount": 0,
       "groundedCount": 0,
-      "totalScore": 1.389250236727193,
+      "totalScore": 2.051060903055199,
       "maxScore": 0.6946251183635965,
       "firstRecalledAt": "2026-04-16T15:26:53.765Z",
-      "lastRecalledAt": "2026-04-16T15:27:00.897Z",
+      "lastRecalledAt": "2026-04-21T10:31:09.100Z",
       "queryHashes": [
         "ee0d2802a183",
-        "3e231b2397ab"
+        "3e231b2397ab",
+        "ec18e88cf98d"
       ],
       "recallDays": [
-        "2026-04-16"
+        "2026-04-16",
+        "2026-04-21"
       ],
       "conceptTags": [
         "4.14.190",
@@ -96,6 +101,258 @@
         "browser-server.py",
         "http",
         "api"
+      ]
+    },
+    "memory:memory/2026-04-13.md:35:85": {
+      "key": "memory:memory/2026-04-13.md:35:85",
+      "path": "memory/2026-04-13.md",
+      "startLine": 35,
+      "endLine": 85,
+      "source": "memory",
+      "snippet": "- Node.js 包：大多数可用，但原生模块需 Android 兼容 - ❌ Playwright 不支持 Android - ❌ Docker 不支持 - ❌ 无法运行需要 systemd 的服务 ### 5. 网络能力 - ✅ 网络完全可用（TCP/UDP/ICMP） - ✅ 可以运行服务器（绑定 127.0.0.1 或 0.0.0.0 高端口） - ✅ 可以 ssh、curl、wget ### 6. 进程与后台 - ⚠️ Android 会杀后台进程，长任务需要 `termux-wake-lock` 或前台运行 - 可用 `nohup` + `&` 但不稳定 - 推荐用 `tmux` 或 `screen` 保持会话 ### 7. 特殊路径 - Home: `/data/data/com.termux/files/home` - Prefix: `/data/data/com.termux/files/usr` - Temp: `$TMPDIR` (自动设置) - Storage: `/sdcard`（需 `termux-setup-storage` 授权） --- ## 可用工具 | 工具 | 版本 | 备注 | |------|------|------| | Python | 3.13.13 | ✅ | | Node.js | 25.8.2 | ✅ | | Git | 2.53.0 | ✅ | | Chromium | 146 | ✅ headless 可用 | | Selenium | 4.43.0 | ✅ 可控制 Chromium | | curl",
+      "recallCount": 2,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 1.3627560396845502,
+      "maxScore": 0.6977839106080055,
+      "firstRecalledAt": "2026-04-20T11:29:07.462Z",
+      "lastRecalledAt": "2026-04-21T10:31:09.100Z",
+      "queryHashes": [
+        "d73b24a699e7",
+        "ec18e88cf98d"
+      ],
+      "recallDays": [
+        "2026-04-20",
+        "2026-04-21"
+      ],
+      "conceptTags": [
+        "网络",
+        "node.js",
+        "tcp/udp/icmp",
+        "127.0.0.1",
+        "0.0.0.0",
+        "termux-wake-lock",
+        "data/data/com.termux/files/home",
+        "data/data/com.termux/files/usr"
+      ]
+    },
+    "memory:memory/2026-04-17.md:29:48": {
+      "key": "memory:memory/2026-04-17.md:29:48",
+      "path": "memory/2026-04-17.md",
+      "startLine": 29,
+      "endLine": 48,
+      "source": "memory",
+      "snippet": "**Phase 4 待处理** - 错误处理 - 发现 30+ 处数据库查询结果未检查 null - 发现 5 处列表 .get(0) 未检查空 - 硬编码异常信息 24 处（低优先级） ### 已删除模块 - 系统配置模块（前端页面、路由、后端 entity/controller/service/mapper） - 使用硬编码默认值（60s 连接超时，24h 执行超时） ## Commits 待推送 所有已推送。 ## 关键决策 - **代码复用优先** - 在线导入和离线导入使用相同的创建/更新逻辑 - **保持一致性** - 两种导入方式的行为完全一致 - **用户控制推送** - 只在用户明确要求时推送代码 ## 下一步 - Phase 4 错误处理修复（高优先级：数据库 null 检查）",
+      "recallCount": 1,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 0.7491871355483556,
+      "maxScore": 0.7491871355483556,
+      "firstRecalledAt": "2026-04-20T12:05:15.843Z",
+      "lastRecalledAt": "2026-04-20T12:05:15.843Z",
+      "queryHashes": [
+        "2d7d1e6c1fb5"
+      ],
+      "recallDays": [
+        "2026-04-20"
+      ],
+      "conceptTags": [
+        "entity/controller/service/mapper",
+        "在线导入和离线导入使用相同的创建/更新逻辑",
+        "phase",
+        "处理",
+        "错误",
+        "发现",
+        "数据",
+        "查询"
+      ]
+    },
+    "memory:memory/2026-04-13.md:150:189": {
+      "key": "memory:memory/2026-04-13.md:150:189",
+      "path": "memory/2026-04-13.md",
+      "startLine": 150,
+      "endLine": 189,
+      "source": "memory",
+      "snippet": "Android 12+ 默认限制每个应用最多 **32 个子进程**，超过会被系统杀死 (Signal 9)。 ### 解决方案 使用无线 ADB 解除限制。 ### 执行记录 **时间：** 2026-04-13 18:31 **设备：** 三星 S10 (Android 12) **ADB 版本：** 35.0.2 **步骤：** 1. 安装 ADB 工具：`pkg install android-tools` 2. 开启无线调试 3. ADB 配对：`adb pair 192.168.1.4:39137 497775` 4. ADB 连接：`adb connect 192.168.1.4:39317` 5. 解除限制： ```bash adb shell device_config put activity_manager max_phantom_processes 2147483647 adb shell device_config set_sync_disabled_for_tests persistent ``` **结果：** ✅ 成功，当前限制 2147483647（无限制） ### 重启后恢复 手机重启后设置会失效，需要重新执行： ```bash ~/restore-phantom-fix.sh # 或手动执行上述 ADB 命令 ``` ### 相关脚本 - `~/fix-phantom-process.sh` - 自动检测和修复脚本 - `~/restore-phantom-fix.sh` - 重启后恢复脚本 -",
+      "recallCount": 1,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 0.7190427467565297,
+      "maxScore": 0.7190427467565297,
+      "firstRecalledAt": "2026-04-20T12:05:15.843Z",
+      "lastRecalledAt": "2026-04-20T12:05:15.843Z",
+      "queryHashes": [
+        "2d7d1e6c1fb5"
+      ],
+      "recallDays": [
+        "2026-04-20"
+      ],
+      "conceptTags": [
+        "35.0.2",
+        "android-tools",
+        "192.168.1.4",
+        "device-config",
+        "activity-manager",
+        "max-phantom-processes",
+        "set-sync-disabled-for-tests",
+        "restore-phantom-fix.sh"
+      ]
+    },
+    "memory:memory/2026-04-17.md:1:35": {
+      "key": "memory:memory/2026-04-17.md:1:35",
+      "path": "memory/2026-04-17.md",
+      "startLine": 1,
+      "endLine": 35,
+      "source": "memory",
+      "snippet": "# 2026-04-17 Memory ## 项目进展 ### 功能修复 1. **在线导入脚本覆盖功能** - 实现了 OVERWRITE 策略 - 修复：选择\"覆盖已存在的\"时，之前显示\"覆盖功能待实现\"并跳过 - 现在会正确更新脚本内容、版本、资源关联 2. **在线导入文件列表 bug** - 修复文件列表缺少 name 和 type 字段 - 文件信息现在包含完整的 name, path, size, type 3. **离线导入重命名策略** - 修复 UNIQUE constraint failed 错误 - RENAME 策略之前只注释未实现，导致脚本名冲突 - 现在会自动生成唯一名称（添加时间戳） ### 代码重构 1. **在线导入复用离线导入逻辑** - 删除 OnlineImportServiceImpl 中 281 行重复代码 - 新增 ScriptPackageService.importScriptFromDirectory() 公共方法 - 从 913 行减少到 632 行 ### 后端代码检查 **Phase 1 完成** - 代码清理 - 修复 SshService.java 中的 3 处 System.out.println - 修复 1 处 e.printStackTrace() - 全部改为 log.info/log.error **Phase 4 待处理** - 错误处理 - 发现 30+ 处数据库查询结果未检查 null - 发现 5 处列表 .get(0) 未检查空 -",
+      "recallCount": 2,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 1.519996316437949,
+      "maxScore": 0.8315657356868446,
+      "firstRecalledAt": "2026-04-20T12:05:15.843Z",
+      "lastRecalledAt": "2026-04-21T10:31:09.100Z",
+      "queryHashes": [
+        "2d7d1e6c1fb5",
+        "ec18e88cf98d"
+      ],
+      "recallDays": [
+        "2026-04-20",
+        "2026-04-21"
+      ],
+      "conceptTags": [
+        "sshservice.java",
+        "system.out.println",
+        "e.printstacktrace",
+        "log.info/log.error",
+        "项目",
+        "进展",
+        "功能",
+        "修复"
+      ]
+    },
+    "memory:memory/2026-04-20.md:1:43": {
+      "key": "memory:memory/2026-04-20.md:1:43",
+      "path": "memory/2026-04-20.md",
+      "startLine": 1,
+      "endLine": 43,
+      "source": "memory",
+      "snippet": "# 2026-04-20 工作日志 ## Pipeline YAML 导入导出优化 ### 完成的修改 1. **移除冗余的 `serverIds` 字段** - `TaskYamlConfig.java` 只保留 `stepServerMapping` - 导入时自动从 `stepServerMapping` 提取服务器 ID 2. **优化导出逻辑** - 过滤掉自动生成的 `default` stepServerMapping - 空对象/空数组不导出（`NON_EMPTY`） - 导出脚本名称而非 ID，提高可读性 3. **移除前端自动创建 `default` 步骤** - `edit.vue` 不再为无步骤脚本创建默认步骤 - 无步骤脚本直接提示错误 4. **添加导入模板按钮** - 编排列表页面添加\"导入模板\"按钮 - 点击下载带详细注释的 YAML 配置模板 ### 关键理解 - **stepServerMapping 用途**：每个步骤可以绑定多台服务器并行执行 - **无步骤脚本无意义**：脚本必须定义步骤才能创建任务 ### 代码位置 - 后端导入导出：`PipelineImportServiceImpl.java` - DTO 配置：`TaskYamlConfig.java` - 前端模板下载：`views/pipelines/index.vue` - 文档：`docs/pipeline-yaml-example.md` ### 提交记录 ``` d655a15 feat:",
+      "recallCount": 1,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 0.827474402098335,
+      "maxScore": 0.827474402098335,
+      "firstRecalledAt": "2026-04-21T10:31:09.100Z",
+      "lastRecalledAt": "2026-04-21T10:31:09.100Z",
+      "queryHashes": [
+        "ec18e88cf98d"
+      ],
+      "recallDays": [
+        "2026-04-21"
+      ],
+      "conceptTags": [
+        "taskyamlconfig.java",
+        "空对象/空数组不导出",
+        "non-empty",
+        "edit.vue",
+        "pipelineimportserviceimpl.java",
+        "views/pipelines/index.vue",
+        "docs/pipeline-yaml-example.md",
+        "工作"
+      ]
+    },
+    "memory:memory/2026-04-21.md:1:43": {
+      "key": "memory:memory/2026-04-21.md:1:43",
+      "path": "memory/2026-04-21.md",
+      "startLine": 1,
+      "endLine": 43,
+      "source": "memory",
+      "snippet": "# 2026-04-21 工作日志 ## Pipeline YAML 导入优化 ### 问题修复 1. **服务器名称回退查找** - YAML 中未定义 servers 部分时，回退到数据库按名称查找服务器 2. **前端 URL 路径重复** - 修复 `/api/v1/api/v1/...` 问题 3. **导入返回任务数量** - 后端返回 `taskCount` 字段 ## SQLite 数据库并发问题 ### 问题现象 - Pipeline 执行时取消操作报 `SQLITE_BUSY` 错误 - 数据库连接池耗尽 ### 解决方案 1. **增加 HikariCP 连接池配置** - `busy_timeout=30000` - SQLite 等待 30 秒 - `leak-detection-threshold=60000` - 连接泄漏检测 - `maximum-pool-size=2` - 适合 SQLite 2. **移除取消操作的事务** - `PipelineServiceImpl.cancelPipelineRun()` 移除 `@Transactional` - 增加重试机制（3 次，每次间隔 1 秒） 3. **待修复** - `TaskServiceImpl.cancelTask()` 仍有 `@Transactional` ### 根本原因 - SQLite 只允许一个写入者 - 多任务并行执行时写入操作排队 - 事务持有锁时间过长导致 SQLITE_BUSY ### 用户偏好 - **修改代码前",
+      "recallCount": 1,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 0.7160961458947281,
+      "maxScore": 0.7160961458947281,
+      "firstRecalledAt": "2026-04-21T10:49:21.630Z",
+      "lastRecalledAt": "2026-04-21T10:49:21.630Z",
+      "queryHashes": [
+        "5c9e6d66f6f7"
+      ],
+      "recallDays": [
+        "2026-04-21"
+      ],
+      "conceptTags": [
+        "api/v1/api/v1",
+        "sqlite-busy",
+        "busy-timeout",
+        "leak-detection-threshold",
+        "maximum-pool-size",
+        "taskserviceimpl.canceltask",
+        "工作",
+        "日志"
+      ]
+    },
+    "memory:memory/2026-04-21.md:34:74": {
+      "key": "memory:memory/2026-04-21.md:34:74",
+      "path": "memory/2026-04-21.md",
+      "startLine": 34,
+      "endLine": 74,
+      "source": "memory",
+      "snippet": "- **修改代码前先分析结论，等确认后再执行** ## Pipeline 执行页面优化 - 轮询间隔从 3 秒改为 10 秒 - 静默加载，不触发 loading 效果 ## Pipeline 任务指标采集 - 编排创建的任务默认 `collectEnabled=false` - 减少数据库写入压力 ## 代码位置 - 后端取消逻辑：`PipelineServiceImpl.java`, `TaskServiceImpl.java` - 连接池配置：`application.yml` - 前端执行详情：`views/pipelines/run-detail.vue` # 2026-04-21 工作日志 ## Pipeline YAML 导入优化 ### 问题修复 1. **服务器名称回退查找** - YAML 中未定义 servers 部分时，回退到数据库按名称查找服务器 2. **前端 URL 路径重复** - 修复 `/api/v1/api/v1/...` 问题 3. **导入返回任务数量** - 后端返回 `taskCount` 字段 ## SQLite 数据库并发问题 ### 问题现象 - Pipeline 执行时取消操作报 `SQLITE_BUSY` 错误 - 数据库连接池耗尽 ### 解决方案 1. **增加 HikariCP 连接池配置** - `busy_timeout=30000` - SQLite 等待 30 秒 - `leak-detection-threshold=60000` - 连接泄漏检测 - `maximum-p",
+      "recallCount": 1,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 0.7102382632603,
+      "maxScore": 0.7102382632603,
+      "firstRecalledAt": "2026-04-21T10:49:21.630Z",
+      "lastRecalledAt": "2026-04-21T10:49:21.630Z",
+      "queryHashes": [
+        "5c9e6d66f6f7"
+      ],
+      "recallDays": [
+        "2026-04-21"
+      ],
+      "conceptTags": [
+        "pipelineserviceimpl.java",
+        "taskserviceimpl.java",
+        "application.yml",
+        "views/pipelines/run-detail.vue",
+        "api/v1/api/v1",
+        "sqlite-busy",
+        "busy-timeout",
+        "leak-detection-threshold"
+      ]
+    },
+    "memory:memory/2026-04-21.md:66:108": {
+      "key": "memory:memory/2026-04-21.md:66:108",
+      "path": "memory/2026-04-21.md",
+      "startLine": 66,
+      "endLine": 108,
+      "source": "memory",
+      "snippet": "- `leak-detection-threshold=60000` - 连接泄漏检测 - `maximum-pool-size=2` - 适合 SQLite 2. **移除取消操作的事务** - `PipelineServiceImpl.cancelPipelineRun()` 移除 `@Transactional` - 增加重试机制（3 次，每次间隔 1 秒） 3. **待修复** - `TaskServiceImpl.cancelTask()` 仍有 `@Transactional` ### 根本原因 - SQLite 只允许一个写入者 - 多任务并行执行时写入操作排队 - 事务持有锁时间过长导致 SQLITE_BUSY ### 用户偏好 - **修改代码前先分析结论，等确认后再执行** ## Pipeline 执行页面优化 - 轮询间隔从 3 秒改为 10 秒 - 静默加载，不触发 loading 效果 ## Pipeline 任务指标采集 - 编排创建的任务默认 `collectEnabled=false` - 减少数据库写入压力 ## 代码位置 - 后端取消逻辑：`PipelineServiceImpl.java`, `TaskServiceImpl.java` - 连接池配置：`application.yml` - 前端执行详情：`views/pipelines/run-detail.vue` --- ## WebShell WebSocket 端点修复 ### 问题现象 - WebShell 终端连接返回 HTTP 4",
+      "recallCount": 1,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 0.6618099300023053,
+      "maxScore": 0.6618099300023053,
+      "firstRecalledAt": "2026-04-21T10:49:21.630Z",
+      "lastRecalledAt": "2026-04-21T10:49:21.630Z",
+      "queryHashes": [
+        "5c9e6d66f6f7"
+      ],
+      "recallDays": [
+        "2026-04-21"
+      ],
+      "conceptTags": [
+        "leak-detection-threshold",
+        "maximum-pool-size",
+        "taskserviceimpl.canceltask",
+        "sqlite-busy",
+        "pipelineserviceimpl.java",
+        "taskserviceimpl.java",
+        "application.yml",
+        "views/pipelines/run-detail.vue"
       ]
     }
   }
