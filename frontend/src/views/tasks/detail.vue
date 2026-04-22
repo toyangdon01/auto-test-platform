@@ -1309,9 +1309,8 @@ function startPolling() {
         if (latestStep) {
           const oldOutputLen = currentStep.value.output?.length || 0
           currentStep.value = latestStep
-          // 调试日志
+          // 自动滚动到输出框底部
           if (latestStep.output && latestStep.output.length > oldOutputLen) {
-            // 自动滚动到输出框底部
             nextTick(() => {
               const outputBox = document.querySelector('.output-box .output-content')
               if (outputBox) {
@@ -1322,7 +1321,7 @@ function startPolling() {
         }
       }
     }
-  }, 3000)  // 3秒轮询（已使用 WebSocket 实时日志）
+  }, 5000)  // 5秒轮询
 }
 
 function stopPolling() {

@@ -284,6 +284,25 @@ async function fetchData() {
   }
 }
 
+// 静默刷新（不触发 loading 状态，避免页面刷新效果）
+async function fetchDataSilent() {
+  try {
+    const res = await request.get('/tasks', queryParams)
+    if (res.code === 0) {
+      tableData.value = res.data.items.map((task: any) => ({
+        ...task,
+        totalServers: task.serverCount || 0,
+        successCount: task.successCount || 0,
+        failCount: task.failCount || 0,
+        runningCount: task.runningCount || 0,
+      }))
+      total.value = res.data.total
+    }
+  } catch (e) {
+    console.error('静默刷新失败', e)
+  }
+}
+
 function resetQuery() {
   queryParams.name = ''
   queryParams.status = ''
@@ -474,9 +493,9 @@ function startAutoRefresh() {
     // 只有当有执行中的任务时才刷新
     const hasRunning = tableData.value.some(t => t.status === 'running')
     if (hasRunning) {
-      fetchData()
+      fetchDataSilent()  // 使用静默刷新，避免页面刷新效果
     }
-  }, 3000) // 每3秒刷新
+  }, 5000) // 每5秒刷新
 }
 
 function stopAutoRefresh() {
