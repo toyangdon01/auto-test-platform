@@ -444,7 +444,20 @@ public class TaskController {
             result.put("output", logContent);
             result.put("fromPosition", logSize);
             
-            // 如果进程已停止，更新步骤状态和输出
+            // 更新步骤输出到数据库（增量保存）
+            if (logSize > 0 && logContent != null && !logContent.isEmpty()) {
+                // 合并已有输出和新日志
+                String existingOutput = taskStep.getOutput();
+                if (existingOutput == null || existingOutput.isEmpty() || existingOutput.startsWith("后台执行中")) {
+                    taskStep.setOutput(logContent);
+                } else if (!logContent.equals(existingOutput) && existingOutput.length() < 100000) {
+                    // 避免重复追加，只在有新增内容且未超限时间追加
+                    taskStep.setOutput(existingOutput + "\n" + logContent);
+                }
+                taskStepMapper.updateById(taskStep);
+            }
+            
+            // 如果进程已停止，更新步骤最终状态
             if (!running && logSize > 0) {
                 if ("running".equals(taskStep.getStatus())) {
                     // 读取完整日志
