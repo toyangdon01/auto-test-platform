@@ -18,10 +18,8 @@ import org.springframework.stereotype.Service;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 /**
  * 任务状态检查服务
@@ -123,15 +121,12 @@ public class TaskStatusCheckService {
         }
         
         // 3. 检查每个 running 状态的步骤
-        boolean hasRunningSteps = false;
-        Set<Long> failedStepIds = new HashSet<>();
+        int stillRunningCount = 0;  // 仍在运行的步骤数
         
         for (TaskStep step : steps) {
             if (!"running".equals(step.getStatus())) {
                 continue;
             }
-            
-            hasRunningSteps = true;
             
             // 获取步骤对应的服务器
             Server server = null;
@@ -143,6 +138,7 @@ public class TaskStatusCheckService {
                 // 无法确定服务器，跳过（可能是本地执行）
                 log.debug("[TaskStatusCheck] 任务 {} 步骤 {} 没有关联服务器，跳过检查", 
                     task.getId(), step.getStepName());
+                stillRunningCount++;  // 无法判断，算作仍在运行
                 continue;
             }
             
@@ -151,7 +147,7 @@ public class TaskStatusCheckService {
             
             if (!result.isStillRunning()) {
                 // 步骤实际已停止，更新状态
-                log.info("[TaskStatusCheck] 任务 {} 步骤 {} 状态异常: {} -> {} (原因: {})", 
+                log.info("[TaskStatusCheck] 任务 {} 步骤 {} 状态更新: {} -> {} (原因: {})", 
                     task.getId(), step.getStepName(), step.getStatus(), result.getStatus(), result.getReason());
                 
                 step.setStatus(result.getStatus());
@@ -165,13 +161,15 @@ public class TaskStatusCheckService {
                 step.setFinishedAt(LocalDateTime.now());
                 taskStepMapper.updateById(step);
                 
-                failedStepIds.add(step.getId());
                 updated = true;
+            } else {
+                // 步骤仍在运行
+                stillRunningCount++;
             }
         }
         
-        // 4. 如果没有 running 状态的步骤，重新计算任务状态
-        if (!hasRunningSteps) {
+        // 4. 如果所有 running 步骤都已停止，重新计算任务状态
+        if (stillRunningCount == 0) {
             String newStatus = calculateTaskStatus(task, steps);
             if (!newStatus.equals(task.getStatus())) {
                 log.info("[TaskStatusCheck] 任务 {} 状态更新: {} -> {}", 
