@@ -133,9 +133,16 @@ public class TaskExecutionService {
                 successCount = executeDefaultStep(context, task, taskServers, script, scriptVersion);
             }
 
+            // 检查是否有还在运行的后台步骤
+            boolean hasRunningBackgroundSteps = hasRunningBackgroundSteps(task.getId());
+            
             // 计算最终状态
             int totalServers = taskServers.size();
-            if (successCount == totalServers) {
+            if (hasRunningBackgroundSteps) {
+                // 有后台步骤还在运行，任务保持 running 状态，由 TaskStatusCheckService 更新
+                task.setStatus("running");
+                context.log("[INFO] 仍有后台步骤在执行，任务保持 running 状态");
+            } else if (successCount == totalServers) {
                 task.setStatus("completed");
             } else if (successCount == 0) {
                 task.setStatus("failed");
@@ -1892,6 +1899,42 @@ public class TaskExecutionService {
         }
         
         taskMapper.updateById(task);
+    }
+    
+    /**
+     * 检查任务是否有还在运行的后台步骤
+     * 
+     * @param taskId 任务ID
+     * @return true 表示有后台步骤还在运行
+     */
+    private boolean hasRunningBackgroundSteps(Long taskId) {
+        // 获取任务的所有步骤
+        List<TaskStep> steps = taskStepMapper.selectList(
+            new LambdaQueryWrapper<TaskStep>()
+                .eq(TaskStep::getTaskId, taskId)
+                .eq(TaskStep::getStatus, "running")
+        );
+        
+        if (steps.isEmpty()) {
+            return false;
+        }
+        
+        // 获取任务信息以判断哪些是后台步骤
+        Task task = taskMapper.selectById(taskId);
+        if (task == null || task.getStepParams() == null) {
+            return false;
+        }
+        
+        // 检查是否有 running 状态的后台步骤
+        for (TaskStep step : steps) {
+            Map<String, Object> stepParam = task.getStepParams().get(step.getStepName());
+            if (stepParam != null && Boolean.TRUE.equals(stepParam.get("_BACKGROUND"))) {
+                log.info("任务 {} 发现后台步骤仍在运行: {}", taskId, step.getStepName());
+                return true;
+            }
+        }
+        
+        return false;
     }
     
     /**
