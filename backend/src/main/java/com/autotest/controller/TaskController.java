@@ -13,6 +13,7 @@ import com.autotest.mapper.MetricMapper;
 import com.autotest.mapper.TaskStepMapper;
 import com.autotest.mapper.ServerMapper;
 import com.autotest.service.TaskService;
+import com.autotest.service.TaskExecutionService;
 import com.autotest.service.SshService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import io.swagger.v3.oas.annotations.Operation;
@@ -20,6 +21,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 
 import java.io.IOException;
@@ -40,12 +42,14 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/v1/tasks")
 @RequiredArgsConstructor
+@Slf4j
 public class TaskController {
 
     private final TaskService taskService;
     private final MetricMapper metricMapper;
     private final TaskStepMapper taskStepMapper;
     private final ServerMapper serverMapper;
+    private final TaskExecutionService taskExecutionService;
 
     @Operation(
         summary = "获取任务列表",
@@ -458,10 +462,12 @@ public class TaskController {
             }
             
             // 如果进程已停止，更新步骤最终状态
-            if (!running && logSize > 0) {
+            if (!running) {
+                log.info("[后台步骤] 任务 {} 步骤 {} 进程已停止, logSize={}", taskId, stepName, logSize);
                 if ("running".equals(taskStep.getStatus())) {
                     // 读取完整日志
                     String fullLog = readFullLog(server, outputFile);
+                    log.info("[后台步骤] 读取完整日志, fullLog长度={}", fullLog != null ? fullLog.length() : 0);
                     if (fullLog != null && !fullLog.isEmpty()) {
                         // 检查退出码（从日志末尾或单独文件）
                         Integer exitCode = checkExitCode(server, workDir, stepName);
@@ -471,6 +477,23 @@ public class TaskController {
                         taskStep.setExitCode(exitCode);
                         taskStep.setFinishedAt(LocalDateTime.now());
                         taskStepMapper.updateById(taskStep);
+                        
+                        log.info("[后台步骤] 步骤状态更新为: {}, 准备检查任务状态", taskStep.getStatus());
+                        // 步骤状态变更，检查是否需要更新任务状态
+                        taskExecutionService.recalculateTaskStatus(taskId);
+                    } else {
+                        log.warn("[后台步骤] 无法读取完整日志，尝试使用已有日志内容");
+                        // 如果无法读取完整日志，使用已有日志内容判断
+                        if (logSize > 0 && logContent != null && !logContent.isEmpty()) {
+                            Integer exitCode = checkExitCode(server, workDir, stepName);
+                            taskStep.setStatus(exitCode != null && exitCode == 0 ? "success" : "failed");
+                            taskStep.setExitCode(exitCode);
+                            taskStep.setFinishedAt(LocalDateTime.now());
+                            taskStepMapper.updateById(taskStep);
+                            
+                            log.info("[后台步骤] 使用已有日志更新步骤状态为: {}", taskStep.getStatus());
+                            taskExecutionService.recalculateTaskStatus(taskId);
+                        }
                     }
                 }
             }

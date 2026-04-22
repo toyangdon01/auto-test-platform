@@ -151,7 +151,10 @@ public class TaskStatusCheckService {
                     task.getId(), step.getStepName(), step.getStatus(), result.getStatus(), result.getReason());
                 
                 step.setStatus(result.getStatus());
-                step.setErrorMessage(result.getReason());
+                // 只在失败/取消时设置错误信息，成功时不设置
+                if ("failed".equals(result.getStatus()) || "cancelled".equals(result.getStatus())) {
+                    step.setErrorMessage(result.getReason());
+                }
                 if (result.getExitCode() != null) {
                     step.setExitCode(result.getExitCode());
                 }

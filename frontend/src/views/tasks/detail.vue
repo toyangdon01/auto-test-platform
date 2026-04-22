@@ -391,7 +391,7 @@
     </el-dialog>
     
     <!-- 步骤详情弹窗 -->
-    <el-dialog v-model="stepDetailVisible" title="步骤执行详情" width="800px" destroy-on-close @close="cleanupBackgroundTimer">
+    <el-dialog v-model="stepDetailVisible" title="步骤执行详情" width="800px" destroy-on-close>
       <template v-if="currentStep">
         <el-descriptions :column="2" border size="small" class="mb-20">
           <el-descriptions-item label="步骤名称">{{ currentStep.displayName || currentStep.stepName }}</el-descriptions-item>
@@ -455,22 +455,20 @@
         </div>
         
         <div v-if="currentStep.output">
-          <h4 class="section-title">执行输出</h4>
+          <div class="section-title-row">
+            <h4 class="section-title">执行输出</h4>
+            <el-button v-if="currentStep?.status === 'running'" type="primary" size="small" @click="checkBackgroundStatus" :loading="checkingBackground">
+              <el-icon><Refresh /></el-icon>查询
+            </el-button>
+          </div>
           <div class="output-box">
             <pre class="output-content">{{ currentStep.output }}</pre>
           </div>
           
-          <!-- 后台执行状态查询 -->
-          <div v-if="currentStep.status === 'running' && currentStep.output?.includes('后台执行中')" class="background-status-panel">
+          <!-- 后台执行状态信息 -->
+          <div v-if="currentStep.status === 'running' && backgroundInfo.processStatus" class="background-status-panel">
             <el-divider />
-            <div class="background-actions">
-              <el-button type="primary" @click="checkBackgroundStatus" :loading="checkingBackground">
-                <el-icon><Refresh /></el-icon>
-                查询状态
-              </el-button>
-              <el-switch v-model="autoRefreshBackground" active-text="自动刷新" @change="toggleAutoRefresh" />
-            </div>
-            <div v-if="backgroundInfo.processStatus" class="background-info">
+            <div class="background-info">
               <el-tag :type="backgroundInfo.processStatus === 'RUNNING' ? 'success' : 'info'">
                 进程状态: {{ backgroundInfo.processStatus }}
               </el-tag>
@@ -537,7 +535,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import MetricSingleChart from '@/components/MetricSingleChart.vue'
 import TaskLogStream from '@/components/TaskLogStream.vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -571,13 +569,11 @@ const currentStep = ref<TaskStep | null>(null)
 
 // 后台步骤状态查询
 const checkingBackground = ref(false)
-const autoRefreshBackground = ref(false)
 const backgroundInfo = ref({
   processStatus: '',
   pid: '',
   logSize: 0
 })
-let backgroundRefreshTimer: ReturnType<typeof setInterval> | null = null
 
 // 步骤重试相关
 const retryDialogVisible = ref(false)
@@ -866,6 +862,9 @@ function getStepStatusText(status?: string) {
 }
 
 function showStepDetail(step: TaskStep) {
+  // 停止轮询，避免数据被覆盖
+  stopPolling()
+  
   // 从最新的 taskSteps 中获取步骤数据，确保显示最新的输出
   const latestStep = taskSteps.value.find(s => s.id === step.id)
   currentStep.value = latestStep || step
@@ -873,7 +872,6 @@ function showStepDetail(step: TaskStep) {
   
   // 重置后台状态
   backgroundInfo.value = { processStatus: '', pid: '', logSize: 0 }
-  autoRefreshBackground.value = false
 }
 
 // 查询后台步骤状态
@@ -896,20 +894,22 @@ async function checkBackgroundStatus() {
         logSize: res.data.logSize
       }
       
-      // 如果有新输出，追加到步骤输出
+      // 如果有新输出，直接替换步骤输出
       if (res.data.output && currentStep.value) {
-        currentStep.value.output += res.data.output
+        currentStep.value.output = res.data.output
+        // 滚动到输出框底部
+        nextTick(() => {
+          const outputBox = document.querySelector('.output-box .output-content')
+          if (outputBox) {
+            outputBox.scrollTop = outputBox.scrollHeight
+          }
+        })
       }
       
       // 如果进程已停止，刷新任务详情
       if (res.data.processStatus === 'STOPPED') {
-        autoRefreshBackground.value = false
-        if (backgroundRefreshTimer) {
-          clearInterval(backgroundRefreshTimer)
-          backgroundRefreshTimer = null
-        }
         // 刷新任务详情
-        fetchTaskDetail()
+        fetchDetail()
       }
     }
   } catch (e: any) {
@@ -919,31 +919,6 @@ async function checkBackgroundStatus() {
   }
 }
 
-// 切换自动刷新
-function toggleAutoRefresh(val: boolean) {
-  if (val) {
-    checkBackgroundStatus()
-    backgroundRefreshTimer = setInterval(() => {
-      checkBackgroundStatus()
-    }, 3000)
-  } else {
-    if (backgroundRefreshTimer) {
-      clearInterval(backgroundRefreshTimer)
-      backgroundRefreshTimer = null
-    }
-  }
-}
-
-// 清理后台查询定时器
-function cleanupBackgroundTimer() {
-  if (backgroundRefreshTimer) {
-    clearInterval(backgroundRefreshTimer)
-    backgroundRefreshTimer = null
-  }
-  autoRefreshBackground.value = false
-  backgroundInfo.value = { processStatus: '', pid: '', logSize: 0 }
-}
-
 // 打开服务器终端
 function openServerTerminal(serverId: number) {
   router.push(`/servers/terminal/${serverId}`)
@@ -951,15 +926,43 @@ function openServerTerminal(serverId: number) {
 
 // 复制执行命令
 function copyCommand() {
-  if (currentStep.value?.command) {
-    navigator.clipboard.writeText(currentStep.value.command)
+  if (!currentStep.value?.command) {
+    ElMessage.warning('没有可复制的命令')
+    return
+  }
+  
+  const command = currentStep.value.command
+  
+  // 优先使用 Clipboard API
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(command)
       .then(() => {
         ElMessage.success('命令已复制到剪贴板')
       })
       .catch(() => {
-        ElMessage.error('复制失败')
+        fallbackCopy(command)
       })
+  } else {
+    // 非安全上下文，使用备用方法
+    fallbackCopy(command)
   }
+}
+
+// 备用复制方法（兼容非 HTTPS 环境）
+function fallbackCopy(text: string) {
+  const textarea = document.createElement('textarea')
+  textarea.value = text
+  textarea.style.position = 'fixed'
+  textarea.style.left = '-9999px'
+  document.body.appendChild(textarea)
+  textarea.select()
+  try {
+    document.execCommand('copy')
+    ElMessage.success('命令已复制到剪贴板')
+  } catch (e) {
+    ElMessage.error('复制失败，请手动复制')
+  }
+  document.body.removeChild(textarea)
 }
 
 // 获取并发模式显示文本
@@ -1331,6 +1334,14 @@ function stopPolling() {
   }
 }
 
+// 监听步骤详情弹窗关闭，恢复轮询
+watch(stepDetailVisible, (newVal) => {
+  if (!newVal && task.value?.status === 'running') {
+    // 弹窗关闭且任务仍在运行，恢复轮询
+    startPolling()
+  }
+})
+
 onMounted(() => {
   fetchDetail()
   startPolling()
@@ -1367,6 +1378,17 @@ function getErrorMessage(output: string | null): string {
 .title {
   font-size: 16px;
   font-weight: 600;
+}
+
+.section-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  
+  .section-title {
+    margin-bottom: 0;
+  }
 }
 
 .section-title {

@@ -2068,4 +2068,79 @@ public class TaskExecutionService {
             return null;
         }
     }
+    
+    /**
+     * 重新计算并更新任务状态
+     * 当步骤状态变更后，检查是否需要更新任务状态
+     * 
+     * @param taskId 任务ID
+     */
+    public void recalculateTaskStatus(Long taskId) {
+        Task task = taskMapper.selectById(taskId);
+        if (task == null) {
+            log.warn("[recalculateTaskStatus] 任务 {} 不存在", taskId);
+            return;
+        }
+        
+        log.info("[recalculateTaskStatus] 开始检查任务 {} 当前状态: {}", taskId, task.getStatus());
+        
+        // 获取任务的所有步骤
+        List<TaskStep> steps = taskStepMapper.selectList(
+            new LambdaQueryWrapper<TaskStep>()
+                .eq(TaskStep::getTaskId, taskId)
+        );
+        
+        if (steps.isEmpty()) {
+            log.warn("[recalculateTaskStatus] 任务 {} 没有步骤", taskId);
+            return;
+        }
+        
+        // 检查是否还有 running 状态的步骤
+        int runningCount = 0, successCount = 0, failedCount = 0, otherCount = 0;
+        
+        for (TaskStep step : steps) {
+            String status = step.getStatus();
+            if ("running".equals(status)) {
+                runningCount++;
+            } else if ("success".equals(status) || "completed".equals(status)) {
+                successCount++;
+            } else if ("failed".equals(status)) {
+                failedCount++;
+            } else {
+                otherCount++;
+                log.debug("[recalculateTaskStatus] 步骤 {} 状态: {}", step.getStepName(), status);
+            }
+        }
+        
+        log.info("[recalculateTaskStatus] 步骤统计: running={}, success={}, failed={}, other={}", 
+            runningCount, successCount, failedCount, otherCount);
+        
+        // 如果还有步骤在运行，任务状态保持 running
+        if (runningCount > 0) {
+            log.info("[recalculateTaskStatus] 还有 {} 个步骤在运行，任务保持 running 状态", runningCount);
+            return;
+        }
+        
+        // 计算新状态
+        String newStatus;
+        if (failedCount > 0 && successCount > 0) {
+            newStatus = "completed_with_errors";
+        } else if (failedCount > 0) {
+            newStatus = "failed";
+        } else if (successCount > 0) {
+            newStatus = "completed";
+        } else {
+            newStatus = "unknown";
+        }
+        
+        // 更新任务状态
+        if (!newStatus.equals(task.getStatus())) {
+            log.info("[recalculateTaskStatus] 任务 {} 状态更新: {} -> {}", taskId, task.getStatus(), newStatus);
+            task.setStatus(newStatus);
+            task.setFinishedAt(LocalDateTime.now());
+            taskMapper.updateById(task);
+        } else {
+            log.info("[recalculateTaskStatus] 任务 {} 状态无需更新, 当前状态: {}", taskId, task.getStatus());
+        }
+    }
 }
