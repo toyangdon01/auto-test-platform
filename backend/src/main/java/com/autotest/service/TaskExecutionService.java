@@ -1114,6 +1114,10 @@ public class TaskExecutionService {
         
         context.log("[BACKGROUND] " + stepName);
         
+        // 设置后台执行状态
+        taskStep.setStatus("running_bg");
+        taskStepMapper.updateById(taskStep);
+        
         String exitCodeFile = workDir + "/" + stepName + ".exit_code";
         
         // 构建 nohup 命令（执行完成后写入退出码）
@@ -1771,7 +1775,8 @@ public class TaskExecutionService {
         
         for (TaskStep step : downstreamSteps) {
             // 跳过已完成或正在执行的步骤
-            if ("success".equals(step.getStatus()) || "running".equals(step.getStatus()) || "retrying".equals(step.getStatus())) {
+            if ("success".equals(step.getStatus()) || "running".equals(step.getStatus()) 
+                || "running_bg".equals(step.getStatus()) || "retrying".equals(step.getStatus())) {
                 continue;
             }
             
@@ -1908,30 +1913,16 @@ public class TaskExecutionService {
      * @return true 表示有后台步骤还在运行
      */
     private boolean hasRunningBackgroundSteps(Long taskId) {
-        // 获取任务的所有步骤
+        // 直接检查是否有 running_bg 状态的步骤
         List<TaskStep> steps = taskStepMapper.selectList(
             new LambdaQueryWrapper<TaskStep>()
                 .eq(TaskStep::getTaskId, taskId)
-                .eq(TaskStep::getStatus, "running")
+                .eq(TaskStep::getStatus, "running_bg")
         );
         
-        if (steps.isEmpty()) {
-            return false;
-        }
-        
-        // 获取任务信息以判断哪些是后台步骤
-        Task task = taskMapper.selectById(taskId);
-        if (task == null || task.getStepParams() == null) {
-            return false;
-        }
-        
-        // 检查是否有 running 状态的后台步骤
-        for (TaskStep step : steps) {
-            Map<String, Object> stepParam = task.getStepParams().get(step.getStepName());
-            if (stepParam != null && Boolean.TRUE.equals(stepParam.get("_BACKGROUND"))) {
-                log.info("任务 {} 发现后台步骤仍在运行: {}", taskId, step.getStepName());
-                return true;
-            }
+        if (!steps.isEmpty()) {
+            log.info("任务 {} 发现 {} 个后台步骤仍在运行", taskId, steps.size());
+            return true;
         }
         
         return false;
@@ -2095,12 +2086,12 @@ public class TaskExecutionService {
             return;
         }
         
-        // 检查是否还有 running 状态的步骤
+        // 检查是否还有 running/running_bg 状态的步骤
         int runningCount = 0, successCount = 0, failedCount = 0, otherCount = 0;
         
         for (TaskStep step : steps) {
             String status = step.getStatus();
-            if ("running".equals(status)) {
+            if ("running".equals(status) || "running_bg".equals(status)) {
                 runningCount++;
             } else if ("success".equals(status) || "completed".equals(status)) {
                 successCount++;

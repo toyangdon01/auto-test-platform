@@ -457,7 +457,7 @@
         <div v-if="currentStep.output">
           <div class="section-title-row">
             <h4 class="section-title">执行输出</h4>
-            <el-button v-if="currentStep?.status === 'running'" type="primary" size="small" @click="checkBackgroundStatus" :loading="checkingBackground">
+            <el-button v-if="currentStep?.status === 'running_bg'" type="primary" size="small" @click="checkBackgroundStatus" :loading="checkingBackground">
               <el-icon><Refresh /></el-icon>查询
             </el-button>
           </div>
@@ -466,7 +466,7 @@
           </div>
           
           <!-- 后台执行状态信息 -->
-          <div v-if="currentStep.status === 'running' && backgroundInfo.processStatus" class="background-status-panel">
+          <div v-if="currentStep.status === 'running_bg' && backgroundInfo.processStatus" class="background-status-panel">
             <el-divider />
             <div class="background-info">
               <el-tag :type="backgroundInfo.processStatus === 'RUNNING' ? 'success' : 'info'">
@@ -840,6 +840,7 @@ function getStepStatusType(status?: string) {
     pending: 'info',
     waiting: 'info',
     running: 'warning',
+    running_bg: 'primary',
     success: 'success',
     failed: 'danger',
     skipped: 'warning',
@@ -853,6 +854,7 @@ function getStepStatusText(status?: string) {
     pending: '待执行',
     waiting: '等待中',
     running: '执行中',
+    running_bg: '后台执行中',
     success: '成功',
     failed: '失败',
     skipped: '已跳过',

@@ -120,11 +120,12 @@ public class TaskStatusCheckService {
             return true;
         }
         
-        // 3. 检查每个 running 状态的步骤
+        // 3. 检查每个 running/running_bg 状态的步骤
         int stillRunningCount = 0;  // 仍在运行的步骤数
         
         for (TaskStep step : steps) {
-            if (!"running".equals(step.getStatus())) {
+            String stepStatus = step.getStatus();
+            if (!("running".equals(stepStatus) || "running_bg".equals(stepStatus))) {
                 continue;
             }
             
@@ -195,11 +196,12 @@ public class TaskStatusCheckService {
         boolean hasSuccess = false;
         
         for (TaskStep step : steps) {
-            if ("success".equals(step.getStatus()) || "completed".equals(step.getStatus())) {
+            String status = step.getStatus();
+            if ("success".equals(status) || "completed".equals(status)) {
                 hasSuccess = true;
-            } else if ("failed".equals(step.getStatus())) {
+            } else if ("failed".equals(status)) {
                 hasFailed = true;
-            } else if ("running".equals(step.getStatus())) {
+            } else if ("running".equals(status) || "running_bg".equals(status)) {
                 // 还有步骤在运行
                 return "running";
             }

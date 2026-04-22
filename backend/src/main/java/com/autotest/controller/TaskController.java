@@ -464,7 +464,7 @@ public class TaskController {
             // 如果进程已停止，更新步骤最终状态
             if (!running) {
                 log.info("[后台步骤] 任务 {} 步骤 {} 进程已停止, logSize={}", taskId, stepName, logSize);
-                if ("running".equals(taskStep.getStatus())) {
+                if ("running_bg".equals(taskStep.getStatus())) {
                     // 读取完整日志
                     String fullLog = readFullLog(server, outputFile);
                     log.info("[后台步骤] 读取完整日志, fullLog长度={}", fullLog != null ? fullLog.length() : 0);
