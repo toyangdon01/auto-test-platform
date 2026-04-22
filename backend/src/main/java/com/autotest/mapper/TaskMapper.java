@@ -7,6 +7,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.Update;
 
 import java.util.List;
 
@@ -53,4 +54,16 @@ public interface TaskMapper extends BaseMapper<Task> {
             "       started_at, finished_at, created_at, updated_at " +
             "FROM tasks WHERE id = #{taskId}")
     Task selectTaskWithParams(@Param("taskId") Long taskId);
+    
+    /**
+     * 禁用外键检查（SQLite）
+     */
+    @Update("PRAGMA foreign_keys = OFF")
+    void disableForeignKeyChecks();
+    
+    /**
+     * 恢复外键检查（SQLite）
+     */
+    @Update("PRAGMA foreign_keys = ON")
+    void enableForeignKeyChecks();
 }

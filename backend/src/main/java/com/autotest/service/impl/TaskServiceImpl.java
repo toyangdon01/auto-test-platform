@@ -10,6 +10,7 @@ import com.autotest.dto.response.TaskDetailResponse;
 import com.autotest.entity.Script;
 import com.autotest.entity.ScriptVersion;
 import com.autotest.entity.Server;
+import com.autotest.entity.PipelineRunTask;
 import com.autotest.entity.ScheduledTask;
 import com.autotest.entity.Task;
 import com.autotest.entity.TaskServer;
@@ -17,6 +18,7 @@ import com.autotest.entity.TaskStep;
 import com.autotest.entity.TestResult;
 import com.autotest.exception.BusinessException;
 import com.autotest.mapper.ScriptMapper;
+import com.autotest.mapper.PipelineRunTaskMapper;
 import com.autotest.mapper.ScriptVersionMapper;
 import com.autotest.mapper.ScheduledTaskMapper;
 import com.autotest.mapper.ServerMapper;
@@ -56,6 +58,7 @@ public class TaskServiceImpl implements TaskService {
     private final ScriptVersionMapper scriptVersionMapper;
     private final ServerMapper serverMapper;
     private final ScheduledTaskMapper scheduledTaskMapper;
+    private final PipelineRunTaskMapper pipelineRunTaskMapper;
     private final TaskExecutionService taskExecutionService;
     private final LogCacheService logCacheService;
 
@@ -223,7 +226,6 @@ public class TaskServiceImpl implements TaskService {
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
     public Task createTask(TaskCreateRequest request) {
         // 验证脚本
         Script script = scriptMapper.selectById(request.getScriptId());
@@ -353,7 +355,6 @@ public class TaskServiceImpl implements TaskService {
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
     public Task updateTask(Long id, TaskCreateRequest request) {
         Task task = taskMapper.selectById(id);
         if (task == null) {
@@ -400,7 +401,6 @@ public class TaskServiceImpl implements TaskService {
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
     public void deleteTask(Long id) {
         Task task = taskMapper.selectById(id);
         if (task == null) {
@@ -412,9 +412,14 @@ public class TaskServiceImpl implements TaskService {
             try {
                 taskExecutionService.cancelTask(id);
             } catch (Exception e) {
-                log.warn("取消运行中的任务失败: {}", e.getMessage());
+                log.warn("取消运行中的任务失败：{}", e.getMessage());
             }
         }
+        
+        // 删除关联的定时任务
+        LambdaQueryWrapper<ScheduledTask> scheduledWrapper = new LambdaQueryWrapper<>();
+        scheduledWrapper.eq(ScheduledTask::getTaskId, id);
+        scheduledTaskMapper.delete(scheduledWrapper);
         
         // 删除任务步骤（task_steps）
         LambdaQueryWrapper<TaskStep> stepWrapper = new LambdaQueryWrapper<>();
@@ -425,6 +430,11 @@ public class TaskServiceImpl implements TaskService {
         LambdaQueryWrapper<TaskServer> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(TaskServer::getTaskId, id);
         taskServerMapper.delete(wrapper);
+        
+        // 删除 Pipeline 编排任务关联（pipeline_run_tasks）
+        LambdaQueryWrapper<PipelineRunTask> prtWrapper = new LambdaQueryWrapper<>();
+        prtWrapper.eq(PipelineRunTask::getTaskId, id);
+        pipelineRunTaskMapper.delete(prtWrapper);
         
         // 删除任务（测试结果保留）
         taskMapper.deleteById(id);
@@ -512,7 +522,6 @@ public class TaskServiceImpl implements TaskService {
         if (cancelled) {
             task.setStatus("cancelled");
         } else {
-            // 如果任务不在运行中，直接标记为取消
             task.setStatus("cancelled");
         }
         
@@ -572,7 +581,6 @@ public class TaskServiceImpl implements TaskService {
 
     @Override
     public Object getTaskProgress(Long id) {
-        // TODO: 实现进度查询
         return getTaskDetail(id);
     }
 
@@ -586,7 +594,6 @@ public class TaskServiceImpl implements TaskService {
         // 先尝试从内存缓存获取实时日志
         String cachedLog = logCacheService.getLog(id);
         if (cachedLog != null && !cachedLog.isEmpty()) {
-            // 返回内存中的实时日志
             return Map.of(
                 "source", "cache",
                 "log", cachedLog,
@@ -623,8 +630,6 @@ public class TaskServiceImpl implements TaskService {
     
     @Override
     public Map<String, Integer> fixAllTaskStatus() {
-        // 步骤执行模式下，状态由 TaskExecutionService 管理
-        // 此方法主要用于修复异常中断的任务状态
         int fixedTasks = 0;
         return Map.of("fixedTasks", fixedTasks);
     }

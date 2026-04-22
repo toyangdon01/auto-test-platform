@@ -391,7 +391,7 @@
     </el-dialog>
     
     <!-- 步骤详情弹窗 -->
-    <el-dialog v-model="stepDetailVisible" title="步骤执行详情" width="800px" destroy-on-close>
+    <el-dialog v-model="stepDetailVisible" title="步骤执行详情" width="800px" destroy-on-close @close="cleanupBackgroundTimer">
       <template v-if="currentStep">
         <el-descriptions :column="2" border size="small" class="mb-20">
           <el-descriptions-item label="步骤名称">{{ currentStep.displayName || currentStep.stepName }}</el-descriptions-item>
@@ -458,6 +458,24 @@
           <h4 class="section-title">执行输出</h4>
           <div class="output-box">
             <pre class="output-content">{{ currentStep.output }}</pre>
+          </div>
+          
+          <!-- 后台执行状态查询 -->
+          <div v-if="currentStep.status === 'running' && currentStep.output?.includes('后台执行中')" class="background-status-panel">
+            <el-divider />
+            <div class="background-actions">
+              <el-button type="primary" @click="checkBackgroundStatus" :loading="checkingBackground">
+                <el-icon><Refresh /></el-icon>
+                查询状态
+              </el-button>
+              <el-switch v-model="autoRefreshBackground" active-text="自动刷新" @change="toggleAutoRefresh" />
+            </div>
+            <div v-if="backgroundInfo.processStatus" class="background-info">
+              <el-tag :type="backgroundInfo.processStatus === 'RUNNING' ? 'success' : 'info'">
+                进程状态: {{ backgroundInfo.processStatus }}
+              </el-tag>
+              <el-tag v-if="backgroundInfo.pid" type="info">PID: {{ backgroundInfo.pid }}</el-tag>
+            </div>
           </div>
         </div>
         <div v-else class="no-output">
@@ -550,6 +568,16 @@ const currentLogs = ref('')
 const currentResult = ref<any>(null)
 const currentLogPhase = ref<'deploy' | 'run' | 'cleanup' | 'all'>('all')
 const currentStep = ref<TaskStep | null>(null)
+
+// 后台步骤状态查询
+const checkingBackground = ref(false)
+const autoRefreshBackground = ref(false)
+const backgroundInfo = ref({
+  processStatus: '',
+  pid: '',
+  logSize: 0
+})
+let backgroundRefreshTimer: ReturnType<typeof setInterval> | null = null
 
 // 步骤重试相关
 const retryDialogVisible = ref(false)
@@ -842,6 +870,78 @@ function showStepDetail(step: TaskStep) {
   const latestStep = taskSteps.value.find(s => s.id === step.id)
   currentStep.value = latestStep || step
   stepDetailVisible.value = true
+  
+  // 重置后台状态
+  backgroundInfo.value = { processStatus: '', pid: '', logSize: 0 }
+  autoRefreshBackground.value = false
+}
+
+// 查询后台步骤状态
+async function checkBackgroundStatus() {
+  if (!currentStep.value || !task.value) return
+  
+  checkingBackground.value = true
+  try {
+    const res = await request.get(`/tasks/${task.value.id}/steps/${currentStep.value.stepName}/background-status`, {
+      params: {
+        serverId: currentStep.value.serverId,
+        fromPosition: backgroundInfo.value.logSize
+      }
+    })
+    
+    if (res.code === 0) {
+      backgroundInfo.value = {
+        processStatus: res.data.processStatus,
+        pid: res.data.pid,
+        logSize: res.data.logSize
+      }
+      
+      // 如果有新输出，追加到步骤输出
+      if (res.data.output && currentStep.value) {
+        currentStep.value.output += res.data.output
+      }
+      
+      // 如果进程已停止，刷新任务详情
+      if (res.data.processStatus === 'STOPPED') {
+        autoRefreshBackground.value = false
+        if (backgroundRefreshTimer) {
+          clearInterval(backgroundRefreshTimer)
+          backgroundRefreshTimer = null
+        }
+        // 刷新任务详情
+        fetchTaskDetail()
+      }
+    }
+  } catch (e: any) {
+    ElMessage.error(e.message || '查询失败')
+  } finally {
+    checkingBackground.value = false
+  }
+}
+
+// 切换自动刷新
+function toggleAutoRefresh(val: boolean) {
+  if (val) {
+    checkBackgroundStatus()
+    backgroundRefreshTimer = setInterval(() => {
+      checkBackgroundStatus()
+    }, 3000)
+  } else {
+    if (backgroundRefreshTimer) {
+      clearInterval(backgroundRefreshTimer)
+      backgroundRefreshTimer = null
+    }
+  }
+}
+
+// 清理后台查询定时器
+function cleanupBackgroundTimer() {
+  if (backgroundRefreshTimer) {
+    clearInterval(backgroundRefreshTimer)
+    backgroundRefreshTimer = null
+  }
+  autoRefreshBackground.value = false
+  backgroundInfo.value = { processStatus: '', pid: '', logSize: 0 }
 }
 
 // 打开服务器终端
@@ -1592,6 +1692,23 @@ function getErrorMessage(output: string | null): string {
     word-break: break-all;
     max-height: 400px;
     overflow-y: auto;
+  }
+}
+
+// 后台状态面板
+.background-status-panel {
+  margin-top: 16px;
+  
+  .background-actions {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 12px;
+  }
+  
+  .background-info {
+    display: flex;
+    gap: 8px;
   }
 }
 

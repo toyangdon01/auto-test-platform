@@ -652,6 +652,15 @@ public class TaskExecutionService {
                 }
             }
             
+            // 判断是否后台执行
+            boolean isBackground = false;
+            if (task.getStepParams() != null) {
+                Map<String, Object> stepParam = task.getStepParams().get(stepName);
+                if (stepParam != null && Boolean.TRUE.equals(stepParam.get("_BACKGROUND"))) {
+                    isBackground = true;
+                }
+            }
+            
             // 构建环境变量
             StringBuilder envBuilder = new StringBuilder();
             for (Map.Entry<String, Object> entry : params.entrySet()) {
@@ -665,6 +674,11 @@ public class TaskExecutionService {
             // 保存执行命令到 taskStep
             taskStep.setCommand(command);
             taskStepMapper.updateById(taskStep);
+            
+            // 后台执行
+            if (isBackground) {
+                return executeBackgroundStep(context, task, server, stepConfig, taskStep, workDir, scriptPath, envBuilder.toString());
+            }
             
             // 更新 TaskServer 当前执行状态（仅远程执行时）
             TaskServer tsForUpdate = taskServerMapper.selectOne(
@@ -1079,6 +1093,63 @@ public class TaskExecutionService {
         }
     }
 
+    /**
+     * 后台执行步骤
+     */
+    private boolean executeBackgroundStep(ExecutionContext context, Task task, Server server,
+                                          StepDAG.StepConfig stepConfig, TaskStep taskStep,
+                                          String workDir, String scriptPath, String envBuilder) {
+        String stepName = stepConfig.getName();
+        String outputFile = workDir + "/" + stepName + ".log";
+        String pidFile = workDir + "/" + stepName + ".pid";
+        
+        context.log("[BACKGROUND] " + stepName);
+        
+        String exitCodeFile = workDir + "/" + stepName + ".exit_code";
+        
+        // 构建 nohup 命令（执行完成后写入退出码）
+        String command = String.format(
+            "cd %s && %s nohup bash -c 'bash %s; echo $? > %s' > %s 2>&1 & echo $! > %s && sleep 1 && cat %s",
+            workDir, envBuilder, scriptPath, exitCodeFile, outputFile, pidFile, pidFile
+        );
+        
+        context.log("命令: nohup bash " + scriptPath);
+        
+        try {
+            // 执行命令
+            SshService.ExecuteResult result = SshService.executeCommand(server, command, null, SshService.getDefaultTimeout());
+            
+            if (result.getExitCode() == 0) {
+                String pid = result.getOutput().trim();
+                context.log("PID: " + pid);
+                context.log("日志文件: " + outputFile);
+                
+                // 更新步骤状态
+                taskStep.setOutput("后台执行中\nPID: " + pid + "\n日志文件: " + outputFile);
+                taskStepMapper.updateById(taskStep);
+                
+                // 推送日志到 WebSocket
+                logCacheService.appendChunk(task.getId(), "[后台执行] PID: " + pid + "\n");
+                
+                return true;
+            } else {
+                context.log("[ERROR] 启动后台任务失败: " + result.getError());
+                taskStep.setStatus("failed");
+                taskStep.setErrorMessage("启动后台任务失败: " + result.getError());
+                taskStep.setFinishedAt(LocalDateTime.now());
+                taskStepMapper.updateById(taskStep);
+                return false;
+            }
+        } catch (Exception e) {
+            context.log("[ERROR] 启动后台任务异常: " + e.getMessage());
+            taskStep.setStatus("failed");
+            taskStep.setErrorMessage(e.getMessage());
+            taskStep.setFinishedAt(LocalDateTime.now());
+            taskStepMapper.updateById(taskStep);
+            return false;
+        }
+    }
+    
     /**
      * 执行启动探测
      */

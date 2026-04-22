@@ -26,6 +26,8 @@ import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -358,5 +360,166 @@ public class TaskController {
             return "\"" + str.replace("\"", "\"\"") + "\"";
         }
         return str;
+    }
+    
+    /**
+     * 查询后台步骤状态和输出
+     */
+    @GetMapping("/{taskId}/steps/{stepName}/background-status")
+    public ApiResponse<Map<String, Object>> getBackgroundStepStatus(
+            @PathVariable Long taskId,
+            @PathVariable String stepName,
+            @RequestParam(required = false) Long serverId,
+            @RequestParam(defaultValue = "0") long fromPosition) {
+        
+        // 获取任务步骤
+        TaskStep taskStep = taskStepMapper.selectOne(
+            new LambdaQueryWrapper<TaskStep>()
+                .eq(TaskStep::getTaskId, taskId)
+                .eq(TaskStep::getStepName, stepName)
+        );
+        
+        if (taskStep == null) {
+            return ApiResponse.error(404, "步骤不存在");
+        }
+        
+        // 获取服务器
+        Server server = null;
+        if (serverId != null) {
+            server = serverMapper.selectById(serverId);
+        } else if (taskStep.getServerId() != null) {
+            server = serverMapper.selectById(taskStep.getServerId());
+        }
+        
+        if (server == null) {
+            return ApiResponse.error(400, "服务器不存在");
+        }
+        
+        String workDir = "/tmp/test_platform/task_" + taskId;
+        String pidFile = workDir + "/" + stepName + ".pid";
+        String outputFile = workDir + "/" + stepName + ".log";
+        
+        try {
+            // 合并为一条命令
+            String command = String.format(
+                "PID=$(cat %s 2>/dev/null); " +
+                "if [ -n \"$PID\" ] && ps -p $PID > /dev/null 2>&1; then " +
+                "  echo \"STATUS:RUNNING\"; " +
+                "  echo \"PID:$PID\"; " +
+                "else " +
+                "  echo \"STATUS:STOPPED\"; " +
+                "fi; " +
+                "LOG_SIZE=$(wc -c < %s 2>/dev/null || echo 0); " +
+                "echo \"LOG_SIZE:$LOG_SIZE\"; " +
+                "if [ $LOG_SIZE -gt %d ]; then " +
+                "  tail -c +%d %s 2>/dev/null | tail -n 500; " +
+                "fi",
+                pidFile, outputFile, fromPosition, fromPosition + 1, outputFile
+            );
+            
+            SshService.ExecuteResult execResult = SshService.executeCommand(server, command, null, SshService.getDefaultTimeout());
+            
+            String output = execResult.getOutput();
+            
+            // 解析输出
+            boolean running = output.contains("STATUS:RUNNING");
+            String pid = extractStatusValue(output, "PID:");
+            long logSize = 0;
+            String logSizeStr = extractStatusValue(output, "LOG_SIZE:");
+            if (logSizeStr != null && !logSizeStr.isEmpty()) {
+                try {
+                    logSize = Long.parseLong(logSizeStr.trim());
+                } catch (NumberFormatException e) {
+                    logSize = 0;
+                }
+            }
+            
+            // 提取日志内容（去掉状态行）
+            String logContent = extractLogContent(output);
+            
+            Map<String, Object> result = new HashMap<>();
+            result.put("processStatus", running ? "RUNNING" : "STOPPED");
+            result.put("pid", pid != null ? pid : "");
+            result.put("logSize", logSize);
+            result.put("output", logContent);
+            result.put("fromPosition", logSize);
+            
+            // 如果进程已停止，更新步骤状态和输出
+            if (!running && logSize > 0) {
+                if ("running".equals(taskStep.getStatus())) {
+                    // 读取完整日志
+                    String fullLog = readFullLog(server, outputFile);
+                    if (fullLog != null && !fullLog.isEmpty()) {
+                        // 检查退出码（从日志末尾或单独文件）
+                        Integer exitCode = checkExitCode(server, workDir, stepName);
+                        
+                        taskStep.setStatus(exitCode != null && exitCode == 0 ? "success" : "failed");
+                        taskStep.setOutput(fullLog);
+                        taskStep.setExitCode(exitCode);
+                        taskStep.setFinishedAt(LocalDateTime.now());
+                        taskStepMapper.updateById(taskStep);
+                    }
+                }
+            }
+            
+            return ApiResponse.success(result);
+            
+        } catch (Exception e) {
+            return ApiResponse.error(500, "查询失败: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * 提取状态值
+     */
+    private String extractStatusValue(String output, String prefix) {
+        for (String line : output.split("\n")) {
+            if (line.startsWith(prefix)) {
+                return line.substring(prefix.length()).trim();
+            }
+        }
+        return null;
+    }
+    
+    /**
+     * 提取日志内容（去掉状态行）
+     */
+    private String extractLogContent(String output) {
+        StringBuilder sb = new StringBuilder();
+        for (String line : output.split("\n")) {
+            if (!line.startsWith("STATUS:") && !line.startsWith("PID:") && !line.startsWith("LOG_SIZE:")) {
+                sb.append(line).append("\n");
+            }
+        }
+        return sb.toString();
+    }
+    
+    /**
+     * 读取完整日志
+     */
+    private String readFullLog(Server server, String outputFile) {
+        try {
+            SshService.ExecuteResult result = SshService.executeCommand(
+                server, "cat " + outputFile + " 2>/dev/null", null, 60000
+            );
+            return result.getOutput();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+    
+    /**
+     * 检查退出码
+     */
+    private Integer checkExitCode(Server server, String workDir, String stepName) {
+        try {
+            String exitCodeFile = workDir + "/" + stepName + ".exit_code";
+            SshService.ExecuteResult result = SshService.executeCommand(
+                server, "cat " + exitCodeFile + " 2>/dev/null || echo \"-1\"", null, 5000
+            );
+            return Integer.parseInt(result.getOutput().trim());
+        } catch (Exception e) {
+            return null;
+        }
     }
 }

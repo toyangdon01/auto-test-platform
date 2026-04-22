@@ -140,6 +140,20 @@
                     </div>
                   </div>
                 </div>
+                
+                <!-- 后台执行选项 -->
+                <div class="step-background-option">
+                  <el-checkbox 
+                    v-model="stepServerConfigs[index].stepParams._BACKGROUND"
+                    :true-label="true"
+                    :false-label="false"
+                  >
+                    后台执行
+                  </el-checkbox>
+                  <el-tooltip content="后台执行的步骤不受网络中断影响，进程会在服务器上持续运行" placement="top">
+                    <el-icon class="field-tip-icon"><QuestionFilled /></el-icon>
+                  </el-tooltip>
+                </div>
               </div>
             </div>
           </div>
@@ -926,6 +940,20 @@ function restoreStepServerConfigs(stepServerMapping: Record<string, number[]>, s
             font-size: 12px;
             color: var(--el-text-color-placeholder);
           }
+        }
+      }
+      
+      .step-background-option {
+        margin-top: 12px;
+        padding: 8px 12px;
+        background: var(--el-fill-color-light);
+        border-radius: 4px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        
+        .el-checkbox {
+          font-weight: 500;
         }
       }
     }
