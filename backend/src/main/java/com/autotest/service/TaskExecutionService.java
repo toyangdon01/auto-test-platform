@@ -328,9 +328,6 @@ public class TaskExecutionService {
             }
         }
         
-        // 跟踪待完成的后台步骤: stepName -> serverId
-        Map<String, Long> pendingBackgroundSteps = new ConcurrentHashMap<>();
-        
         try {
             while (dag.hasPendingSteps()) {
                 if (context.isCancelled()) {
@@ -401,27 +398,11 @@ public class TaskExecutionService {
                             if (!localFlag && finalServer != null && !success) {
                                 serverFailedSteps.get(finalServer.getId()).incrementAndGet();
                             }
+                            dag.markAsComplete(stepName, success);
                             
-                            // 检查是否为后台执行步骤
-                            boolean isBackgroundStep = false;
-                            if (task.getStepParams() != null) {
-                                Map<String, Object> stepParam = task.getStepParams().get(stepName);
-                                if (stepParam != null && Boolean.TRUE.equals(stepParam.get("_BACKGROUND"))) {
-                                    isBackgroundStep = true;
-                                }
-                            }
-                            
-                            // 后台执行步骤不立即标记完成，等待后台进程结束
-                            if (isBackgroundStep && success) {
-                                Long serverId = localFlag ? null : (finalServer != null ? finalServer.getId() : null);
-                                pendingBackgroundSteps.put(stepName + "_" + serverId, serverId);
-                                log.info("后台步骤 {} 已启动，等待完成 (serverId={})", stepName, serverId);
-                            } else {
-                                dag.markAsComplete(stepName, success);
-                                // 同步更新 task_servers 状态
-                                if (!localFlag) {
-                                    updateTaskServerStatus(task.getId(), finalServer.getId(), success);
-                                }
+                            // 同步更新 task_servers 状态
+                            if (!localFlag) {
+                                updateTaskServerStatus(task.getId(), finalServer.getId(), success);
                             }
                         }, executor);
                         
@@ -430,16 +411,10 @@ public class TaskExecutionService {
                 }
                 
                 CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
-                
-                // 检查并等待后台步骤完成
-                waitForBackgroundSteps(context, task, pendingBackgroundSteps);
             }
         } finally {
             executor.shutdown();
         }
-        
-        // 最终等待所有后台步骤完成
-        waitForBackgroundSteps(context, task, pendingBackgroundSteps);
         
         // 计算成功的服务器数（没有任何失败步骤的服务器）
         int successCount = 0;
@@ -457,133 +432,6 @@ public class TaskExecutionService {
         }
         
         return successCount;
-    }
-
-    /**
-     * 等待后台步骤完成
-     * 轮询检查后台执行的步骤状态，直到所有步骤完成
-     */
-    private void waitForBackgroundSteps(ExecutionContext context, Task task, 
-                                         Map<String, Long> pendingBackgroundSteps) {
-        if (pendingBackgroundSteps.isEmpty()) {
-            return;
-        }
-        
-        context.log("[INFO] 等待 " + pendingBackgroundSteps.size() + " 个后台步骤完成...");
-        
-        int maxWaitTime = 3600; // 最大等待时间（秒），1小时
-        int waited = 0;
-        int pollInterval = 2000; // 轮询间隔（毫秒）
-        
-        while (!pendingBackgroundSteps.isEmpty() && waited < maxWaitTime) {
-            try {
-                Thread.sleep(pollInterval);
-            } catch (InterruptedException e) {
-                break;
-            }
-            waited += pollInterval / 1000;
-            
-            // 检查每个待完成的后台步骤
-            List<String> completedSteps = new ArrayList<>();
-            for (Map.Entry<String, Long> entry : pendingBackgroundSteps.entrySet()) {
-                String key = entry.getKey();
-                Long serverId = entry.getValue();
-                String[] parts = key.split("_", 2);
-                String stepName = parts[0];
-                
-                try {
-                    // 获取对应的 TaskStep
-                    TaskStep taskStep = taskStepMapper.findByTaskAndStepNameAndServer(
-                        task.getId(), stepName, serverId);
-                    
-                    if (taskStep == null) {
-                        completedSteps.add(key); // 找不到，可能已删除
-                        continue;
-                    }
-                    
-                    // 如果状态不是 running，说明已结束
-                    if (!"running".equals(taskStep.getStatus())) {
-                        context.log("[INFO] 后台步骤 " + stepName + " 已完成，状态: " + taskStep.getStatus());
-                        completedSteps.add(key);
-                        continue;
-                    }
-                    
-                    // 通过远程检查进程状态
-                    if (serverId != null) {
-                        Server server = serverMapper.selectById(serverId);
-                        if (server != null) {
-                            String workDir = "/tmp/test_platform/task_" + task.getId();
-                            String pidFile = workDir + "/" + stepName + ".pid";
-                            
-                            String checkCmd = String.format(
-                                "PID=$(cat %s 2>/dev/null); " +
-                                "if [ -n \"$PID\" ] && ps -p $PID > /dev/null 2>&1; then " +
-                                "  echo \"RUNNING\"; " +
-                                "else " +
-                                "  echo \"STOPPED\"; " +
-                                "fi", pidFile);
-                            
-                            SshService.ExecuteResult result = SshService.executeCommand(
-                                server, checkCmd, null, SshService.getDefaultTimeout());
-                            
-                            String status = result.getOutput().trim();
-                            if ("STOPPED".equals(status)) {
-                                // 进程已停止，读取退出码和最终日志
-                                String exitCodeFile = workDir + "/" + stepName + ".exit_code";
-                                Integer exitCode = null;
-                                try {
-                                    SshService.ExecuteResult ecResult = SshService.executeCommand(
-                                        server, "cat " + exitCodeFile + " 2>/dev/null", null, 5000);
-                                    String ecStr = ecResult.getOutput().trim();
-                                    if (!ecStr.isEmpty()) {
-                                        exitCode = Integer.parseInt(ecStr);
-                                    }
-                                } catch (Exception e) {
-                                    log.warn("读取退出码失败: {}", e.getMessage());
-                                }
-                                
-                                // 更新步骤状态
-                                taskStep.setStatus(exitCode != null && exitCode == 0 ? "success" : "failed");
-                                taskStep.setExitCode(exitCode);
-                                taskStep.setFinishedAt(LocalDateTime.now());
-                                taskStepMapper.updateById(taskStep);
-                                
-                                context.log("[INFO] 后台步骤 " + stepName + " 已停止，退出码: " + exitCode);
-                                completedSteps.add(key);
-                            }
-                        }
-                    }
-                } catch (Exception e) {
-                    log.warn("检查后台步骤 {} 状态失败: {}", stepName, e.getMessage());
-                }
-            }
-            
-            // 移除已完成的步骤
-            for (String key : completedSteps) {
-                pendingBackgroundSteps.remove(key);
-            }
-        }
-        
-        if (!pendingBackgroundSteps.isEmpty()) {
-            context.log("[WARN] 等待 " + pendingBackgroundSteps.size() + " 个后台步骤超时");
-            // 超时的步骤标记为失败
-            for (Map.Entry<String, Long> entry : pendingBackgroundSteps.entrySet()) {
-                String[] parts = entry.getKey().split("_", 2);
-                String stepName = parts[0];
-                Long serverId = entry.getValue();
-                
-                TaskStep taskStep = taskStepMapper.findByTaskAndStepNameAndServer(
-                    task.getId(), stepName, serverId);
-                if (taskStep != null && "running".equals(taskStep.getStatus())) {
-                    taskStep.setStatus("failed");
-                    taskStep.setErrorMessage("等待后台步骤完成超时");
-                    taskStep.setFinishedAt(LocalDateTime.now());
-                    taskStepMapper.updateById(taskStep);
-                }
-            }
-        } else {
-            context.log("[INFO] 所有后台步骤已完成");
-        }
     }
 
     /**
