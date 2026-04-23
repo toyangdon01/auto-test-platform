@@ -479,6 +479,35 @@
         <div v-else class="no-output">
           <el-empty description="暂无执行输出" :image-size="60" />
         </div>
+        
+        <!-- 收集的文件 -->
+        <div v-if="currentStep.outputFiles && currentStep.outputFiles.length > 0" class="mt-20">
+          <h4 class="section-title">
+            <el-icon><Folder /></el-icon>
+            收集的文件 ({{ currentStep.outputFiles.length }})
+          </h4>
+          <el-table :data="currentStep.outputFiles" size="small" border>
+            <el-table-column prop="name" label="文件名" min-width="200" />
+            <el-table-column prop="remotePath" label="远程路径" min-width="200" />
+            <el-table-column label="大小" width="100">
+              <template #default="{ row }">
+                {{ formatFileSize(row.size) }}
+              </template>
+            </el-table-column>
+            <el-table-column prop="type" label="类型" width="80">
+              <template #default="{ row }">
+                <el-tag size="small" effect="plain">{{ row.type === 'directory' ? '目录' : '文件' }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="120">
+              <template #default="{ row }">
+                <el-button type="primary" link size="small" @click="downloadCollectedFile(row)">
+                  <el-icon><Download /></el-icon>下载
+                </el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
       </template>
       <template #footer>
         <div class="dialog-footer">
@@ -543,7 +572,8 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { 
   VideoPlay, VideoPause, RefreshRight, Refresh, Loading,
   Monitor, Document, DataLine, CopyDocument, ArrowDown,
-  CircleCheck, CircleClose, Clock, Warning, Setting
+  CircleCheck, CircleClose, Clock, Warning, Setting,
+  Folder, Download
 } from '@element-plus/icons-vue'
 import request from '@/utils/request'
 import { taskApi, type TaskStep } from '@/api/task'
@@ -711,6 +741,41 @@ function formatTimeout(timeout?: number): string {
   if (timeout < 60000) return `${Math.round(timeout / 1000)}s`
   if (timeout < 3600000) return `${Math.round(timeout / 60000)}min`
   return `${(timeout / 3600000).toFixed(1)}h`
+}
+
+// 格式化文件大小
+function formatFileSize(size?: number): string {
+  if (!size) return '-'
+  if (size < 1024) return `${size}B`
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)}KB`
+  if (size < 1024 * 1024 * 1024) return `${(size / 1024 / 1024).toFixed(1)}MB`
+  return `${(size / 1024 / 1024 / 1024).toFixed(2)}GB`
+}
+
+// 下载收集的文件
+async function downloadCollectedFile(file: any) {
+  if (!currentStep.value || !file.name) return
+  
+  try {
+    const response = await axios.get(`/api/v1/tasks/steps/${currentStep.value.id}/files/${file.name}/download`, {
+      responseType: 'blob'
+    })
+    
+    const blob = new Blob([response.data])
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = file.name
+    document.body.appendChild(link)
+    link.click()
+    
+    setTimeout(() => {
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+    }, 100)
+  } catch (e: any) {
+    ElMessage.error(e.message || '下载失败')
+  }
 }
 
 // 根据服务器ID获取服务器名称
