@@ -28,6 +28,9 @@ import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
@@ -192,21 +195,33 @@ public class TaskController {
             return ApiResponse.error("文件不存在: " + fileName);
         }
         
-        String filePath = (String) targetFile.get("path");
+        String filePath = (String) targetFile.get("localPath");
+        if (filePath == null) {
+            filePath = (String) targetFile.get("path");  // 兼容旧数据
+        }
         if (filePath == null) {
             return ApiResponse.error("文件路径无效");
         }
         
         try {
-            // 读取文件内容（限制 1MB）
-            SshService.ExecuteResult result = SshService.executeCommand(server,
-                "cat " + filePath + " 2>/dev/null | head -c 1048576", null, 30000);
-            
-            if (result.getExitCode() != 0) {
-                return ApiResponse.error("读取文件失败");
+            // 读取本地文件内容
+            Path localPath = Paths.get(filePath);
+            if (!Files.exists(localPath)) {
+                return ApiResponse.error("文件不存在: " + filePath);
             }
             
-            return ApiResponse.success(Map.of("content", result.getOutput()));
+            // 限制读取 1MB
+            long maxSize = 1024 * 1024;
+            long fileSize = Files.size(localPath);
+            String content;
+            
+            if (fileSize > maxSize) {
+                content = Files.readString(localPath).substring(0, (int) maxSize);
+            } else {
+                content = Files.readString(localPath);
+            }
+            
+            return ApiResponse.success(Map.of("content", content, "size", String.valueOf(fileSize)));
         } catch (Exception e) {
             return ApiResponse.error("读取文件失败: " + e.getMessage());
         }
@@ -260,23 +275,24 @@ public class TaskController {
             return;
         }
         
-        String filePath = (String) targetFile.get("path");
+        String filePath = (String) targetFile.get("localPath");
+        if (filePath == null) {
+            filePath = (String) targetFile.get("path");  // 兼容旧数据
+        }
         if (filePath == null) {
             response.sendError(500, "文件路径无效");
             return;
         }
         
         try {
-            // 读取文件内容
-            SshService.ExecuteResult result = SshService.executeCommand(server,
-                "cat " + filePath + " 2>/dev/null", null, 60000);
-            
-            if (result.getExitCode() != 0) {
-                response.sendError(500, "读取文件失败");
+            // 读取本地文件
+            Path localPath = Paths.get(filePath);
+            if (!Files.exists(localPath)) {
+                response.sendError(404, "文件不存在");
                 return;
             }
             
-            byte[] fileContent = result.getOutput().getBytes(StandardCharsets.UTF_8);
+            byte[] fileContent = Files.readAllBytes(localPath);
             
             // 设置响应头
             String encodedFilename = URLEncoder.encode(fileName, StandardCharsets.UTF_8).replace("+", "%20");

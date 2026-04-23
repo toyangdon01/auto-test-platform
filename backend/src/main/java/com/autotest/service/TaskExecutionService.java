@@ -48,6 +48,9 @@ public class TaskExecutionService {
     @Value("${autotest.storage.scripts-path:C:/data/auto-test/scripts}")
     private String scriptsPath;
 
+    @Value("${autotest.storage.results-path}")
+    private String resultsPath;
+
     private static final Map<Long, ExecutionContext> runningTasks = new ConcurrentHashMap<>();
 
     // SSH Session 管理：stepId -> Session（用于 TaskStatusCheckService 检查）
@@ -839,6 +842,11 @@ public class TaskExecutionService {
                 
                 context.log("[DEBUG] 调用 createTestResult, fileContent=" + (fileContent != null ? "not null, length=" + fileContent.length() : "null"));
                 createTestResult(task, server, taskStep, scriptVersion, parseRule, fileContent, context);
+            }
+            
+            // 文件收集
+            if (success && stepConfig.isFileCollectEnabled()) {
+                collectFiles(stepConfig, taskStep, server, task, context);
             }
             
             // 关闭 SSH Session
@@ -2339,5 +2347,231 @@ public class TaskExecutionService {
         } else {
             log.warn("[后台步骤结果收集] 无结果内容，跳过");
         }
+    }
+    
+    // ==================== 文件收集 ====================
+    
+    /**
+     * 执行文件收集
+     */
+    private void collectFiles(StepDAG.StepConfig stepConfig, TaskStep taskStep, 
+                              Server server, Task task, ExecutionContext context) {
+        List<Map<String, Object>> fileCollects = stepConfig.getFileCollects();
+        if (fileCollects == null || fileCollects.isEmpty()) {
+            context.log("[INFO] 无文件收集配置");
+            return;
+        }
+        
+        // 本地存储目录
+        String localBaseDir = resultsPath.replace("${user.home}", System.getProperty("user.home"))
+            + "/task_" + task.getId() 
+            + "/server_" + (server != null ? server.getId() : 0)
+            + "/" + stepConfig.getName();
+        
+        try {
+            Files.createDirectories(Paths.get(localBaseDir));
+        } catch (Exception e) {
+            context.log("[ERROR] 创建目录失败: " + localBaseDir);
+            return;
+        }
+        
+        List<Map<String, Object>> collectedFiles = new ArrayList<>();
+        
+        for (Map<String, Object> rule : fileCollects) {
+            String name = (String) rule.get("name");
+            String pathPattern = (String) rule.get("path");
+            String type = (String) rule.get("type");  // file/directory/pattern
+            
+            // 内置变量替换
+            String actualPath = replaceBuiltInParams(pathPattern, task, server);
+            context.log("[INFO] 收集文件: " + actualPath + " (type=" + type + ")");
+            
+            try {
+                List<Map<String, Object>> files;
+                
+                switch (type) {
+                    case "file":
+                        files = collectSingleFile(server, actualPath, localBaseDir, name, context);
+                        break;
+                    case "directory":
+                        files = collectDirectory(server, actualPath, localBaseDir, name, context);
+                        break;
+                    case "pattern":
+                        files = collectByPattern(server, actualPath, localBaseDir, name, context);
+                        break;
+                    default:
+                        files = collectSingleFile(server, actualPath, localBaseDir, name, context);
+                }
+                
+                collectedFiles.addAll(files);
+                
+            } catch (Exception e) {
+                context.log("[WARN] 文件收集失败: " + actualPath + " - " + e.getMessage());
+            }
+        }
+        
+        taskStep.setOutputFiles(collectedFiles);
+        context.log("[INFO] 文件收集完成，共 " + collectedFiles.size() + " 个文件");
+    }
+    
+    /**
+     * 收集单个文件
+     */
+    private List<Map<String, Object>> collectSingleFile(Server server, String remotePath, 
+                                                          String localBaseDir, String name,
+                                                          ExecutionContext context) {
+        // 检查文件存在性
+        SshService.ExecuteResult check = SshService.executeCommand(
+            server, "test -f " + remotePath + " && echo exists", null, 10000);
+        
+        if (!"exists".equals(check.getOutput().trim())) {
+            context.log("[WARN] 文件不存在: " + remotePath);
+            return Collections.emptyList();
+        }
+        
+        // 获取文件大小
+        SshService.ExecuteResult sizeResult = SshService.executeCommand(
+            server, "stat -c %s " + remotePath + " 2>/dev/null || echo 0", null, 10000);
+        long size = Long.parseLong(sizeResult.getOutput().trim());
+        
+        // 生成本地文件名
+        String localFileName = (name != null && !name.isEmpty()) ? name : Paths.get(remotePath).getFileName().toString();
+        String localPath = localBaseDir + "/" + localFileName;
+        
+        // 下载文件
+        boolean downloaded = SshService.downloadFile(server, remotePath, localPath);
+        if (!downloaded) {
+            context.log("[WARN] 文件下载失败: " + remotePath);
+            return Collections.emptyList();
+        }
+        
+        context.log("[INFO] 下载文件: " + remotePath + " -> " + localPath);
+        
+        return Collections.singletonList(Map.of(
+            "name", localFileName,
+            "remotePath", remotePath,
+            "localPath", localPath,
+            "type", "file",
+            "size", size
+        ));
+    }
+    
+    /**
+     * 按通配符收集文件
+     */
+    private List<Map<String, Object>> collectByPattern(Server server, String pattern, 
+                                                         String localBaseDir, String namePrefix,
+                                                         ExecutionContext context) {
+        // 使用 ls 展开通配符
+        String cmd = "ls -1 " + pattern + " 2>/dev/null";
+        SshService.ExecuteResult result = SshService.executeCommand(server, cmd, null, 30000);
+        
+        if (result.getExitCode() != 0 || result.getOutput().trim().isEmpty()) {
+            context.log("[WARN] 未匹配到文件: " + pattern);
+            return Collections.emptyList();
+        }
+        
+        List<Map<String, Object>> files = new ArrayList<>();
+        String[] matchedFiles = result.getOutput().trim().split("\n");
+        
+        int index = 1;
+        for (String filePath : matchedFiles) {
+            filePath = filePath.trim();
+            if (filePath.isEmpty()) continue;
+            
+            // 检查是否为文件
+            SshService.ExecuteResult isFile = SshService.executeCommand(
+                server, "test -f " + filePath + " && echo yes", null, 10000);
+            if (!"yes".equals(isFile.getOutput().trim())) {
+                continue;  // 跳过目录
+            }
+            
+            // 获取文件大小
+            SshService.ExecuteResult sizeResult = SshService.executeCommand(
+                server, "stat -c %s " + filePath + " 2>/dev/null || echo 0", null, 10000);
+            long size = Long.parseLong(sizeResult.getOutput().trim());
+            
+            // 生成本地文件名
+            String fileName = Paths.get(filePath).getFileName().toString();
+            if (namePrefix != null && !namePrefix.isEmpty()) {
+                fileName = namePrefix + "_" + index + "_" + fileName;
+            }
+            String localPath = localBaseDir + "/" + fileName;
+            
+            // 下载文件
+            boolean downloaded = SshService.downloadFile(server, filePath, localPath);
+            if (downloaded) {
+                files.add(Map.of(
+                    "name", fileName,
+                    "remotePath", filePath,
+                    "localPath", localPath,
+                    "type", "file",
+                    "size", size
+                ));
+                context.log("[INFO] 下载文件: " + filePath + " -> " + localPath);
+            } else {
+                context.log("[WARN] 下载失败: " + filePath);
+            }
+            
+            index++;
+        }
+        
+        return files;
+    }
+    
+    /**
+     * 收集目录（打包下载）
+     */
+    private List<Map<String, Object>> collectDirectory(Server server, String remotePath, 
+                                                         String localBaseDir, String name,
+                                                         ExecutionContext context) {
+        // 检查目录存在性
+        SshService.ExecuteResult check = SshService.executeCommand(
+            server, "test -d " + remotePath + " && echo exists", null, 10000);
+        
+        if (!"exists".equals(check.getOutput().trim())) {
+            context.log("[WARN] 目录不存在: " + remotePath);
+            return Collections.emptyList();
+        }
+        
+        // 打包目录
+        String tarName = (name != null && !name.isEmpty()) ? name : Paths.get(remotePath).getFileName().toString();
+        tarName = tarName + ".tar.gz";
+        String remoteTar = "/tmp/collect_" + System.currentTimeMillis() + ".tar.gz";
+        
+        SshService.ExecuteResult tarResult = SshService.executeCommand(
+            server, "tar czf " + remoteTar + " -C " + remotePath + " . 2>/dev/null", null, 60000);
+        
+        if (tarResult.getExitCode() != 0) {
+            context.log("[WARN] 打包目录失败: " + remotePath);
+            return Collections.emptyList();
+        }
+        
+        // 获取压缩包大小
+        SshService.ExecuteResult sizeResult = SshService.executeCommand(
+            server, "stat -c %s " + remoteTar + " 2>/dev/null || echo 0", null, 10000);
+        long size = Long.parseLong(sizeResult.getOutput().trim());
+        
+        // 下载压缩包
+        String localPath = localBaseDir + "/" + tarName;
+        boolean downloaded = SshService.downloadFile(server, remoteTar, localPath);
+        
+        // 清理远程临时文件
+        SshService.executeCommand(server, "rm -f " + remoteTar, null, 10000);
+        
+        if (!downloaded) {
+            context.log("[WARN] 下载目录压缩包失败: " + remotePath);
+            return Collections.emptyList();
+        }
+        
+        context.log("[INFO] 下载目录: " + remotePath + " -> " + localPath);
+        
+        return Collections.singletonList(Map.of(
+            "name", tarName,
+            "remotePath", remotePath,
+            "localPath", localPath,
+            "type", "directory",
+            "size", size
+        ));
     }
 }
