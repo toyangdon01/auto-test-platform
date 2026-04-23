@@ -26,6 +26,7 @@ import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -125,6 +126,72 @@ public class TestResultController {
     @Operation(summary = "结果对比")
     public ApiResponse<ResultCompareResponse> compareResults(@RequestBody ResultCompareRequest request) {
         return ApiResponse.success(resultCompareService.compareResults(request));
+    }
+    
+    @PostMapping("/compare/export")
+    @Operation(summary = "导出对比结果")
+    public void exportCompareResults(@RequestBody ResultCompareRequest request, HttpServletResponse response) throws IOException {
+        ResultCompareResponse compareData = resultCompareService.compareResults(request);
+        
+        // 设置响应头
+        String fileName = "result_compare_" + System.currentTimeMillis() + ".csv";
+        String encodedFilename = URLEncoder.encode(fileName, StandardCharsets.UTF_8).replace("+", "%20");
+        response.setContentType("text/csv;charset=UTF-8");
+        response.setHeader("Content-Disposition", "attachment; filename*=UTF-8''" + encodedFilename);
+        
+        // 导出 CSV（添加 BOM 以支持 Excel 打开）
+        OutputStreamWriter writer = new OutputStreamWriter(response.getOutputStream(), StandardCharsets.UTF_8);
+        writer.write('\ufeff'); // BOM
+        
+        // 表头
+        if (compareData.getResults() != null && !compareData.getResults().isEmpty()) {
+            StringBuilder header = new StringBuilder("指标名称");
+            for (var result : compareData.getResults()) {
+                header.append(",").append(result.getTaskName() != null ? result.getTaskName() : "结果#" + result.getResultId());
+            }
+            header.append(",平均值,最小值,最大值\n");
+            writer.write(header.toString());
+            
+            // 数据行
+            if (compareData.getMetrics() != null) {
+                for (var metric : compareData.getMetrics()) {
+                    StringBuilder row = new StringBuilder(metric.getMetricName());
+                    
+                    if (metric.getValues() != null) {
+                        for (var value : metric.getValues()) {
+                            row.append(",");
+                            if (value.getValue() != null) {
+                                row.append(value.getDisplayValue());
+                            }
+                        }
+                    }
+                    
+                    // 计算统计值
+                    List<Double> numericValues = new ArrayList<>();
+                    if (metric.getValues() != null) {
+                        for (var v : metric.getValues()) {
+                            if (v.getValue() instanceof Number) {
+                                numericValues.add(((Number) v.getValue()).doubleValue());
+                            }
+                        }
+                    }
+                    
+                    if (!numericValues.isEmpty()) {
+                        double avg = numericValues.stream().mapToDouble(Double::doubleValue).average().orElse(0);
+                        double min = numericValues.stream().mapToDouble(Double::doubleValue).min().orElse(0);
+                        double max = numericValues.stream().mapToDouble(Double::doubleValue).max().orElse(0);
+                        row.append(String.format(",%.2f,%.2f,%.2f", avg, min, max));
+                    } else {
+                        row.append(",-,-,-");
+                    }
+                    
+                    row.append("\n");
+                    writer.write(row.toString());
+                }
+            }
+        }
+        
+        writer.flush();
     }
 
     @GetMapping("/trend-data")

@@ -2134,4 +2134,138 @@ public class TaskExecutionService {
             log.info("[recalculateTaskStatus] 任务 {} 状态无需更新, 当前状态: {}", taskId, task.getStatus());
         }
     }
+    
+    /**
+     * 为后台步骤收集结果
+     * 在后台步骤执行完成后调用
+     * 
+     * @param taskId 任务ID
+     * @param serverId 服务器ID
+     * @param stepName 步骤名称
+     */
+    public void collectResultForBackgroundStep(Long taskId, Long serverId, String stepName) {
+        log.info("[后台步骤结果收集] 任务 {} 步骤 {} 服务器 {}", taskId, stepName, serverId);
+        
+        // 1. 获取基本信息
+        Task task = taskMapper.selectById(taskId);
+        if (task == null) {
+            log.warn("[后台步骤结果收集] 任务不存在: {}", taskId);
+            return;
+        }
+        
+        Server server = null;
+        if (serverId != null) {
+            server = serverMapper.selectById(serverId);
+        }
+        if (server == null) {
+            log.warn("[后台步骤结果收集] 服务器不存在: {}", serverId);
+            return;
+        }
+        
+        TaskStep taskStep = taskStepMapper.findByTaskAndStepNameAndServer(taskId, stepName, serverId);
+        if (taskStep == null) {
+            log.warn("[后台步骤结果收集] 步骤不存在: {}", stepName);
+            return;
+        }
+        
+        // 只有成功的步骤才收集结果
+        if (!"success".equals(taskStep.getStatus())) {
+            log.info("[后台步骤结果收集] 步骤状态为 {}，跳过结果收集", taskStep.getStatus());
+            return;
+        }
+        
+        // 2. 获取脚本版本和步骤配置
+        Script script = scriptMapper.selectById(task.getScriptId());
+        if (script == null) {
+            log.warn("[后台步骤结果收集] 脚本不存在: {}", task.getScriptId());
+            return;
+        }
+        
+        ScriptVersion scriptVersion = scriptVersionMapper.selectOne(
+            new LambdaQueryWrapper<ScriptVersion>()
+                .eq(ScriptVersion::getScriptId, task.getScriptId())
+                .eq(ScriptVersion::getVersion, task.getScriptVersion())
+        );
+        if (scriptVersion == null) {
+            log.warn("[后台步骤结果收集] 脚本版本不存在: {} {}", task.getScriptId(), task.getScriptVersion());
+            return;
+        }
+        
+        // 3. 获取步骤配置
+        Map<String, Object> stepsConfig = scriptVersion.getSteps();
+        if (stepsConfig == null || stepsConfig.isEmpty()) {
+            log.info("[后台步骤结果收集] 脚本无步骤配置");
+            return;
+        }
+        
+        @SuppressWarnings("unchecked")
+        Map<String, Object> stepConfigMap = (Map<String, Object>) stepsConfig.get(stepName);
+        if (stepConfigMap == null) {
+            log.info("[后台步骤结果收集] 步骤 {} 无配置", stepName);
+            return;
+        }
+        
+        // 4. 检查是否需要结果收集
+        Boolean resultCollector = (Boolean) stepConfigMap.get("resultCollector");
+        Boolean resultParser = (Boolean) stepConfigMap.get("resultParser");
+        
+        // 如果设置了 resultParser=true，则 resultCollector 默认也为 true
+        if (Boolean.TRUE.equals(resultParser)) {
+            resultCollector = resultCollector != null ? resultCollector : true;
+        }
+        
+        if (!Boolean.TRUE.equals(resultCollector) && !Boolean.TRUE.equals(resultParser)) {
+            log.info("[后台步骤结果收集] 步骤未启用结果收集");
+            return;
+        }
+        
+        // 5. 获取解析规则
+        @SuppressWarnings("unchecked")
+        Map<String, Object> parseRule = (Map<String, Object>) stepConfigMap.get("parseRule");
+        if (parseRule == null) {
+            log.info("[后台步骤结果收集] 步骤无解析规则");
+            return;
+        }
+        
+        // 6. 读取结果内容
+        String inputSource = (String) parseRule.get("inputSource");
+        String fileContent = null;
+        
+        if ("file".equals(inputSource)) {
+            String filePattern = (String) parseRule.get("filePattern");
+            if (filePattern != null && !filePattern.isEmpty()) {
+                String actualFilePath = replaceBuiltInParams(filePattern, task, server);
+                log.info("[后台步骤结果收集] 读取结果文件: {}", actualFilePath);
+                
+                try {
+                    SshService.ExecuteResult fileResult = SshService.executeCommand(
+                        server, "cat " + actualFilePath, null, 30000);
+                    if (fileResult.getExitCode() == 0 && fileResult.getOutput() != null) {
+                        fileContent = fileResult.getOutput();
+                        log.info("[后台步骤结果收集] 文件内容长度: {}", fileContent.length());
+                    } else {
+                        log.warn("[后台步骤结果收集] 读取文件失败: {}", fileResult.getError());
+                    }
+                } catch (Exception e) {
+                    log.error("[后台步骤结果收集] 读取文件异常: {}", e.getMessage());
+                }
+            }
+        } else if ("stdout".equals(inputSource)) {
+            fileContent = taskStep.getOutput();
+            log.info("[后台步骤结果收集] 使用标准输出，内容长度: {}", 
+                fileContent != null ? fileContent.length() : 0);
+        }
+        
+        // 7. 创建测试结果
+        if (fileContent != null && !fileContent.isEmpty()) {
+            // 创建一个简单的日志记录器
+            ExecutionContext context = new ExecutionContext(taskId, line -> {
+                log.info("[后台步骤结果收集] {}", line);
+            });
+            createTestResult(task, server, taskStep, scriptVersion, parseRule, fileContent, context);
+            log.info("[后台步骤结果收集] 结果收集完成");
+        } else {
+            log.warn("[后台步骤结果收集] 无结果内容，跳过");
+        }
+    }
 }

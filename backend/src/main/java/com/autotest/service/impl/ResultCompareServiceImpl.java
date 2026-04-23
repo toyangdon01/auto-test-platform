@@ -106,8 +106,8 @@ public class ResultCompareServiceImpl implements ResultCompareService {
             point.put("result", r.getResult());
             point.put("score", r.getOverallScore());
 
-            if (metricName != null && r.getMetrics() != null) {
-                Object metricValue = extractMetricValue(r.getMetrics(), metricName);
+            if (metricName != null && r.getParsedData() != null) {
+                Object metricValue = extractMetricValue(r.getParsedData(), metricName);
                 point.put("value", metricValue);
             }
 
@@ -234,8 +234,8 @@ public class ResultCompareServiceImpl implements ResultCompareService {
         // 收集所有指标名称
         Set<String> allMetrics = new LinkedHashSet<>();
         for (TestResult r : results) {
-            if (r.getMetrics() != null) {
-                allMetrics.addAll(extractMetricNames(r.getMetrics()));
+            if (r.getParsedData() != null) {
+                allMetrics.addAll(extractMetricNames(r.getParsedData()));
             }
         }
 
@@ -253,7 +253,7 @@ public class ResultCompareServiceImpl implements ResultCompareService {
             List<Double> numericValues = new ArrayList<>();
 
             for (TestResult r : results) {
-                Object value = r.getMetrics() != null ? extractMetricValue(r.getMetrics(), metricName) : null;
+                Object value = r.getParsedData() != null ? extractMetricValue(r.getParsedData(), metricName) : null;
 
                 ResultCompareResponse.MetricValue mv = new ResultCompareResponse.MetricValue();
                 mv.setResultId(r.getId());
@@ -390,11 +390,16 @@ public class ResultCompareServiceImpl implements ResultCompareService {
                     // 检查是否是指标值对象（包含 value 字段）
                     Map<?, ?> valueMap = (Map<?, ?>) entry.getValue();
                     if (valueMap.containsKey("value")) {
-                        names.add(key);
+                        // 只添加数值类型的字段
+                        Object val = valueMap.get("value");
+                        if (val instanceof Number) {
+                            names.add(key);
+                        }
                     } else {
                         extractNamesRecursive(entry.getValue(), key, names);
                     }
-                } else if (!(entry.getValue() instanceof List)) {
+                } else if (entry.getValue() instanceof Number) {
+                    // 只添加数值类型的字段
                     names.add(key);
                 }
             }

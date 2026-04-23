@@ -33,36 +33,29 @@
           <el-button type="primary" @click="handleSearch">搜索</el-button>
           <el-button @click="handleReset">重置</el-button>
           <el-button type="success" @click="handleExport">导出</el-button>
+          <el-button type="warning" :disabled="selectedResults.length < 2" @click="handleCompare">对比</el-button>
         </el-form-item>
       </el-form>
     </div>
 
-    <!-- 统计卡片 - 已隐藏 -->
-    <!-- <div class="stats-row" v-if="statistics">
-      <div class="stat-card">
-        <div class="stat-value">{{ statistics.total }}</div>
-        <div class="stat-label">总结果</div>
-      </div>
-      <div class="stat-card success">
-        <div class="stat-value">{{ statistics.pass }}</div>
-        <div class="stat-label">通过</div>
-      </div>
-      <div class="stat-card warning">
-        <div class="stat-value">{{ statistics.warning }}</div>
-        <div class="stat-label">警告</div>
-      </div>
-      <div class="stat-card danger">
-        <div class="stat-value">{{ statistics.fail }}</div>
-        <div class="stat-label">失败</div>
-      </div>
-      <div class="stat-card info">
-        <div class="stat-value">{{ statistics.passRate }}%</div>
-        <div class="stat-label">通过率</div>
-      </div>
-    </div> -->
+    <!-- 提示信息 -->
+    <el-alert
+      v-if="selectedResults.length > 0"
+      :title="`已选择 ${selectedResults.length} 个结果${selectedResults.length >= 2 ? '，点击对比按钮进行数据对比' : '，至少需要选择2个结果'}`"
+      type="info"
+      show-icon
+      :closable="false"
+      style="margin-bottom: 16px"
+    />
 
     <!-- 表格 -->
-    <el-table :data="results" stripe v-loading="loading">
+    <el-table 
+      :data="results" 
+      stripe 
+      v-loading="loading"
+      @selection-change="handleSelectionChange"
+    >
+      <el-table-column type="selection" width="55" />
       <el-table-column prop="id" label="结果编号" width="100" />
       <el-table-column prop="taskName" label="所属任务" min-width="150">
         <template #default="{ row }">
@@ -135,6 +128,8 @@ interface TestResult {
   id: number
   taskId: number
   taskName?: string
+  scriptId?: number
+  scriptName?: string
   serverId: number
   serverName?: string
   taskServerId: number
@@ -165,6 +160,7 @@ const loading = ref(false)
 const results = ref<TestResult[]>([])
 const statistics = ref<Statistics | null>(null)
 const scripts = ref<{id: number, name: string}[]>([])
+const selectedResults = ref<TestResult[]>([])
 
 const searchForm = reactive({
   keyword: '',
@@ -250,6 +246,27 @@ function handleReset() {
 
 function handleDetail(row: TestResult) {
   router.push(`/results/detail/${row.id}`)
+}
+
+function handleSelectionChange(selection: TestResult[]) {
+  selectedResults.value = selection
+}
+
+function handleCompare() {
+  if (selectedResults.value.length < 2) {
+    ElMessage.warning('请至少选择2个结果进行对比')
+    return
+  }
+  
+  // 检查是否属于同一脚本
+  const scriptIds = new Set(selectedResults.value.map(r => r.scriptId).filter(Boolean))
+  if (scriptIds.size > 1) {
+    ElMessage.error('只能对比同一脚本下的结果')
+    return
+  }
+  
+  const ids = selectedResults.value.map(r => r.id).join(',')
+  router.push(`/results/compare?ids=${ids}`)
 }
 
 async function handleExport() {

@@ -478,7 +478,17 @@ public class TaskController {
                         taskStep.setFinishedAt(LocalDateTime.now());
                         taskStepMapper.updateById(taskStep);
                         
-                        log.info("[后台步骤] 步骤状态更新为: {}, 准备检查任务状态", taskStep.getStatus());
+                        log.info("[后台步骤] 步骤状态更新为: {}", taskStep.getStatus());
+                        
+                        // 收集结果（如果步骤配置了结果收集）
+                        if (exitCode != null && exitCode == 0) {
+                            try {
+                                taskExecutionService.collectResultForBackgroundStep(taskId, server.getId(), stepName);
+                            } catch (Exception e) {
+                                log.error("[后台步骤] 结果收集失败: {}", e.getMessage());
+                            }
+                        }
+                        
                         // 步骤状态变更，检查是否需要更新任务状态
                         taskExecutionService.recalculateTaskStatus(taskId);
                     } else {
@@ -492,6 +502,16 @@ public class TaskController {
                             taskStepMapper.updateById(taskStep);
                             
                             log.info("[后台步骤] 使用已有日志更新步骤状态为: {}", taskStep.getStatus());
+                            
+                            // 收集结果
+                            if (exitCode != null && exitCode == 0) {
+                                try {
+                                    taskExecutionService.collectResultForBackgroundStep(taskId, server.getId(), stepName);
+                                } catch (Exception e) {
+                                    log.error("[后台步骤] 结果收集失败: {}", e.getMessage());
+                                }
+                            }
+                            
                             taskExecutionService.recalculateTaskStatus(taskId);
                         }
                     }

@@ -176,6 +176,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '结果列表' },
       },
       {
+        path: 'compare',
+        name: 'ResultCompare',
+        component: () => import('@/views/results/compare.vue'),
+        meta: { title: '结果对比', hidden: true },
+      },
+      {
         path: 'detail/:id',
         name: 'ResultDetail',
         component: () => import('@/views/results/detail.vue'),

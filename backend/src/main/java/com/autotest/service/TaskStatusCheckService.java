@@ -148,12 +148,15 @@ public class TaskStatusCheckService {
             
             if (!result.isStillRunning()) {
                 // 步骤实际已停止，更新状态
-                log.info("[TaskStatusCheck] 任务 {} 步骤 {} 状态更新: {} -> {} (原因: {})", 
-                    task.getId(), step.getStepName(), step.getStatus(), result.getStatus(), result.getReason());
+                String oldStatus = step.getStatus();
+                String newStatus = result.getStatus();
                 
-                step.setStatus(result.getStatus());
+                log.info("[TaskStatusCheck] 任务 {} 步骤 {} 状态更新: {} -> {} (原因: {})", 
+                    task.getId(), step.getStepName(), oldStatus, newStatus, result.getReason());
+                
+                step.setStatus(newStatus);
                 // 只在失败/取消时设置错误信息，成功时不设置
-                if ("failed".equals(result.getStatus()) || "cancelled".equals(result.getStatus())) {
+                if ("failed".equals(newStatus) || "cancelled".equals(newStatus)) {
                     step.setErrorMessage(result.getReason());
                 }
                 if (result.getExitCode() != null) {
@@ -164,6 +167,16 @@ public class TaskStatusCheckService {
                 }
                 step.setFinishedAt(LocalDateTime.now());
                 taskStepMapper.updateById(step);
+                
+                // 如果是后台步骤且成功，收集结果
+                if ("running_bg".equals(oldStatus) && "success".equals(newStatus)) {
+                    try {
+                        taskExecutionService.collectResultForBackgroundStep(
+                            task.getId(), step.getServerId(), step.getStepName());
+                    } catch (Exception e) {
+                        log.error("[TaskStatusCheck] 收集后台步骤结果失败: {}", e.getMessage());
+                    }
+                }
                 
                 updated = true;
             } else {
