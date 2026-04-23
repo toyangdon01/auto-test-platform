@@ -32,6 +32,9 @@ public interface TestResultMapper extends BaseMapper<TestResult> {
             "  <if test='result != null and result != \"\"'>" +
             "    AND result = #{result}" +
             "  </if>" +
+            "  <if test='scriptId != null'>" +
+            "    AND script_id = #{scriptId}" +
+            "  </if>" +
             "  <if test='keyword != null and keyword != \"\"'>" +
             "    AND (task_name LIKE CONCAT('%', #{keyword}, '%') OR server_name LIKE CONCAT('%', #{keyword}, '%'))" +
             "  </if>" +
