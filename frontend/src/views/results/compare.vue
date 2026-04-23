@@ -21,8 +21,8 @@
           <el-table-column prop="metricName" label="指标名称" width="200" fixed />
           <el-table-column 
             v-for="(result, index) in compareData.results" 
-            :key="result.resultId"
-            :label="result.taskName || `结果#${result.resultId}`"
+            :key="result.id"
+            :label="result.taskName || `结果#${result.id}`"
             min-width="120"
           >
             <template #default="{ row }">
@@ -62,8 +62,8 @@
         <el-collapse>
           <el-collapse-item 
             v-for="result in compareData.results" 
-            :key="result.resultId"
-            :name="result.resultId"
+            :key="result.id"
+            :name="result.id"
           >
             <template #title>
               <span class="result-title">
@@ -73,7 +73,7 @@
               </span>
             </template>
             <el-descriptions :column="2" border size="small">
-              <el-descriptions-item label="结果ID">{{ result.resultId }}</el-descriptions-item>
+              <el-descriptions-item label="结果ID">{{ result.id }}</el-descriptions-item>
               <el-descriptions-item label="任务ID">{{ result.taskId }}</el-descriptions-item>
               <el-descriptions-item label="服务器">{{ result.serverName || '-' }}</el-descriptions-item>
               <el-descriptions-item label="得分">{{ result.overallScore ?? '-' }}</el-descriptions-item>
@@ -105,7 +105,7 @@ interface CompareData {
 }
 
 interface ResultItem {
-  resultId: number
+  id: number
   taskId: number
   taskName: string
   serverName: string
@@ -123,7 +123,7 @@ interface MetricCompare {
 }
 
 interface MetricValue {
-  resultId: number
+  id: number
   value: any
   displayValue: string
 }

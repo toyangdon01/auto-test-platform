@@ -50,7 +50,6 @@ public class ResultCompareResponse {
      */
     @Data
     public static class ResultItem {
-        private Long resultId;
         private Long id;
         private Long taskId;
         private Long serverId;

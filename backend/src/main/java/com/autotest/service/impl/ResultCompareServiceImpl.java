@@ -44,9 +44,21 @@ public class ResultCompareServiceImpl implements ResultCompareService {
             return response;
         }
 
-        // 构建结果项列表
+        // 批量查询 task 和 server 信息，避免 N+1
+        Map<Long, Task> taskMap = new HashMap<>();
+        Map<Long, Server> serverMap = new HashMap<>();
+        Set<Long> taskIds = results.stream().map(TestResult::getTaskId).filter(Objects::nonNull).collect(Collectors.toSet());
+        Set<Long> serverIds = results.stream().map(TestResult::getServerId).filter(Objects::nonNull).collect(Collectors.toSet());
+        if (!taskIds.isEmpty()) {
+            taskMapper.selectBatchIds(taskIds).forEach(t -> taskMap.put(t.getId(), t));
+        }
+        if (!serverIds.isEmpty()) {
+            serverMapper.selectBatchIds(serverIds).forEach(s -> serverMap.put(s.getId(), s));
+        }
+
+        // 构建结果项列表（使用批量查询的 Map）
         List<ResultCompareResponse.ResultItem> resultItems = results.stream()
-                .map(this::buildResultItem)
+                .map(r -> buildResultItem(r, taskMap, serverMap))
                 .collect(Collectors.toList());
         response.setResults(resultItems);
 
@@ -199,10 +211,13 @@ public class ResultCompareServiceImpl implements ResultCompareService {
 
     /**
      * 构建结果项
+     * @param result 测试结果
+     * @param taskMap 任务Map（批量查询，避免N+1）
+     * @param serverMap 服务器Map（批量查询，避免N+1）
      */
-    private ResultCompareResponse.ResultItem buildResultItem(TestResult result) {
+    private ResultCompareResponse.ResultItem buildResultItem(TestResult result, Map<Long, Task> taskMap, Map<Long, Server> serverMap) {
         ResultCompareResponse.ResultItem item = new ResultCompareResponse.ResultItem();
-        item.setResultId(result.getId());
+        item.setId(result.getId());
         item.setTaskId(result.getTaskId());
         item.setServerId(result.getServerId());
         item.setResult(result.getResult());
@@ -210,14 +225,13 @@ public class ResultCompareServiceImpl implements ResultCompareService {
         item.setDurationMs(result.getDurationMs());
         item.setExecutedAt(result.getCreatedAt() != null ? result.getCreatedAt().toString() : null);
 
-        // 获取任务名称
-        Task task = taskMapper.selectById(result.getTaskId());
+        // 从Map中获取，避免N+1查询
+        Task task = taskMap.get(result.getTaskId());
         if (task != null) {
             item.setTaskName(task.getName());
         }
 
-        // 获取服务器名称
-        Server server = serverMapper.selectById(result.getServerId());
+        Server server = serverMap.get(result.getServerId());
         if (server != null) {
             item.setServerName(server.getName());
         }

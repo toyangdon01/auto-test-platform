@@ -147,7 +147,7 @@ public class TestResultController {
         if (compareData.getResults() != null && !compareData.getResults().isEmpty()) {
             StringBuilder header = new StringBuilder("指标名称");
             for (var result : compareData.getResults()) {
-                header.append(",").append(result.getTaskName() != null ? result.getTaskName() : "结果#" + result.getResultId());
+                header.append(",").append(result.getTaskName() != null ? result.getTaskName() : "结果#" + result.getId());
             }
             header.append(",平均值,最小值,最大值\n");
             writer.write(header.toString());
