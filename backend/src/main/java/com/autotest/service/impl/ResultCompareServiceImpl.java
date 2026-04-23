@@ -424,6 +424,12 @@ public class ResultCompareServiceImpl implements ResultCompareService {
      * 提取指标值
      */
     private Object extractMetricValue(Map<String, Object> metrics, String metricName) {
+        // 首先尝试直接用完整 key 查找（支持扁平和嵌套两种结构）
+        if (metrics.containsKey(metricName)) {
+            return metrics.get(metricName);
+        }
+        
+        // 如果找不到，尝试嵌套查找
         String[] parts = metricName.split("\\.");
         Object current = metrics;
 

@@ -17,15 +17,13 @@
           />
         </el-form-item>
         <el-form-item label="结果状态">
-          <el-select v-model="searchForm.result" placeholder="全部" clearable style="width: 120px">
+          <el-select v-model="searchForm.result" placeholder="全部" clearable style="width: 120px" @change="handleSearch">
             <el-option label="通过" value="pass" />
-            <el-option label="警告" value="warning" />
             <el-option label="失败" value="fail" />
-            <el-option label="错误" value="error" />
           </el-select>
         </el-form-item>
         <el-form-item label="所属脚本">
-          <el-select v-model="searchForm.scriptId" placeholder="全部" clearable style="width: 180px">
+          <el-select v-model="searchForm.scriptId" placeholder="全部" clearable style="width: 180px" @change="handleSearch">
             <el-option v-for="script in scripts" :key="script.id" :label="script.name" :value="script.id" />
           </el-select>
         </el-form-item>
@@ -72,9 +70,11 @@
           <span>{{ row.serverName || `服务器 #${row.serverId}` }}</span>
         </template>
       </el-table-column>
-      <el-table-column prop="result" label="结果" width="100">
+      <el-table-column prop="result" label="结果" width="120">
         <template #default="{ row }">
-          <el-tag :type="getResultType(row.result)">{{ getResultLabel(row.result) }}</el-tag>
+          <el-tooltip :content="getResultTooltip(row.result)" placement="top">
+            <el-tag :type="getResultType(row.result)">{{ getResultLabel(row.result) }}</el-tag>
+          </el-tooltip>
         </template>
       </el-table-column>
       <el-table-column prop="overallScore" label="得分" width="80">
@@ -146,19 +146,8 @@ interface TestResult {
   createdAt: string
 }
 
-interface Statistics {
-  total: number
-  pass: number
-  fail: number
-  warning: number
-  error: number
-  passRate: number
-  avgScore: number
-}
-
 const loading = ref(false)
 const results = ref<TestResult[]>([])
-const statistics = ref<Statistics | null>(null)
 const scripts = ref<{id: number, name: string}[]>([])
 const selectedResults = ref<TestResult[]>([])
 
@@ -176,7 +165,6 @@ const pagination = reactive({
 
 onMounted(() => {
   fetchResults()
-  fetchStatistics()
   fetchScripts()
 })
 
@@ -206,17 +194,6 @@ async function fetchResults() {
     console.error('获取结果列表失败:', error)
   } finally {
     loading.value = false
-  }
-}
-
-async function fetchStatistics() {
-  try {
-    const res = await request.get('/results/statistics')
-    if (res.code === 0) {
-      statistics.value = res.data
-    }
-  } catch (error) {
-    console.error('获取统计数据失败:', error)
   }
 }
 
@@ -321,6 +298,16 @@ function getResultLabel(result: string) {
     error: '错误',
   }
   return labels[result] || result
+}
+
+function getResultTooltip(result: string) {
+  const tooltips: Record<string, string> = {
+    pass: '测试完全通过，所有指标符合预期',
+    warning: '测试有警告，部分指标超出预期但未失败',
+    fail: '测试失败，指标未达到预期标准',
+    error: '执行出错，可能是脚本错误、连接失败等',
+  }
+  return tooltips[result] || result
 }
 
 function getScoreClass(score: number) {

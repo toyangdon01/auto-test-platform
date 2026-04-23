@@ -1,8 +1,9 @@
 <template>
   <div class="page-card">
     <div class="page-header">
-      <h3 class="page-title">结果对比</h3>
-      <el-button type="success" @click="handleExport">导出CSV</el-button>
+      <el-button @click="handleBack" style="margin-right: 16px">← 返回</el-button>
+      <h3 class="page-title" style="display: inline-block; margin: 0">结果对比</h3>
+      <el-button type="success" @click="handleExport" style="float: right">导出CSV</el-button>
     </div>
 
     <div v-loading="loading">
@@ -199,6 +200,10 @@ async function handleExport() {
     console.error('导出失败:', e)
     ElMessage.error(e.message || '导出失败')
   }
+}
+
+function handleBack() {
+  router.back()
 }
 
 function formatStat(values: MetricValue[] | undefined): string {

@@ -18,28 +18,29 @@ import org.apache.ibatis.annotations.Select;
 public interface TestResultMapper extends BaseMapper<TestResult> {
     
     /**
-     * 分页查询结果（冗余字段已存储名称，无需 JOIN）
+     * 分页查询结果（通过 LEFT JOIN tasks 关联查询 script_id）
      */
     @Select("<script>" +
-            "SELECT * FROM test_results " +
+            "SELECT tr.* FROM test_results tr " +
+            "LEFT JOIN tasks t ON tr.task_id = t.id " +
             "<where>" +
             "  <if test='taskId != null'>" +
-            "    AND task_id = #{taskId}" +
+            "    AND tr.task_id = #{taskId}" +
             "  </if>" +
             "  <if test='serverId != null'>" +
-            "    AND server_id = #{serverId}" +
+            "    AND tr.server_id = #{serverId}" +
             "  </if>" +
-            "  <if test='result != null and result != \"\"'>" +
-            "    AND result = #{result}" +
+            "  <if test='result != null and result != &quot;&quot;'>" +
+            "    AND tr.result = #{result}" +
             "  </if>" +
             "  <if test='scriptId != null'>" +
-            "    AND script_id = #{scriptId}" +
+            "    AND t.script_id = #{scriptId}" +
             "  </if>" +
-            "  <if test='keyword != null and keyword != \"\"'>" +
-            "    AND (task_name LIKE CONCAT('%', #{keyword}, '%') OR server_name LIKE CONCAT('%', #{keyword}, '%'))" +
+            "  <if test='keyword != null and keyword != &quot;&quot;'>" +
+            "    AND (tr.task_name LIKE CONCAT('%', #{keyword}, '%') OR tr.server_name LIKE CONCAT('%', #{keyword}, '%'))" +
             "  </if>" +
             "</where>" +
-            "ORDER BY id DESC" +
+            "ORDER BY tr.created_at DESC" +
             "</script>")
     IPage<TestResult> selectPageWithNames(Page<TestResult> page,
                                            @Param("taskId") Long taskId,
