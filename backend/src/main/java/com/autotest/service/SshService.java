@@ -619,6 +619,138 @@ public class SshService {
     }
 
     /**
+     * 创建并连接 SSH Session（保持连接，用于后续复用）
+     * @param server 服务器信息
+     * @return 保持连接的 Session 对象
+     */
+    public static Session createConnectedSession(Server server) throws JSchException {
+        JSch jsch = new JSch();
+        Session session = createSession(jsch, server);
+        session.setTimeout(defaultTimeout);
+        session.connect(defaultTimeout);
+        return session;
+    }
+
+    /**
+     * 关闭 SSH Session
+     */
+    public static void closeSession(Session session) {
+        if (session != null && session.isConnected()) {
+            session.disconnect();
+        }
+    }
+
+    /**
+     * 使用已有 Session 执行远程命令（不关闭 Session）
+     *
+     * @param session      已有 SSH Session
+     * @param command      命令
+     * @param outputCallback 实时输出回调（可为null）
+     * @param timeoutMs    超时时间（毫秒）
+     * @return 执行结果
+     */
+    public static ExecuteResult executeCommandWithSession(Session session, String command, Consumer<String> outputCallback, int timeoutMs) {
+        return executeCommandWithSession(session, command, outputCallback, timeoutMs, false);
+    }
+
+    /**
+     * 使用已有 Session 执行远程命令（不关闭 Session）
+     *
+     * @param session      已有 SSH Session
+     * @param command      命令
+     * @param outputCallback 实时输出回调（可为null）
+     * @param timeoutMs    超时时间（毫秒）
+     * @param pty          是否启用 PTY 模式
+     * @return 执行结果
+     */
+    public static ExecuteResult executeCommandWithSession(Session session, String command, Consumer<String> outputCallback, int timeoutMs, boolean pty) {
+        ChannelExec channel = null;
+        ExecuteResult result = new ExecuteResult();
+        long startTime = System.currentTimeMillis();
+        
+        try {
+            channel = (ChannelExec) session.openChannel("exec");
+            channel.setCommand(command);
+            
+            if (pty) {
+                // 启用 PTY 模式
+                channel.setPty(true);
+                channel.setPtyType("xterm", 120, 24, 960, 480);
+            }
+            
+            InputStream in = channel.getInputStream();
+            InputStream err = pty ? null : channel.getErrStream();
+            
+            channel.connect(defaultTimeout);
+            
+            StringBuilder stdout = new StringBuilder();
+            StringBuilder stderr = new StringBuilder();
+            byte[] buffer = new byte[4096];
+            
+            while (true) {
+                if (System.currentTimeMillis() - startTime > timeoutMs) {
+                    result.setExitCode(-1);
+                    result.setError("Timeout after " + timeoutMs + "ms");
+                    break;
+                }
+                
+                while (in.available() > 0) {
+                    int len = in.read(buffer, 0, 4096);
+                    if (len < 0) break;
+                    String output = new String(buffer, 0, len, StandardCharsets.UTF_8);
+                    stdout.append(output);
+                    if (outputCallback != null) {
+                        outputCallback.accept(output);
+                    }
+                }
+                
+                if (!pty && err != null) {
+                    while (err.available() > 0) {
+                        int len = err.read(buffer, 0, 4096);
+                        if (len < 0) break;
+                        String error = new String(buffer, 0, len, StandardCharsets.UTF_8);
+                        stderr.append(error);
+                        if (outputCallback != null) {
+                            outputCallback.accept(error);
+                        }
+                    }
+                }
+                
+                if (channel.isClosed()) {
+                    while (in.available() > 0) {
+                        int len = in.read(buffer, 0, 4096);
+                        if (len < 0) break;
+                        String output = new String(buffer, 0, len, StandardCharsets.UTF_8);
+                        stdout.append(output);
+                        if (outputCallback != null) {
+                            outputCallback.accept(output);
+                        }
+                    }
+                    result.setExitCode(channel.getExitStatus());
+                    break;
+                }
+                
+                Thread.sleep(pty ? 50 : 100);
+            }
+            
+            result.setStdout(stdout.toString());
+            result.setStderr(stderr.toString());
+            result.setOutput(stdout.toString() + stderr.toString());
+            result.setDurationMs(System.currentTimeMillis() - startTime);
+            
+        } catch (Exception e) {
+            result.setError(e.getMessage());
+            result.setExitCode(-1);
+        } finally {
+            if (channel != null) {
+                channel.disconnect();
+            }
+        }
+        
+        return result;
+    }
+
+    /**
      * 执行结果
      */
     public static class ExecuteResult {

@@ -11,6 +11,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import com.jcraft.jsch.Session;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -48,6 +49,32 @@ public class TaskExecutionService {
     private String scriptsPath;
 
     private static final Map<Long, ExecutionContext> runningTasks = new ConcurrentHashMap<>();
+
+    // SSH Session 管理：stepId -> Session（用于 TaskStatusCheckService 检查）
+    private final Map<Long, Session> stepSessionMap = new ConcurrentHashMap<>();
+
+    // ==================== SSH Session 管理 ====================
+
+    /**
+     * 保存步骤的 SSH Session
+     */
+    public void saveStepSession(Long stepId, Session session) {
+        stepSessionMap.put(stepId, session);
+    }
+
+    /**
+     * 获取步骤的 SSH Session
+     */
+    public Session getStepSession(Long stepId) {
+        return stepSessionMap.get(stepId);
+    }
+
+    /**
+     * 移除步骤的 SSH Session
+     */
+    public Session removeStepSession(Long stepId) {
+        return stepSessionMap.remove(stepId);
+    }
 
     // ==================== 公共方法 ====================
 
@@ -574,6 +601,7 @@ public class TaskExecutionService {
             taskStepMapper.updateById(taskStep);
         }
         
+        Session session = null;
         try {
             // 本地执行模式
             if (isLocal) {
@@ -726,8 +754,13 @@ public class TaskExecutionService {
             };
             
             int timeout = task.getTimeout() != null ? task.getTimeout() : 86400000; // 使用任务配置的超时时间，默认 24 小时
+            
+            // 创建并保存 SSH Session（用于后续状态检查）
+            session = SshService.createConnectedSession(server);
+            stepSessionMap.put(taskStep.getId(), session);
+            
             // 使用 PTY 模式执行用户脚本，以支持 fio 等实时更新输出的程序
-            SshService.ExecuteResult execResult = SshService.executeCommandPty(server, command, logConsumer, timeout);
+            SshService.ExecuteResult execResult = SshService.executeCommandWithSession(session, command, logConsumer, timeout, true);
             
             // 处理缓冲区中剩余的内容
             synchronized(logBuilder) {
@@ -804,10 +837,18 @@ public class TaskExecutionService {
                 createTestResult(task, server, taskStep, scriptVersion, parseRule, fileContent, context);
             }
             
+            // 关闭 SSH Session
+            SshService.closeSession(session);
+            stepSessionMap.remove(taskStep.getId());
+            
             taskStepMapper.updateById(taskStep);
             return success;
             
         } catch (Exception e) {
+            // 关闭 SSH Session
+            SshService.closeSession(session);
+            stepSessionMap.remove(taskStep.getId());
+            
             context.log("[ERROR] 步骤执行异常: " + e.getMessage());
             taskStep.setStatus("failed");
             taskStep.setErrorMessage(e.getMessage());
@@ -2009,7 +2050,7 @@ public class TaskExecutionService {
     }
     
     /**
-     * 检查正常步骤状态
+     * 检查正常步骤状态 - 基于 SSH Session 存活判断
      */
     private StepStatusCheckResult checkNormalStepStatus(Task task, TaskStep step, Server server, String workDir) {
         // 1. 检查超时
@@ -2020,30 +2061,29 @@ public class TaskExecutionService {
             }
         }
         
-        // 2. 检查工作目录下是否有相关进程
-        try {
-            // 查找与该任务工作目录相关的进程
-            String checkCmd = String.format(
-                "ps -deo pid,ppid,stat,cmd 2>/dev/null | " +
-                "grep '%s' | grep -v grep | head -10 || echo ''",
-                workDir);
-            
-            SshService.ExecuteResult result = SshService.executeCommand(
-                server, checkCmd, null, 5000);
-            
-            String output = result.getOutput();
-            if (output != null && !output.trim().isEmpty()) {
-                // 仍有相关进程在运行
-                return StepStatusCheckResult.running();
+        // 2. 检查 Session 存活
+        Session session = stepSessionMap.get(step.getId());
+        
+        if (session == null) {
+            // Session 不存在，可能是正常结束或异常，先查 DB 确认
+            TaskStep dbStep = taskStepMapper.selectById(step.getId());
+            if (dbStep != null && "running".equals(dbStep.getStatus())) {
+                return StepStatusCheckResult.failed("SESSION_NOT_FOUND");
             }
-            
-            // 进程已消失但状态还是 running，说明异常终止
-            return StepStatusCheckResult.failed("NORMAL_PROCESS_DIED");
-            
-        } catch (Exception e) {
-            log.error("检查正常步骤 {} 状态失败: {}", step.getStepName(), e.getMessage());
-            return StepStatusCheckResult.running("CHECK_FAILED: " + e.getMessage());
+            return StepStatusCheckResult.running("SESSION_NOT_FOUND_BUT_STEP_FINISHED");
         }
+        
+        if (!session.isConnected()) {
+            // Session 断开，再确认 DB 中的状态
+            TaskStep dbStep = taskStepMapper.selectById(step.getId());
+            if (dbStep != null && "running".equals(dbStep.getStatus())) {
+                return StepStatusCheckResult.failed("SESSION_DEAD");
+            }
+            // DB 已经不是 running，维持原状态
+            return StepStatusCheckResult.running("SESSION_DEAD_BUT_STEP_FINISHED");
+        }
+        
+        return StepStatusCheckResult.running();
     }
     
     /**
