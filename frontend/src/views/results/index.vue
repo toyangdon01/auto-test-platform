@@ -77,11 +77,6 @@
           </el-tooltip>
         </template>
       </el-table-column>
-      <el-table-column prop="overallScore" label="得分" width="80">
-        <template #default="{ row }">
-          <span :class="getScoreClass(row.overallScore)">{{ row.overallScore ?? '-' }}</span>
-        </template>
-      </el-table-column>
       <el-table-column prop="durationMs" label="耗时" width="100">
         <template #default="{ row }">
           {{ formatDuration(row.durationMs) }}
@@ -135,7 +130,6 @@ interface TestResult {
   taskServerId: number
   result: string
   resultReason: string
-  overallScore: number
   metrics: Record<string, any>
   rawOutput: string
   rawError: string
@@ -164,6 +158,22 @@ const pagination = reactive({
 })
 
 onMounted(() => {
+  // 尝试恢复之前的搜索条件
+  const savedSearch = sessionStorage.getItem('results_search')
+  if (savedSearch) {
+    try {
+      const saved = JSON.parse(savedSearch)
+      pagination.page = saved.page || 1
+      pagination.pageSize = saved.pageSize || 10
+      searchForm.result = saved.result || ''
+      searchForm.keyword = saved.keyword || ''
+      searchForm.scriptId = saved.scriptId || ''
+      sessionStorage.removeItem('results_search')
+    } catch (e) {
+      console.error('恢复搜索条件失败:', e)
+    }
+  }
+  
   fetchResults()
   fetchScripts()
 })
@@ -243,6 +253,14 @@ function handleCompare() {
   }
   
   const ids = selectedResults.value.map(r => r.id).join(',')
+  
+  // 保存当前分页和搜索条件
+  sessionStorage.setItem('results_search', JSON.stringify({
+    page: pagination.page,
+    pageSize: pagination.pageSize,
+    ...searchForm
+  }))
+  
   router.push(`/results/compare?ids=${ids}`)
 }
 
@@ -310,11 +328,7 @@ function getResultTooltip(result: string) {
   return tooltips[result] || result
 }
 
-function getScoreClass(score: number) {
-  if (score >= 80) return 'score-high'
-  if (score >= 60) return 'score-medium'
-  return 'score-low'
-}
+
 </script>
 
 <style scoped>

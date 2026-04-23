@@ -1418,6 +1418,12 @@ public class TaskExecutionService {
         testResult.setStartedAt(taskStep.getStartedAt());
         testResult.setFinishedAt(taskStep.getFinishedAt());
         
+        // 计算耗时
+        if (taskStep.getStartedAt() != null && taskStep.getFinishedAt() != null) {
+            long durationMs = java.time.Duration.between(taskStep.getStartedAt(), taskStep.getFinishedAt()).toMillis();
+            testResult.setDurationMs(durationMs);
+        }
+        
         // 获取脚本名称（冗余）
         if (scriptVersion != null && scriptVersion.getScriptId() != null) {
             Script script = scriptMapper.selectById(scriptVersion.getScriptId());

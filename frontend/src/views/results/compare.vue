@@ -23,9 +23,15 @@
           <el-table-column 
             v-for="(result, index) in compareData.results" 
             :key="result.id"
-            :label="result.taskName || `结果#${result.id}`"
-            min-width="120"
+            label="测试结果"
+            min-width="140"
           >
+            <template #header>
+              <div style="text-align: center">
+                <div>{{ result.taskName || '结果#' + result.id }}</div>
+                <div style="font-size: 12px; color: #909399">{{ result.serverName || '' }}</div>
+              </div>
+            </template>
             <template #default="{ row }">
               <span :class="getValueClass(row.values?.[index]?.value)">
                 {{ row.values?.[index]?.displayValue || '-' }}
@@ -48,7 +54,18 @@
             <template #default="{ row }">
               <el-tag v-if="row.trend === 'up'" type="success" size="small">上升</el-tag>
               <el-tag v-else-if="row.trend === 'down'" type="danger" size="small">下降</el-tag>
+              <el-tag v-else-if="row.trend === 'unstable'" type="warning" size="small">波动</el-tag>
               <el-tag v-else type="info" size="small">稳定</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="最大值" width="120">
+            <template #default="{ row }">
+              <span class="stat-value">{{ row.maxValue ?? '-' }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="最小值" width="120">
+            <template #default="{ row }">
+              <span class="stat-value">{{ row.minValue ?? '-' }}</span>
             </template>
           </el-table-column>
         </el-table>

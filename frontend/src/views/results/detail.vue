@@ -22,10 +22,6 @@
             {{ resultText }}
           </el-tag>
         </el-descriptions-item>
-        <el-descriptions-item label="综合评分">
-          <span :class="scoreClass" class="score-text">{{ detail.overallScore ?? '-' }}</span>
-          <span v-if="detail.overallScore != null">分</span>
-        </el-descriptions-item>
         <el-descriptions-item label="执行时长">
           {{ formatDuration(detail.durationMs) }}
         </el-descriptions-item>
@@ -232,14 +228,7 @@ const resultText = computed(() => {
   return map[detail.value?.result || ''] || detail.value?.result || '-'
 })
 
-const scoreClass = computed(() => {
-  const score = detail.value?.overallScore
-  if (score == null) return ''
-  if (score >= 90) return 'score-excellent'
-  if (score >= 70) return 'score-good'
-  if (score >= 50) return 'score-warning'
-  return 'score-danger'
-})
+
 
 const outputFileList = computed(() => {
   if (!detail.value?.outputFiles?.files) return []

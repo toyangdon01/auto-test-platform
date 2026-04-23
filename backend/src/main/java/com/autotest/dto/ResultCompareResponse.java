@@ -69,8 +69,10 @@ public class ResultCompareResponse {
     public static class MetricCompare {
         private String metricName;
         private List<MetricValue> values;
-        private Double changeRate;
+        private Double changeRate;  // 环比变化率（相邻结果的变化率绝对值的最大值）
         private String trend;  // up / down / stable
+        private Object maxValue;  // 最大值
+        private Object minValue;  // 最小值
     }
     
     /**

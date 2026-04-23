@@ -20,7 +20,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 /**
- * 结果对比服务实现
+ * 缁撴灉瀵规瘮鏈嶅姟瀹炵幇
  *
  * @author auto-test-platform
  */
@@ -38,13 +38,13 @@ public class ResultCompareServiceImpl implements ResultCompareService {
         ResultCompareResponse response = new ResultCompareResponse();
         response.setCompareType(request.getCompareType());
 
-        // 获取要对比的结果
+        // 鑾峰彇瑕佸姣旂殑缁撴灉
         List<TestResult> results = getResultsForCompare(request);
         if (results.isEmpty()) {
             return response;
         }
 
-        // 批量查询 task 和 server 信息，避免 N+1
+        // 鎵归噺鏌ヨ task 鍜?server 淇℃伅锛岄伩鍏?N+1
         Map<Long, Task> taskMap = new HashMap<>();
         Map<Long, Server> serverMap = new HashMap<>();
         Set<Long> taskIds = results.stream().map(TestResult::getTaskId).filter(Objects::nonNull).collect(Collectors.toSet());
@@ -56,21 +56,21 @@ public class ResultCompareServiceImpl implements ResultCompareService {
             serverMapper.selectBatchIds(serverIds).forEach(s -> serverMap.put(s.getId(), s));
         }
 
-        // 构建结果项列表（使用批量查询的 Map）
+        // 鏋勫缓缁撴灉椤瑰垪琛紙浣跨敤鎵归噺鏌ヨ鐨?Map锛?
         List<ResultCompareResponse.ResultItem> resultItems = results.stream()
                 .map(r -> buildResultItem(r, taskMap, serverMap))
                 .collect(Collectors.toList());
         response.setResults(resultItems);
 
-        // 指标对比
+        // 鎸囨爣瀵规瘮
         List<ResultCompareResponse.MetricCompare> metricCompares = compareMetrics(results, request.getMetricNames());
         response.setMetrics(metricCompares);
 
-        // 差异分析
+        // 宸紓鍒嗘瀽
         List<ResultCompareResponse.DiffItem> differences = analyzeDifferences(results);
         response.setDifferences(differences);
 
-        // 统计信息
+        // 缁熻淇℃伅
         response.setStatistics(calculateStatistics(results));
 
         return response;
@@ -80,7 +80,7 @@ public class ResultCompareServiceImpl implements ResultCompareService {
     public Map<String, Object> getTrendData(Long scriptId, Long serverId, String metricName, Integer days) {
         Map<String, Object> result = new LinkedHashMap<>();
 
-        // 构建查询条件
+        // 鏋勫缓鏌ヨ鏉′欢
         LocalDateTime endTime = LocalDateTime.now();
         LocalDateTime startTime = endTime.minusDays(days != null ? days : 7);
 
@@ -89,7 +89,7 @@ public class ResultCompareServiceImpl implements ResultCompareService {
                 .le(TestResult::getCreatedAt, endTime)
                 .orderByAsc(TestResult::getCreatedAt);
 
-        // 如果指定了脚本ID，需要通过任务关联
+        // 濡傛灉鎸囧畾浜嗚剼鏈琁D锛岄渶瑕侀€氳繃浠诲姟鍏宠仈
         if (scriptId != null) {
             List<Long> taskIds = taskMapper.selectList(
                     new LambdaQueryWrapper<Task>().eq(Task::getScriptId, scriptId)
@@ -107,7 +107,7 @@ public class ResultCompareServiceImpl implements ResultCompareService {
 
         List<TestResult> results = testResultMapper.selectList(wrapper);
 
-        // 提取趋势数据
+        // 鎻愬彇瓒嬪娍鏁版嵁
         List<Map<String, Object>> dataPoints = new ArrayList<>();
         for (TestResult r : results) {
             Map<String, Object> point = new LinkedHashMap<>();
@@ -129,7 +129,7 @@ public class ResultCompareServiceImpl implements ResultCompareService {
         result.put("dataPoints", dataPoints);
         result.put("total", results.size());
 
-        // 计算统计
+        // 璁＄畻缁熻
         if (!dataPoints.isEmpty()) {
             Map<String, Object> stats = new LinkedHashMap<>();
             stats.put("passCount", results.stream().filter(r -> "pass".equals(r.getResult())).count());
@@ -153,7 +153,7 @@ public class ResultCompareServiceImpl implements ResultCompareService {
             return result;
         }
 
-        // 获取同脚本的其他任务结果
+        // 鑾峰彇鍚岃剼鏈殑鍏朵粬浠诲姟缁撴灉
         List<Task> sameScriptTasks = taskMapper.selectList(
                 new LambdaQueryWrapper<Task>()
                         .eq(Task::getScriptId, task.getScriptId())
@@ -176,7 +176,7 @@ public class ResultCompareServiceImpl implements ResultCompareService {
     }
 
     /**
-     * 获取要对比的结果列表
+     * 鑾峰彇瑕佸姣旂殑缁撴灉鍒楄〃
      */
     private List<TestResult> getResultsForCompare(ResultCompareRequest request) {
         if (request.getResultIds() != null && !request.getResultIds().isEmpty()) {
@@ -210,10 +210,10 @@ public class ResultCompareServiceImpl implements ResultCompareService {
     }
 
     /**
-     * 构建结果项
-     * @param result 测试结果
-     * @param taskMap 任务Map（批量查询，避免N+1）
-     * @param serverMap 服务器Map（批量查询，避免N+1）
+     * 鏋勫缓缁撴灉椤?
+     * @param result 娴嬭瘯缁撴灉
+     * @param taskMap 浠诲姟Map锛堟壒閲忔煡璇紝閬垮厤N+1锛?
+     * @param serverMap 鏈嶅姟鍣∕ap锛堟壒閲忔煡璇紝閬垮厤N+1锛?
      */
     private ResultCompareResponse.ResultItem buildResultItem(TestResult result, Map<Long, Task> taskMap, Map<Long, Server> serverMap) {
         ResultCompareResponse.ResultItem item = new ResultCompareResponse.ResultItem();
@@ -225,7 +225,7 @@ public class ResultCompareServiceImpl implements ResultCompareService {
         item.setDurationMs(result.getDurationMs());
         item.setExecutedAt(result.getCreatedAt() != null ? result.getCreatedAt().toString() : null);
 
-        // 从Map中获取，避免N+1查询
+        // 浠嶮ap涓幏鍙栵紝閬垮厤N+1鏌ヨ
         Task task = taskMap.get(result.getTaskId());
         if (task != null) {
             item.setTaskName(task.getName());
@@ -240,12 +240,12 @@ public class ResultCompareServiceImpl implements ResultCompareService {
     }
 
     /**
-     * 对比指标
+     * 瀵规瘮鎸囨爣
      */
     private List<ResultCompareResponse.MetricCompare> compareMetrics(List<TestResult> results, List<String> metricNames) {
         List<ResultCompareResponse.MetricCompare> compares = new ArrayList<>();
 
-        // 收集所有指标名称
+        // 鏀堕泦鎵€鏈夋寚鏍囧悕绉?
         Set<String> allMetrics = new LinkedHashSet<>();
         for (TestResult r : results) {
             if (r.getParsedData() != null) {
@@ -253,12 +253,12 @@ public class ResultCompareServiceImpl implements ResultCompareService {
             }
         }
 
-        // 如果指定了指标名称，只对比指定的
+        // 濡傛灉鎸囧畾浜嗘寚鏍囧悕绉帮紝鍙姣旀寚瀹氱殑
         if (metricNames != null && !metricNames.isEmpty()) {
             allMetrics.retainAll(metricNames);
         }
 
-        // 对每个指标进行对比
+        // 瀵规瘡涓寚鏍囪繘琛屽姣?
         for (String metricName : allMetrics) {
             ResultCompareResponse.MetricCompare compare = new ResultCompareResponse.MetricCompare();
             compare.setMetricName(metricName);
@@ -282,15 +282,28 @@ public class ResultCompareServiceImpl implements ResultCompareService {
 
             compare.setValues(values);
 
-            // 计算变化率（如果有多个结果）
-            if (numericValues.size() >= 2) {
-                Double first = numericValues.get(0);
-                Double last = numericValues.get(numericValues.size() - 1);
-                if (first != null && last != null && first != 0) {
-                    double changeRate = ((last - first) / first) * 100;
-                    compare.setChangeRate(changeRate);
-                    compare.setTrend(changeRate > 5 ? "up" : (changeRate < -5 ? "down" : "stable"));
+            // 璁＄畻鍙樺寲鐜囷紙濡傛灉鏈夊涓粨鏋滐級
+                        if (numericValues.size() >= 2) {
+                // 环比变化率：计算每对相邻结果的变化率，取绝对值的最大值
+                double maxChangeRate = 0;
+                for (int i = 1; i < numericValues.size(); i++) {
+                    Double prev = numericValues.get(i - 1);
+                    Double curr = numericValues.get(i);
+                    if (prev != null && curr != null && prev != 0) {
+                        double changeRate = Math.abs((curr - prev) / prev * 100);
+                        if (changeRate > maxChangeRate) {
+                            maxChangeRate = changeRate;
+                        }
+                    }
                 }
+                compare.setChangeRate(Math.round(maxChangeRate * 100) / 100.0);
+                compare.setTrend(maxChangeRate > 5 ? "unstable" : "stable");
+
+                // 计算最大值和最小值
+                double min = numericValues.stream().filter(Objects::nonNull).min(Double::compareTo).orElse(0.0);
+                double max = numericValues.stream().filter(Objects::nonNull).max(Double::compareTo).orElse(0.0);
+                compare.setMinValue(min);
+                compare.setMaxValue(max);
             }
 
             compares.add(compare);
@@ -300,7 +313,7 @@ public class ResultCompareServiceImpl implements ResultCompareService {
     }
 
     /**
-     * 分析差异
+     * 鍒嗘瀽宸紓
      */
     private List<ResultCompareResponse.DiffItem> analyzeDifferences(List<TestResult> results) {
         List<ResultCompareResponse.DiffItem> differences = new ArrayList<>();
@@ -311,10 +324,10 @@ public class ResultCompareServiceImpl implements ResultCompareService {
 
         TestResult base = results.get(0);
 
-        // 结果状态差异
+        // 缁撴灉鐘舵€佸樊寮?
         ResultCompareResponse.DiffItem resultDiff = new ResultCompareResponse.DiffItem();
         resultDiff.setCategory("result");
-        resultDiff.setName("测试结果");
+        resultDiff.setName("娴嬭瘯缁撴灉");
         List<ResultCompareResponse.ValueChange> resultChanges = new ArrayList<>();
 
         for (int i = 1; i < results.size(); i++) {
@@ -333,10 +346,10 @@ public class ResultCompareServiceImpl implements ResultCompareService {
             differences.add(resultDiff);
         }
 
-        // 分数差异
+        // 鍒嗘暟宸紓
         ResultCompareResponse.DiffItem scoreDiff = new ResultCompareResponse.DiffItem();
         scoreDiff.setCategory("score");
-        scoreDiff.setName("测试分数");
+        scoreDiff.setName("娴嬭瘯鍒嗘暟");
         List<ResultCompareResponse.ValueChange> scoreChanges = new ArrayList<>();
 
         for (int i = 1; i < results.size(); i++) {
@@ -364,7 +377,7 @@ public class ResultCompareServiceImpl implements ResultCompareService {
     }
 
     /**
-     * 计算统计信息
+     * 璁＄畻缁熻淇℃伅
      */
     private ResultCompareResponse.Statistics calculateStatistics(List<TestResult> results) {
         ResultCompareResponse.Statistics stats = new ResultCompareResponse.Statistics();
@@ -386,7 +399,7 @@ public class ResultCompareServiceImpl implements ResultCompareService {
     }
 
     /**
-     * 提取指标名称列表
+     * 鎻愬彇鎸囨爣鍚嶇О鍒楄〃
      */
     private Set<String> extractMetricNames(Map<String, Object> metrics) {
         Set<String> names = new LinkedHashSet<>();
@@ -401,10 +414,10 @@ public class ResultCompareServiceImpl implements ResultCompareService {
                 String key = prefix.isEmpty() ? String.valueOf(entry.getKey()) : prefix + "." + entry.getKey();
 
                 if (entry.getValue() instanceof Map) {
-                    // 检查是否是指标值对象（包含 value 字段）
+                    // 妫€鏌ユ槸鍚︽槸鎸囨爣鍊煎璞★紙鍖呭惈 value 瀛楁锛?
                     Map<?, ?> valueMap = (Map<?, ?>) entry.getValue();
                     if (valueMap.containsKey("value")) {
-                        // 只添加数值类型的字段
+                        // 鍙坊鍔犳暟鍊肩被鍨嬬殑瀛楁
                         Object val = valueMap.get("value");
                         if (val instanceof Number) {
                             names.add(key);
@@ -413,7 +426,7 @@ public class ResultCompareServiceImpl implements ResultCompareService {
                         extractNamesRecursive(entry.getValue(), key, names);
                     }
                 } else if (entry.getValue() instanceof Number) {
-                    // 只添加数值类型的字段
+                    // 鍙坊鍔犳暟鍊肩被鍨嬬殑瀛楁
                     names.add(key);
                 }
             }
@@ -421,15 +434,15 @@ public class ResultCompareServiceImpl implements ResultCompareService {
     }
 
     /**
-     * 提取指标值
+     * 鎻愬彇鎸囨爣鍊?
      */
     private Object extractMetricValue(Map<String, Object> metrics, String metricName) {
-        // 首先尝试直接用完整 key 查找（支持扁平和嵌套两种结构）
+        // 棣栧厛灏濊瘯鐩存帴鐢ㄥ畬鏁?key 鏌ユ壘锛堟敮鎸佹墎骞冲拰宓屽涓ょ缁撴瀯锛?
         if (metrics.containsKey(metricName)) {
             return metrics.get(metricName);
         }
         
-        // 如果找不到，尝试嵌套查找
+        // 濡傛灉鎵句笉鍒帮紝灏濊瘯宓屽鏌ユ壘
         String[] parts = metricName.split("\\.");
         Object current = metrics;
 
@@ -441,7 +454,7 @@ public class ResultCompareServiceImpl implements ResultCompareService {
             }
         }
 
-        // 如果是指标值对象，提取 value 字段
+        // 濡傛灉鏄寚鏍囧€煎璞★紝鎻愬彇 value 瀛楁
         if (current instanceof Map) {
             Map<?, ?> valueMap = (Map<?, ?>) current;
             if (valueMap.containsKey("value")) {
@@ -453,7 +466,7 @@ public class ResultCompareServiceImpl implements ResultCompareService {
     }
 
     /**
-     * 格式化值
+     * 鏍煎紡鍖栧€?
      */
     private String formatValue(Object value) {
         if (value == null) {
@@ -465,3 +478,4 @@ public class ResultCompareServiceImpl implements ResultCompareService {
         return String.valueOf(value);
     }
 }
+
