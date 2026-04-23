@@ -630,18 +630,17 @@ public class TaskExecutionService {
                 return false;
             }
             
-            // 确定要执行的脚本
+            // 确定执行命令（脚本模式 vs 命令模式）
             String scriptFile = stepConfig.getScript();
-            String scriptPath;
-            if (scriptFile != null && !scriptFile.isEmpty()) {
-                // 清理路径：移除 ./ 前缀和多余斜杠
-                scriptFile = scriptFile.replaceAll("^\\./", "").replaceAll("/+", "/");
-                scriptPath = workDir + "/" + scriptFile;
-            } else {
-                scriptPath = workDir + "/script.sh";
-            }
+            boolean isScriptMode = isUploadedScriptFile(scriptVersion, scriptFile);
             
-            SshService.executeCommand(server, "chmod +x " + scriptPath, null, 5000);
+            if (scriptFile != null && !scriptFile.isEmpty() && isScriptMode) {
+                // 脚本模式：bash 执行已上传的脚本文件
+                context.log("执行脚本: " + scriptFile);
+            } else {
+                // 命令模式：直接执行用户输入的命令
+                context.log("执行命令: " + scriptFile);
+            }
             
             // 上传步骤专属资源
             uploadStepResources(context, server, task, stepConfig, workDir);
@@ -705,8 +704,13 @@ public class TaskExecutionService {
             }
             
             // 执行命令
-            String command = String.format("cd %s && %s bash %s", workDir, envBuilder, scriptPath);
-            context.log("执行: " + scriptPath);
+            String command;
+            if (isScriptMode) {
+                command = String.format("cd %s && %s bash %s", workDir, envBuilder, scriptFile);
+            } else {
+                command = String.format("cd %s && %s %s", workDir, envBuilder, scriptFile);
+            }
+            context.log("执行: " + scriptFile);
             
             // 保存执行命令到 taskStep
             taskStep.setCommand(command);
@@ -714,7 +718,7 @@ public class TaskExecutionService {
             
             // 后台执行
             if (isBackground) {
-                return executeBackgroundStep(context, task, server, stepConfig, taskStep, workDir, scriptPath, envBuilder.toString());
+                return executeBackgroundStep(context, task, server, stepConfig, taskStep, workDir, scriptFile, envBuilder.toString(), isScriptMode);
             }
             
             // 更新 TaskServer 当前执行状态（仅远程执行时）
@@ -1056,6 +1060,27 @@ public class TaskExecutionService {
     }
 
     /**
+     * 检查是否为已上传的脚本文件（通过 fileList 判断）
+     */
+    private boolean isUploadedScriptFile(ScriptVersion scriptVersion, String scriptFile) {
+        if (scriptFile == null || scriptFile.isEmpty()) {
+            return false;
+        }
+        List<Map<String, Object>> fileList = scriptVersion.getFileList();
+        if (fileList == null || fileList.isEmpty()) {
+            return false;
+        }
+        for (Map<String, Object> fileInfo : fileList) {
+            String path = (String) fileInfo.get("path");
+            if (path == null) path = (String) fileInfo.get("name");
+            if (path != null && path.equals(scriptFile)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * 上传所有脚本文件
      */
     @SuppressWarnings("unchecked")
@@ -1148,26 +1173,33 @@ public class TaskExecutionService {
      */
     private boolean executeBackgroundStep(ExecutionContext context, Task task, Server server,
                                           StepDAG.StepConfig stepConfig, TaskStep taskStep,
-                                          String workDir, String scriptPath, String envBuilder) {
+                                          String workDir, String scriptFile, String envBuilder, boolean isScriptMode) {
         String stepName = stepConfig.getName();
         String outputFile = workDir + "/" + stepName + ".log";
         String pidFile = workDir + "/" + stepName + ".pid";
+        String exitCodeFile = workDir + "/" + stepName + ".exit_code";
         
-        context.log("[BACKGROUND] " + stepName);
+        context.log("[BACKGROUND] " + stepName + (isScriptMode ? " (脚本模式)" : " (命令模式)"));
         
         // 设置后台执行状态
         taskStep.setStatus("running_bg");
         taskStepMapper.updateById(taskStep);
         
-        String exitCodeFile = workDir + "/" + stepName + ".exit_code";
+        // 构建 nohup 命令
+        String command;
+        if (isScriptMode) {
+            // 脚本模式：nohup bash -c 'bash script.sh; echo $? > exit_code'
+            command = String.format(
+                "cd %s && %s nohup bash -c 'bash %s; echo $? > %s' > %s 2>&1 & echo $! > %s && sleep 1 && cat %s",
+                workDir, envBuilder, scriptFile, exitCodeFile, outputFile, pidFile, pidFile);
+        } else {
+            // 命令模式：nohup bash -c 'python main.py ...; echo $? > exit_code'
+            command = String.format(
+                "cd %s && %s nohup bash -c '%s; echo $? > %s' > %s 2>&1 & echo $! > %s && sleep 1 && cat %s",
+                workDir, envBuilder, scriptFile, exitCodeFile, outputFile, pidFile, pidFile);
+        }
         
-        // 构建 nohup 命令（执行完成后写入退出码）
-        String command = String.format(
-            "cd %s && %s nohup bash -c 'bash %s; echo $? > %s' > %s 2>&1 & echo $! > %s && sleep 1 && cat %s",
-            workDir, envBuilder, scriptPath, exitCodeFile, outputFile, pidFile, pidFile
-        );
-        
-        context.log("命令: nohup bash " + scriptPath);
+        context.log("命令: " + command);
         
         try {
             // 执行命令
