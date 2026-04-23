@@ -29,6 +29,9 @@ public class StorageConfig {
     @Value("${autotest.storage.results-path}")
     private String resultsPath;
 
+    @Value("${autotest.storage.resources-path}")
+    private String resourcesPath;
+
     public String getScriptsPath() {
         return scriptsPath;
     }
@@ -41,6 +44,10 @@ public class StorageConfig {
         return resultsPath;
     }
 
+    public String getResourcesPath() {
+        return resourcesPath;
+    }
+
     /**
      * 应用启动时自动创建所有存储目录
      */
@@ -50,7 +57,8 @@ public class StorageConfig {
             List<String> paths = Arrays.asList(
                 scriptsPath.replace("${user.home}", System.getProperty("user.home")),
                 tempPath.replace("${user.home}", System.getProperty("user.home")),
-                resultsPath.replace("${user.home}", System.getProperty("user.home"))
+                resultsPath.replace("${user.home}", System.getProperty("user.home")),
+                resourcesPath.replace("${user.home}", System.getProperty("user.home"))
             );
 
             for (String path : paths) {

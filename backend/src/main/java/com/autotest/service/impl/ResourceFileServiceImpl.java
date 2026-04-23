@@ -31,7 +31,7 @@ public class ResourceFileServiceImpl implements ResourceFileService {
 
     private final ResourceFileMapper resourceFileMapper;
 
-    @Value("${app.storage.path:C:/data/auto-test/resources}")
+    @Value("${autotest.storage.resources-path}")
     private String storageBasePath;
 
     @Override

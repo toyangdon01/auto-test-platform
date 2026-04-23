@@ -91,6 +91,7 @@ autotest:
     scripts-path: ${user.home}/auto-test/scripts
     temp-path: ${user.home}/auto-test/temp
     results-path: ${user.home}/auto-test/results
+    resources-path: ${user.home}/auto-test/resources
   
   # SSH 连接配置
   ssh:
