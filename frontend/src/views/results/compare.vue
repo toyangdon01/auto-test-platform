@@ -138,6 +138,8 @@ interface MetricCompare {
   values: MetricValue[]
   changeRate: number | null
   trend: string
+  maxValue: number | null
+  minValue: number | null
 }
 
 interface MetricValue {

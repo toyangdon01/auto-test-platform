@@ -1421,7 +1421,7 @@ public class TaskExecutionService {
         // 计算耗时
         if (taskStep.getStartedAt() != null && taskStep.getFinishedAt() != null) {
             long durationMs = java.time.Duration.between(taskStep.getStartedAt(), taskStep.getFinishedAt()).toMillis();
-            testResult.setDurationMs(durationMs);
+            testResult.setDurationMs((int) durationMs);
         }
         
         // 获取脚本名称（冗余）

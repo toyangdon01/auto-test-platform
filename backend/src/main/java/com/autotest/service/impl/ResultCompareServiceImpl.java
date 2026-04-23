@@ -283,7 +283,7 @@ public class ResultCompareServiceImpl implements ResultCompareService {
             compare.setValues(values);
 
             // 璁＄畻鍙樺寲鐜囷紙濡傛灉鏈夊涓粨鏋滐級
-                        if (numericValues.size() >= 2) {
+            if (numericValues.size() >= 2) {
                 // 环比变化率：计算每对相邻结果的变化率，取绝对值的最大值
                 double maxChangeRate = 0;
                 for (int i = 1; i < numericValues.size(); i++) {
@@ -298,8 +298,10 @@ public class ResultCompareServiceImpl implements ResultCompareService {
                 }
                 compare.setChangeRate(Math.round(maxChangeRate * 100) / 100.0);
                 compare.setTrend(maxChangeRate > 5 ? "unstable" : "stable");
+            }
 
-                // 计算最大值和最小值
+            // 计算最大值和最小值（只要有数值就计算）
+            if (!numericValues.isEmpty()) {
                 double min = numericValues.stream().filter(Objects::nonNull).min(Double::compareTo).orElse(0.0);
                 double max = numericValues.stream().filter(Objects::nonNull).max(Double::compareTo).orElse(0.0);
                 compare.setMinValue(min);
