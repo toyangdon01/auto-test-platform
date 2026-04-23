@@ -31,8 +31,11 @@
               <el-form-item label="执行脚本" required>
                 <el-select 
                   v-model="step.script" 
-                  placeholder="选择执行的脚本文件" 
+                  placeholder="选择脚本或输入命令" 
                   style="width: 100%"
+                  filterable
+                  allow-create
+                  :default-first-option="true"
                   teleported
                   :popper-options="{ modifiers: [{ name: 'flip', enabled: false }] }"
                 >
