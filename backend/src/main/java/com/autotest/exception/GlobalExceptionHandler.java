@@ -74,6 +74,9 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
     public ApiResponse<Void> handleException(Exception e) {
         log.error("系统异常", e);
-        return ApiResponse.error(500, "系统异常，请稍后重试");
+        String message = e.getMessage() != null && !e.getMessage().isEmpty()
+                ? e.getMessage()
+                : e.getClass().getSimpleName();
+        return ApiResponse.error(500, message);
     }
 }
