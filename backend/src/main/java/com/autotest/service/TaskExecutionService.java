@@ -432,6 +432,7 @@ public class TaskExecutionService {
                         
                         final boolean localFlag = isLocal;
                         final Server finalServer = server;
+                        final TaskServer finalTaskServer = taskServer;
                         CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
                             boolean success = executeStepOnServer(context, task, finalServer, 
                                                                   script, scriptVersion, stepConfig, localFlag);
@@ -441,7 +442,12 @@ public class TaskExecutionService {
                             dag.markAsComplete(stepName, success);
                             
                             // 同步更新 task_servers 状态
-                            if (!localFlag) {
+                            if (localFlag) {
+                                // 本地执行更新
+                                finalTaskServer.setOverallStatus(success ? "completed" : "failed");
+                                taskServerMapper.updateById(finalTaskServer);
+                            } else {
+                                // 远程执行更新
                                 updateTaskServerStatus(task.getId(), finalServer.getId(), success);
                             }
                         }, executor);
@@ -1594,6 +1600,10 @@ public class TaskExecutionService {
             
             taskStepMapper.updateById(taskStep);
             
+            // 更新 TaskServer 状态
+            taskServer.setOverallStatus(success ? "completed" : "failed");
+            taskServerMapper.updateById(taskServer);
+            
             return success;
             
         } catch (Exception e) {
@@ -1611,8 +1621,17 @@ public class TaskExecutionService {
      */
     private ExecutionResult executeLocalCommand(String command, Map<String, Object> params, Consumer<String> logConsumer) {
         try {
+            // 检测可用的 shell（兼容 Termux/Android 环境）
+            String shell = "/bin/bash";
+            if (!new java.io.File(shell).exists()) {
+                shell = "/data/data/com.termux/files/usr/bin/bash";  // Termux 路径
+            }
+            if (!new java.io.File(shell).exists()) {
+                shell = "/bin/sh";  // 回退到 sh
+            }
+            
             // 构建环境变量
-            ProcessBuilder pb = new ProcessBuilder("/bin/bash", "-c", command);
+            ProcessBuilder pb = new ProcessBuilder(shell, "-c", command);
             
             // 设置环境变量
             Map<String, String> env = pb.environment();
