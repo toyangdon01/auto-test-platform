@@ -1,5 +1,8 @@
 package com.autotest.service;
 
+import java.io.BufferedReader;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import com.autotest.dto.StepStatusCheckResult;
 import com.autotest.entity.*;
 import com.autotest.mapper.*;
@@ -1518,7 +1521,11 @@ public class TaskExecutionService {
             
             // 确定要执行的脚本（优先使用步骤配置）
             String scriptFile = stepConfig.getScript();
-            if (scriptFile == null || scriptFile.isEmpty()) {
+            
+            // 判断是脚本文件还是命令
+            boolean isScriptMode = isUploadedScriptFile(scriptVersion, scriptFile);
+            
+            if (!isScriptMode && (scriptFile == null || scriptFile.isEmpty())) {
                 // 如果步骤没有配置脚本，尝试从 fileList 中自动检测
                 if (scriptVersion.getFileList() != null) {
                     for (Object item : scriptVersion.getFileList()) {
@@ -1530,6 +1537,7 @@ public class TaskExecutionService {
                             String filePath = path != null ? path : name;
                             if (filePath != null && (filePath.equals("main.sh") || filePath.equals("main.py"))) {
                                 scriptFile = filePath;
+                                isScriptMode = true;
                                 break;
                             }
                         }
@@ -1554,15 +1562,21 @@ public class TaskExecutionService {
                 context.log(line);
             };
             
-            // 执行脚本（使用步骤配置中的脚本文件）
-            ExecutionResult result = executor.execute(
-                scriptVersion,
-                scriptFile,
-                params,
-                taskServer,
-                null,  // 本地执行时 server 参数为 null，目标服务器信息通过参数传递
-                logConsumer
-            );
+            ExecutionResult result;
+            if (isScriptMode) {
+                // 脚本文件模式：通过 LocalExecutor 执行
+                result = executor.execute(
+                    scriptVersion,
+                    scriptFile,
+                    params,
+                    taskServer,
+                    null,
+                    logConsumer
+                );
+            } else {
+                // 命令模式：直接执行命令
+                result = executeLocalCommand(scriptFile, params, logConsumer);
+            }
             
             // 更新结果
             context.log("退出码: " + result.getExitCode());
@@ -1590,6 +1604,89 @@ public class TaskExecutionService {
             taskStepMapper.updateById(taskStep);
             return false;
         }
+    }
+    
+    /**
+     * 在本地直接执行命令（非脚本文件）
+     */
+    private ExecutionResult executeLocalCommand(String command, Map<String, Object> params, Consumer<String> logConsumer) {
+        try {
+            // 构建环境变量
+            ProcessBuilder pb = new ProcessBuilder("/bin/bash", "-c", command);
+            
+            // 设置环境变量
+            Map<String, String> env = pb.environment();
+            if (params != null) {
+                params.forEach((k, v) -> {
+                    if (v != null && !String.valueOf(v).trim().isEmpty()) {
+                        env.put(k, String.valueOf(v));
+                    }
+                });
+            }
+            
+            long startTime = System.currentTimeMillis();
+            Process process = pb.start();
+            
+            // 异步读取输出
+            StringBuilder output = new StringBuilder();
+            StringBuilder error = new StringBuilder();
+            CompletableFuture<Void> outFuture = readStreamAsync(process.getInputStream(), logConsumer, output);
+            CompletableFuture<Void> errFuture = readStreamAsync(process.getErrorStream(), logConsumer, error);
+            
+            // 等待完成（超时 1 小时）
+            boolean completed = process.waitFor(3600, TimeUnit.SECONDS);
+            long durationMs = System.currentTimeMillis() - startTime;
+            
+            if (!completed) {
+                process.destroyForcibly();
+                return ExecutionResult.builder()
+                    .success(false)
+                    .exitCode(-1)
+                    .output(output.toString())
+                    .error("执行超时")
+                    .durationMs(durationMs)
+                    .build();
+            }
+            
+            outFuture.get(5, TimeUnit.SECONDS);
+            errFuture.get(5, TimeUnit.SECONDS);
+            
+            int exitCode = process.exitValue();
+            return ExecutionResult.builder()
+                .success(exitCode == 0)
+                .exitCode(exitCode)
+                .output(output.toString())
+                .error(error.toString())
+                .durationMs(durationMs)
+                .build();
+                
+        } catch (Exception e) {
+            log.error("本地命令执行失败", e);
+            return ExecutionResult.builder()
+                .success(false)
+                .exitCode(-1)
+                .error(e.getMessage())
+                .build();
+        }
+    }
+    
+    /**
+     * 异步读取流
+     */
+    private CompletableFuture<Void> readStreamAsync(InputStream stream, Consumer<String> logConsumer, StringBuilder output) {
+        return CompletableFuture.runAsync(() -> {
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(stream))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    if (logConsumer != null) {
+                        logConsumer.accept(line);
+                    }
+                    output.append(line).append("\n");
+                }
+            } catch (Exception e) {
+                log.warn("读取流失败: {}", e.getMessage());
+            }
+        });
     }
     
     /**
