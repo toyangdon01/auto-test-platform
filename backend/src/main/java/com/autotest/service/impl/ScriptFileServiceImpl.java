@@ -43,7 +43,7 @@ public class ScriptFileServiceImpl implements ScriptFileService {
         
         // 验证文件类型
         if (!isValidScriptFile(extension)) {
-            throw new IllegalArgumentException("不支持的文件类型，仅支持 .sh, .py, .zip, .tar.gz 文件");
+            throw new IllegalArgumentException("文件类型不允许上传");
         }
 
         // 创建临时目录
@@ -376,9 +376,8 @@ public class ScriptFileServiceImpl implements ScriptFileService {
     }
 
     private boolean isValidScriptFile(String extension) {
-        return extension.equals("sh") || extension.equals("py") ||
-               extension.equals("zip") || extension.equals("tar.gz") ||
-               extension.equals("tgz");
+        // 放开限制，允许任意文件后缀
+        return true;
     }
 
     private boolean isArchiveFile(String extension) {

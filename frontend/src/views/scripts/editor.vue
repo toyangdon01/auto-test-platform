@@ -49,7 +49,7 @@
             :auto-upload="false"
             :show-file-list="false"
             :on-change="handleFileChange"
-            accept=".sh,.py,.zip,.tar.gz,.tgz"
+            accept="*"
             drag
           >
             <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
@@ -58,7 +58,7 @@
             </div>
             <template #tip>
               <div class="el-upload__tip">
-                支持单文件（.sh, .py）或压缩包（.zip, .tar.gz），压缩包会自动解压
+                支持任意文件后缀，压缩包（.zip, .tar.gz）会自动解压
               </div>
             </template>
           </el-upload>
