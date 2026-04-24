@@ -467,8 +467,8 @@ public class TaskExecutionService {
         for (TaskServer ts : taskServers) {
             // 本地执行的 serverId 为 -1
             if (ts.getServerId() == -1L) {
-                // 本地执行根据任务状态判断
-                if ("success".equals(ts.getOverallStatus())) {
+                // 本地执行根据 overall_status 判断
+                if ("completed".equals(ts.getOverallStatus())) {
                     successCount++;
                 }
             } else if (serverFailedSteps.get(ts.getServerId()) != null 
