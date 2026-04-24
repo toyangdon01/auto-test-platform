@@ -189,7 +189,7 @@ CREATE INDEX IF NOT EXISTS idx_tasks_scheduled_time ON tasks(scheduled_time);
 CREATE TABLE IF NOT EXISTS task_servers (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     task_id BIGINT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
-    server_id BIGINT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+    server_id BIGINT DEFAULT NULL,
     is_local BOOLEAN DEFAULT 0,
     role VARCHAR(50) DEFAULT 'default',
     role_params TEXT DEFAULT '{}',  -- JSON

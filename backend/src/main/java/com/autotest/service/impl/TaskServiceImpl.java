@@ -306,7 +306,7 @@ public class TaskServiceImpl implements TaskService {
             // 只有本地执行，没有远程服务器
             TaskServer localTaskServer = new TaskServer();
             localTaskServer.setTaskId(task.getId());
-            localTaskServer.setServerId(0L);  // 本地执行用 0 代替 null
+            localTaskServer.setServerId(null);  // 本地执行没有关联服务器
             localTaskServer.setIsLocal(true);
             localTaskServer.setOverallStatus("pending");
             localTaskServer.setCreatedAt(LocalDateTime.now());
@@ -316,7 +316,7 @@ public class TaskServiceImpl implements TaskService {
             // 同时有本地和远程执行，为本地执行添加一条记录
             TaskServer localTaskServer = new TaskServer();
             localTaskServer.setTaskId(task.getId());
-            localTaskServer.setServerId(0L);  // 本地执行用 0 代替 null
+            localTaskServer.setServerId(null);  // 本地执行没有关联服务器
             localTaskServer.setIsLocal(true);
             localTaskServer.setOverallStatus("pending");
             localTaskServer.setCreatedAt(LocalDateTime.now());
