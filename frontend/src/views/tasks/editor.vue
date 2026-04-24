@@ -602,15 +602,13 @@ async function handleSubmit() {
     }
   })
   
-  // 获取所有选中的服务器ID（排除本地执行的 -1）
+  // 获取所有选中的服务器ID（包含本地执行的 -1）
   const allServerIds = [...new Set(stepServerConfigs.value
-    .map(c => c.serverId)
-    .filter(id => id !== null && id !== undefined && id !== -1))]
+    .map(c => c.isLocal ? -1 : c.serverId)
+    .filter(id => id !== null && id !== undefined))]
   
-  // 检查是否有本地执行
-  const hasLocalExecution = stepServerConfigs.value.some(c => c.isLocal)
-  
-  if (allServerIds.length === 0 && !hasLocalExecution) {
+  // 检查是否有服务器或本地执行
+  if (allServerIds.length === 0) {
     ElMessage.error('请选择至少一台服务器或本地执行')
     return
   }
@@ -620,7 +618,6 @@ async function handleSubmit() {
     scriptId: selectedScript.value!.id,
     scriptVersion: formData.scriptVersion || selectedScript.value!.currentVersion,
     serverIds: allServerIds,
-    isLocal: hasLocalExecution,
     stepServerMapping,
     stepParams,
     executionMode: formData.executionMode === 'immediate' ? 'immediate' : 'scheduled',

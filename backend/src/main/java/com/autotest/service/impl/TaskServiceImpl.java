@@ -233,26 +233,22 @@ public class TaskServiceImpl implements TaskService {
             throw BusinessException.of("脚本不存在");
         }
         
-        // 验证服务器
+        // 验证服务器列表
         List<Long> serverIds = request.getServerIds();
-        Boolean isLocal = request.getIsLocal();
-        
-        // 非本地执行时，服务器列表不能为空
-        if ((isLocal == null || !isLocal) && (serverIds == null || serverIds.isEmpty())) {
-            throw BusinessException.of("非本地执行时，服务器列表不能为空");
+        if (serverIds == null || serverIds.isEmpty()) {
+            throw BusinessException.of("服务器列表不能为空");
         }
         
-        // 验证服务器（如果有serverIds）
-        if (serverIds != null) {
-            for (Long serverId : serverIds) {
-                Server server = serverMapper.selectById(serverId);
-                if (server == null) {
-                    throw BusinessException.of("服务器不存在: " + serverId);
-                }
+        // 验证服务器（-1 表示本地执行，跳过验证）
+        for (Long serverId : serverIds) {
+            if (serverId == -1L) {
+                continue;  // 本地执行，跳过验证
+            }
+            Server server = serverMapper.selectById(serverId);
+            if (server == null) {
+                throw BusinessException.of("服务器不存在: " + serverId);
             }
         }
-        
-        // 如果有本地执行，创建一条本地执行的 TaskServer 记录
         
         Task task = new Task();
         task.setName(request.getName());
@@ -288,40 +284,16 @@ public class TaskServiceImpl implements TaskService {
         
         taskMapper.insert(task);
         
-        // 创建任务服务器关联
-        if (serverIds != null && !serverIds.isEmpty()) {
-            for (Long serverId : serverIds) {
-                TaskServer taskServer = new TaskServer();
-                taskServer.setTaskId(task.getId());
-                taskServer.setServerId(serverId);
-                taskServer.setOverallStatus("pending");
-                taskServer.setCreatedAt(LocalDateTime.now());
-                taskServer.setRole("default");
-                taskServerMapper.insert(taskServer);
-            }
-        }
-        
-        // 如果有本地执行，创建一条本地执行的 TaskServer 记录
-        if (Boolean.TRUE.equals(isLocal) && (serverIds == null || serverIds.isEmpty())) {
-            // 只有本地执行，没有远程服务器
-            TaskServer localTaskServer = new TaskServer();
-            localTaskServer.setTaskId(task.getId());
-            localTaskServer.setServerId(null);  // 本地执行没有关联服务器
-            localTaskServer.setIsLocal(true);
-            localTaskServer.setOverallStatus("pending");
-            localTaskServer.setCreatedAt(LocalDateTime.now());
-            localTaskServer.setRole("local");
-            taskServerMapper.insert(localTaskServer);
-        } else if (Boolean.TRUE.equals(isLocal)) {
-            // 同时有本地和远程执行，为本地执行添加一条记录
-            TaskServer localTaskServer = new TaskServer();
-            localTaskServer.setTaskId(task.getId());
-            localTaskServer.setServerId(null);  // 本地执行没有关联服务器
-            localTaskServer.setIsLocal(true);
-            localTaskServer.setOverallStatus("pending");
-            localTaskServer.setCreatedAt(LocalDateTime.now());
-            localTaskServer.setRole("local");
-            taskServerMapper.insert(localTaskServer);
+        // 创建任务服务器关联（统一处理，-1 表示本地执行）
+        for (Long serverId : serverIds) {
+            TaskServer taskServer = new TaskServer();
+            taskServer.setTaskId(task.getId());
+            taskServer.setServerId(serverId);  // -1 表示本地执行
+            taskServer.setIsLocal(serverId == -1L);  // 根据 serverId 判断
+            taskServer.setOverallStatus("pending");
+            taskServer.setCreatedAt(LocalDateTime.now());
+            taskServer.setRole(serverId == -1L ? "local" : "default");
+            taskServerMapper.insert(taskServer);
         }
         
         // 如果是定时执行，创建定时任务记录

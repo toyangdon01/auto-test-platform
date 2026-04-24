@@ -411,7 +411,7 @@ public class TaskExecutionService {
                         // 检查该服务器是否被分配执行此步骤
                         if (!assignedServerIds.contains(taskServer.getServerId())) {
                             // 检查是否是本地执行
-                            if (!Boolean.TRUE.equals(taskServer.getIsLocal())) {
+                            if (taskServer.getServerId() != -1L) {
                                 continue;
                             }
                             // 本地执行：检查是否在本地执行列表中
@@ -421,7 +421,7 @@ public class TaskExecutionService {
                         }
                         
                         Server server = null;
-                        boolean isLocal = Boolean.TRUE.equals(taskServer.getIsLocal());
+                        boolean isLocal = taskServer.getServerId() == -1L;  // 本地执行用 -1 表示
                         if (!isLocal) {
                             server = serverMapper.selectById(taskServer.getServerId());
                             if (server == null) continue;
@@ -456,8 +456,8 @@ public class TaskExecutionService {
         // 计算成功的服务器数（没有任何失败步骤的服务器）
         int successCount = 0;
         for (TaskServer ts : taskServers) {
-            // 本地执行的 serverId 为 null，只计算成功状态
-            if (ts.getServerId() == null) {
+            // 本地执行的 serverId 为 -1
+            if (ts.getServerId() == -1L) {
                 // 本地执行根据任务状态判断
                 if ("success".equals(ts.getOverallStatus())) {
                     successCount++;
@@ -563,8 +563,9 @@ public class TaskExecutionService {
         TaskServer taskServer = taskServerMapper.selectOne(
             new LambdaQueryWrapper<TaskServer>()
                 .eq(TaskServer::getTaskId, task.getId())
-                .eq(TaskServer::getServerId, isLocal ? null : server.getId())
-                .last(isLocal ? "LIMIT 1" : "AND server_id IS NOT NULL")
+                .eq(isLocal, TaskServer::getServerId, -1L)  // 本地执行时查 serverId = -1
+                .eq(!isLocal, TaskServer::getServerId, server != null ? server.getId() : null)
+                .last("LIMIT 1")
         );
         if (taskServer == null) {
             taskServer = new TaskServer();
@@ -588,9 +589,7 @@ public class TaskExecutionService {
         if (taskStep == null) {
             taskStep = new TaskStep();
             taskStep.setTaskId(task.getId());
-            if (!isLocal) {
-                taskStep.setServerId(server.getId());
-            }
+            taskStep.setServerId(isLocal ? -1L : server.getId());  // 本地执行用 -1
             taskStep.setStepName(stepName);
             taskStep.setDisplayName(stepConfig.getDisplayName());
             taskStep.setScript(stepConfig.getScript());
@@ -916,7 +915,7 @@ public class TaskExecutionService {
         
         int successCount = 0;
         for (TaskServer taskServer : taskServers) {
-            boolean isLocal = Boolean.TRUE.equals(taskServer.getIsLocal());
+            boolean isLocal = taskServer.getServerId() == -1L;  // 本地执行用 -1 表示
             Server server = null;
             if (!isLocal) {
                 server = serverMapper.selectById(taskServer.getServerId());
@@ -1597,10 +1596,10 @@ public class TaskExecutionService {
      * 检查本地执行是否被分配到当前步骤
      */
     private boolean isLocalExecutionAssigned(TaskServer taskServer, List<Long> assignedServerIds) {
-        if (!Boolean.TRUE.equals(taskServer.getIsLocal())) {
-            return false;
+        if (taskServer.getServerId() != -1L) {
+            return false;  // 不是本地执行的 TaskServer
         }
-        // 本地执行使用特殊的标记（-1 表示本地）
+        // 本地执行使用 -1 作为标记
         return assignedServerIds != null && assignedServerIds.contains(-1L);
     }
     
@@ -1891,7 +1890,7 @@ public class TaskExecutionService {
                     
                     // 获取服务器
                     Server server = null;
-                    boolean isLocal = step.getServerId() == null;
+                    boolean isLocal = step.getServerId() == -1L;  // 本地执行用 -1 表示
                     if (!isLocal) {
                         server = serverMapper.selectById(step.getServerId());
                         if (server == null || !"online".equals(server.getStatus())) {
@@ -1921,8 +1920,8 @@ public class TaskExecutionService {
      */
     private TaskStep findStepByName(List<TaskStep> steps, String stepName, Long serverId) {
         for (TaskStep step : steps) {
-            if (stepName.equals(step.getStepName()) && 
-                (serverId == null ? step.getServerId() == null : serverId.equals(step.getServerId()))) {
+            if (stepName.equals(step.getStepName()) &&
+                serverId.equals(step.getServerId())) {
                 return step;
             }
         }
@@ -1945,9 +1944,9 @@ public class TaskExecutionService {
             // 统计该服务器上所有步骤的执行情况
             List<TaskStep> serverSteps = new ArrayList<>();
             for (TaskStep step : steps) {
-                if (server.getServerId() == null) {
+                if (server.getServerId() == -1L) {
                     // 本地执行
-                    if (step.getServerId() == null) {
+                    if (step.getServerId() == -1L) {
                         serverSteps.add(step);
                     }
                 } else if (server.getServerId().equals(step.getServerId())) {

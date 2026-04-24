@@ -64,13 +64,13 @@ public interface TaskStepMapper extends BaseMapper<TaskStep> {
     TaskStep findByTaskAndStepNameAndServer(@Param("taskId") Long taskId, @Param("stepName") String stepName, @Param("serverId") Long serverId);
     
     /**
-     * 根据任务和步骤名称查询本地执行的步骤
+     * 根据任务和步骤名称查询本地执行的步骤（serverId = -1）
      */
     @ResultMap("taskStepResultMap")
     @Select("SELECT ts.*, s.name as server_name, s.host as server_host " +
             "FROM task_steps ts " +
             "LEFT JOIN servers s ON ts.server_id = s.id " +
-            "WHERE ts.task_id = #{taskId} AND ts.step_name = #{stepName} AND ts.server_id IS NULL")
+            "WHERE ts.task_id = #{taskId} AND ts.step_name = #{stepName} AND ts.server_id = -1")
     TaskStep findByTaskAndStepNameForLocal(@Param("taskId") Long taskId, @Param("stepName") String stepName);
     
     /**
