@@ -30,7 +30,7 @@ public class TestResultServiceImpl implements TestResultService {
     public PageResult<TestResult> getPage(int page, int pageSize, Long taskId, Long serverId, String result, Long scriptId, String keyword) {
         // 冗余字段已存储名称，无需关联查询
         IPage<TestResult> pageResult = testResultMapper.selectPageWithNames(
-                new Page<>(page, pageSize), taskId, serverId, result, scriptId, null);
+                new Page<>(page, pageSize), taskId, serverId, result, scriptId, keyword);
 
         return PageResult.of(pageResult);
     }
