@@ -8,9 +8,11 @@ import com.autotest.dto.request.ServerQueryRequest;
 import com.autotest.dto.response.ServerDetailResponse;
 import com.autotest.entity.Server;
 import com.autotest.entity.ServerGroup;
+import com.autotest.entity.TaskServer;
 import com.autotest.exception.BusinessException;
 import com.autotest.mapper.ServerGroupMapper;
 import com.autotest.mapper.ServerMapper;
+import com.autotest.mapper.TaskServerMapper;
 import com.autotest.service.SshService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -33,6 +35,7 @@ public class ServerServiceImpl implements ServerService {
 
     private final ServerMapper serverMapper;
     private final ServerGroupMapper serverGroupMapper;
+    private final TaskServerMapper taskServerMapper;
 
     @Override
     public PageResult<Server> listServers(ServerQueryRequest request) {
@@ -240,6 +243,14 @@ public class ServerServiceImpl implements ServerService {
         if (ids == null || ids.isEmpty()) {
             throw BusinessException.of("请选择要删除的服务器");
         }
+        
+        // 删除关联的 task_servers 记录
+        taskServerMapper.delete(
+            new LambdaQueryWrapper<TaskServer>()
+                .in(TaskServer::getServerId, ids)
+        );
+        
+        // 删除服务器
         serverMapper.deleteBatchIds(ids);
     }
 
