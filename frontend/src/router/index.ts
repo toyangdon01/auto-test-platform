@@ -6,7 +6,7 @@ import NProgress from 'nprogress'
 import Layout from '@/layouts/DefaultLayout.vue'
 
 // 不需要登录的页面
-const whiteList = ['/login']
+// const whiteList = ['/login']
 
 // 路由配置
 const routes: RouteRecordRaw[] = [
@@ -224,24 +224,8 @@ router.beforeEach((to, _from, next) => {
   const title = to.meta?.title as string
   document.title = title ? `${title} - 自动化测试平台` : '自动化测试平台'
   
-  // 检查登录状态
-  const token = localStorage.getItem('test_platform_token')
-  
-  if (whiteList.includes(to.path)) {
-    // 已登录访问登录页，跳转到首页
-    if (token) {
-      next('/dashboard')
-    } else {
-      next()
-    }
-  } else {
-    // 需要登录的页面
-    if (token) {
-      next()
-    } else {
-      next('/login')
-    }
-  }
+  // 无需登录，直接放行
+  next()
 })
 
 router.afterEach(() => {
