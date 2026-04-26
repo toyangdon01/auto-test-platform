@@ -579,7 +579,9 @@ public class TaskExecutionService {
         if (taskServer == null) {
             taskServer = new TaskServer();
             taskServer.setTaskId(task.getId());
-            if (!isLocal) {
+            if (isLocal) {
+                taskServer.setServerId(-1L);  // 本地执行设置 serverId = -1
+            } else {
                 taskServer.setServerId(server.getId());
             }
             taskServer.setIsLocal(isLocal);
