@@ -235,7 +235,7 @@ CREATE INDEX IF NOT EXISTS idx_task_servers_run_status ON task_servers(run_statu
 CREATE TABLE IF NOT EXISTS task_steps (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     task_id BIGINT NOT NULL REFERENCES tasks(id),
-    server_id BIGINT NOT NULL REFERENCES servers(id),
+    server_id BIGINT NOT NULL DEFAULT -1,  -- -1 表示本地执行，无外键约束
     step_name VARCHAR(50) NOT NULL,
     display_name VARCHAR(200),
     script VARCHAR(500),

@@ -106,7 +106,10 @@ public class ScriptController {
                     .eq(ScriptVersion::getVersion, script.getCurrentVersion())
             );
             if (version != null) {
-
+                // 加载文件列表
+                if (version.getFileList() != null && !version.getFileList().isEmpty()) {
+                    script.setFileList(version.getFileList());
+                }
                 if (version.getSteps() != null) {
                     script.setSteps(version.getSteps());
                 }
