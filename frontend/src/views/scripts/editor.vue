@@ -240,8 +240,20 @@ const formRules = {
 
 // 所有脚本文件（用于执行计划下拉选择）
 const scriptFileOptions = computed(() => {
-  return uploadedFiles.value.filter(f => f.type === 'sh' || f.type === 'py')
+  return uploadedFiles.value.filter(f => {
+    // 优先使用 type 字段，否则从 path 推断
+    const fileType = f.type || getFileType(f.path)
+    return fileType === 'sh' || fileType === 'py'
+  })
 })
+
+// 从文件路径推断类型
+function getFileType(path: string): string {
+  if (!path) return ''
+  const ext = path.split('.').pop()?.toLowerCase() || ''
+  if (ext === 'tar.gz') return 'tar.gz'
+  return ext
+}
 
 async function handleFileChange(file: any) {
   const formDataObj = new FormData()
@@ -456,7 +468,13 @@ async function loadScript() {
     
     // 优先使用返回的fileList，否则调用file-list API 获取
     if (res.data.fileList && res.data.fileList.length > 0) {
-      uploadedFiles.value = res.data.fileList as UploadedFile[]
+      // 确保 type 字段存在，否则从 path 推断
+      uploadedFiles.value = res.data.fileList.map((f: any) => ({
+        name: f.name,
+        path: f.path,
+        size: f.size,
+        type: f.type || getFileType(f.path)
+      }))
     } else {
       // 从file-list API 获取文件列表
       try {

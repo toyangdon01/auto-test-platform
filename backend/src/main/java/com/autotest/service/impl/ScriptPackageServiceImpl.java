@@ -180,17 +180,30 @@ public class ScriptPackageServiceImpl implements ScriptPackageService {
         try {
             unzip(file, tempDir);
             
+            PackageManifest manifest = new PackageManifest();
+            
             // 尝试解析 manifest.json
             Path manifestPath = tempDir.resolve("manifest.json");
             if (Files.exists(manifestPath)) {
-                return objectMapper.readValue(manifestPath.toFile(), PackageManifest.class);
+                try {
+                    PackageManifest parsedManifest = objectMapper.readValue(manifestPath.toFile(), PackageManifest.class);
+                    manifest.setFormat(parsedManifest.getFormat());
+                    manifest.setExportedAt(parsedManifest.getExportedAt());
+                    manifest.setScripts(parsedManifest.getScripts());
+                } catch (Exception e) {
+                    log.warn("解析 manifest.json 失败: {}", e.getMessage());
+                }
             }
             
-            // 没有 manifest，从目录结构发现
-            PackageManifest manifest = new PackageManifest();
-            manifest.setFormat("autotest-scripts-package/v1");
-            manifest.setExportedAt(LocalDate.now().toString());
+            // 如果没有格式信息，设置默认值
+            if (manifest.getFormat() == null) {
+                manifest.setFormat("autotest-scripts-package/v1");
+            }
+            if (manifest.getExportedAt() == null) {
+                manifest.setExportedAt(LocalDate.now().toString());
+            }
             
+            // 从目录结构发现脚本
             Path scriptsDir = tempDir.resolve("scripts");
             if (Files.exists(scriptsDir)) {
                 List<String> scriptNames = Files.list(scriptsDir)
@@ -198,7 +211,33 @@ public class ScriptPackageServiceImpl implements ScriptPackageService {
                     .map(Path::getFileName)
                     .map(Path::toString)
                     .collect(Collectors.toList());
-                manifest.setScripts(scriptNames);
+                
+                // 如果 manifest 中没有脚本列表，使用目录结构发现的
+                if (manifest.getScripts() == null || manifest.getScripts().isEmpty()) {
+                    manifest.setScripts(scriptNames);
+                }
+                
+                // 检查每个脚本是否已存在
+                List<PackageManifest.ScriptPreview> scriptDetails = new ArrayList<>();
+                for (String scriptName : scriptNames) {
+                    PackageManifest.ScriptPreview preview = new PackageManifest.ScriptPreview();
+                    preview.setName(scriptName);
+                    
+                    // 检查数据库中是否已存在同名脚本
+                    Script existing = scriptMapper.selectOne(
+                        new LambdaQueryWrapper<Script>().eq(Script::getName, scriptName)
+                    );
+                    
+                    if (existing != null) {
+                        preview.setExisting(true);
+                        preview.setExistingId(existing.getId());
+                    } else {
+                        preview.setExisting(false);
+                    }
+                    
+                    scriptDetails.add(preview);
+                }
+                manifest.setScriptDetails(scriptDetails);
             }
             
             return manifest;

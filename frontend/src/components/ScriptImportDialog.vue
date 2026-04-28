@@ -193,10 +193,17 @@ const onlineForm = reactive({
 // 在线导入临时路径
 const onlineTempPath = ref('')
 
+interface ScriptPreview {
+  name: string
+  existing: boolean
+  existingId?: number
+}
+
 interface PreviewData {
   format: string
   exportedAt: string
   scripts: string[]
+  scriptDetails?: ScriptPreview[]
   resources?: string[]
 }
 
@@ -223,9 +230,17 @@ const uploadRef = ref()
 
 const previewScripts = computed(() => {
   if (!preview.value?.scripts) return []
+  // 优先使用后端返回的 scriptDetails
+  if (preview.value.scriptDetails && preview.value.scriptDetails.length > 0) {
+    return preview.value.scriptDetails.map(s => ({
+      name: s.name,
+      existing: s.existing
+    }))
+  }
+  // 兼容旧格式（没有 scriptDetails）
   return preview.value.scripts.map((name: string) => ({
     name,
-    existing: false // 实际应该检查是否已存在
+    existing: false
   }))
 })
 
