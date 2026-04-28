@@ -462,10 +462,12 @@ async function loadScript() {
       try {
         const fileListRes = await request.get(`/scripts/${route.params.id}/file-list`)
         if (fileListRes.code === 0 && fileListRes.data) {
-          uploadedFiles.value = fileListRes.data.map((name: string) => ({
-            name: name.split('/').pop(),
-            path: name,
-            type: name.endsWith('.sh') ? 'sh' : name.endsWith('.py') ? 'py' : 'zip'
+          // 后端已返回 name, path, size, type，直接使用
+          uploadedFiles.value = fileListRes.data.map((f: any) => ({
+            name: f.name,
+            path: f.path,
+            size: f.size,
+            type: f.type || (f.path?.endsWith('.sh') ? 'sh' : f.path?.endsWith('.py') ? 'py' : 'zip')
           }))
         }
       } catch (e) {

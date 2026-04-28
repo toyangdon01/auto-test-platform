@@ -413,10 +413,12 @@ public class ScriptController {
             .forEach(path -> {
                 try {
                     Path relativePath = scriptDir.relativize(path);
+                    String fileName = relativePath.toString().replace("\\", "/");
                     Map<String, Object> fileInfo = new HashMap<>();
-                    fileInfo.put("path", relativePath.toString().replace("\\", "/"));
+                    fileInfo.put("path", fileName);
                     fileInfo.put("name", path.getFileName().toString());
                     fileInfo.put("size", Files.size(path));
+                    fileInfo.put("type", getFileExtension(fileName));
                     fileList.add(fileInfo);
                 } catch (IOException e) {
                     log.warn("读取文件信息失败: {}", path);
@@ -828,5 +830,20 @@ public class ScriptController {
         scriptMapper.updateById(script);
         
         return ApiResponse.success();
+    }
+    
+    // ==================== 辅助方法 ====================
+    
+    /**
+     * 获取文件扩展名
+     */
+    private String getFileExtension(String filename) {
+        if (filename == null) return "";
+        // 处理 .tar.gz
+        if (filename.toLowerCase().endsWith(".tar.gz")) {
+            return "tar.gz";
+        }
+        int lastDot = filename.lastIndexOf('.');
+        return lastDot > 0 ? filename.substring(lastDot + 1).toLowerCase() : "";
     }
 }
