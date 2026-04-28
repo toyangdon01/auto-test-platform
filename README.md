@@ -47,38 +47,6 @@
 
 > **注意**：本项目使用 SQLite 嵌入式数据库，无需安装任何数据库服务。
 
-## 快速开始
-
-### 方式一：打包运行（推荐）
-
-```bash
-# 1. 克隆项目
-git clone <repository-url>
-cd auto-test-platform
-
-# 2. 一键打包
-# Windows
-.\build.ps1
-
-# Linux/Mac
-chmod +x build.sh
-./build.sh
-
-# 3. 启动服务
-java -jar backend/target/auto-test-platform-1.0.0-SNAPSHOT.jar
-
-# 4. 访问系统
-# 浏览器打开 http://localhost:8080
-```
-
-### 方式二：直接运行 JAR
-
-```bash
-# 下载 Release 中的 JAR 文件
-java -jar auto-test-platform-1.0.0.jar
-```
-
-首次启动会自动创建数据库文件 `~/.autotest/test_platform.db`
 
 ## 开发指南
 
@@ -175,22 +143,6 @@ npm run build
 1. **JRE 17+** 运行环境
 2. 无需数据库、Nginx 等依赖
 
-### 启动参数
-
-```bash
-# 指定端口
-java -jar auto-test-platform-1.0.0-SNAPSHOT.jar --server.port=9000
-
-# 指定数据库路径
-java -jar auto-test-platform-1.0.0-SNAPSHOT.jar --spring.datasource.url="jdbc:sqlite:/data/test_platform.db"
-
-# 后台运行（Linux/Mac）
-nohup java -jar auto-test-platform-1.0.0-SNAPSHOT.jar > app.log 2>&1 &
-
-# 后台运行（Windows PowerShell）
-Start-Process java -ArgumentList "-jar","auto-test-platform-1.0.0-SNAPSHOT.jar" -RedirectStandardOutput "app.log" -RedirectStandardError "error.log"
-```
-
 ## 项目结构
 
 ```
@@ -241,10 +193,10 @@ spring:
 # 平台自定义配置
 autotest:
   storage:
-    scripts-path: C:/data/auto-test/scripts     # 脚本存储路径
-    reports-path: C:/data/auto-test/reports     # 报告存储路径
-    temp-path: C:/data/auto-test/temp           # 临时文件路径
-    results-path: C:/data/auto-test/results     # 结果文件路径
+    scripts-path: ${user.home}/auto-test/scripts     # 脚本存储路径
+    reports-path: ${user.home}/auto-test/reports     # 报告存储路径
+    temp-path: ${user.home}/auto-test/temp           # 临时文件路径
+    results-path: ${user.home}/auto-test/results     # 结果文件路径
   
   ssh:
     connect-timeout: 30000      # SSH 连接超时（毫秒）
@@ -254,14 +206,6 @@ autotest:
     default-timeout: 3600       # 任务默认超时（秒）
 ```
 
-### 数据存储
-
-| 路径 | 说明 |
-|------|------|
-| `~/.autotest/test_platform.db` | SQLite 数据库文件 |
-| `C:/data/auto-test/scripts/` | 上传的脚本文件 |
-| `C:/data/auto-test/reports/` | 生成的测试报告 |
-| `C:/data/auto-test/results/` | 收集的结果文件 |
 
 ### 备份恢复
 
@@ -282,57 +226,6 @@ cp test_platform_backup.db ~/.autotest/test_platform.db
 - Swagger UI：`http://localhost:8080/api/v1/swagger-ui.html`
 - OpenAPI 文档：`http://localhost:8080/api/v1/docs`
 
-## 常见问题
-
-### 1. 端口被占用
-
-**Windows：**
-```powershell
-netstat -ano | findstr :8080
-taskkill /PID <PID> /F
-```
-
-**Linux/Mac：**
-```bash
-lsof -i :8080
-kill -9 <PID>
-```
-
-### 2. 数据库初始化失败
-
-删除现有数据库重新启动：
-```bash
-rm ~/.autotest/test_platform.db
-```
-
-### 3. 前端打包后页面空白
-
-检查 `vite.config.ts` 中 `base` 配置是否为 `'/'`。
-
-### 4. SSH 连接失败
-
-确保目标服务器：
-- SSH 服务正常运行
-- 防火墙允许 22 端口
-- 认证信息（密码/密钥）正确
-
-## 版本历史
-
-### v1.0.0 (2026-03-09)
-- 完成核心功能开发
-- 脚本管理、任务执行、结果管理
-- WebShell 终端、多角色测试支持
-
-### v2.0.0 (2026-04-10)
-- **数据库迁移**：PostgreSQL → SQLite（零配置）
-- **打包优化**：前后端合并，单进程运行
-- **部署简化**：无需安装数据库服务
-- **跨平台支持**：新增 Linux/Mac 打包脚本
-
-### v2.0.1 (2026-04-15)
-- **路径优化**：移除 context-path，支持根路径访问
-- **WebSocket 修复**：更新前端 WebSocket 连接路径
-- **文档更新**：完善打包部署说明
 
 ## 许可证
 

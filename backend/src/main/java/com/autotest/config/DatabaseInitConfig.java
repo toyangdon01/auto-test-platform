@@ -1,16 +1,19 @@
 package com.autotest.config;
 
+import com.zaxxer.hikari.HikariDataSource;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.CommandLineRunner;
+import org.springframework.boot.autoconfigure.jdbc.DataSourceProperties;
+import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Primary;
 
+import javax.sql.DataSource;
 import java.io.File;
 
 /**
  * 数据库初始化配置
- * 在应用启动时自动创建数据库目录
+ * 在数据源创建之前自动创建数据库目录
  *
  * @author auto-test-platform
  */
@@ -18,40 +21,48 @@ import java.io.File;
 @Configuration
 public class DatabaseInitConfig {
 
-    @Value("${spring.datasource.url}")
-    private String datasourceUrl;
-
+    /**
+     * 自定义数据源配置，在创建连接池之前确保数据库目录存在
+     */
     @Bean
-    public CommandLineRunner initDatabaseDirectory() {
-        return args -> {
-            // 解析 SQLite 数据库路径
-            // 格式：jdbc:sqlite:/path/to/db.db
-            if (datasourceUrl != null && datasourceUrl.startsWith("jdbc:sqlite:")) {
-                String dbPath = datasourceUrl.substring("jdbc:sqlite:".length());
-                
-                // 移除查询参数（如 ?foreign_keys=on&journal_mode=WAL）
-                int queryIndex = dbPath.indexOf('?');
-                if (queryIndex > 0) {
-                    dbPath = dbPath.substring(0, queryIndex);
-                }
-                
-                // 处理变量替换后的路径
-                dbPath = dbPath.replace("${user.home}", System.getProperty("user.home"));
-                
-                File dbFile = new File(dbPath);
-                File parentDir = dbFile.getParentFile();
-                
-                if (parentDir != null && !parentDir.exists()) {
-                    boolean created = parentDir.mkdirs();
-                    if (created) {
-                        log.info("已创建数据库目录：{}", parentDir.getAbsolutePath());
-                    } else {
-                        log.warn("创建数据库目录失败：{}", parentDir.getAbsolutePath());
-                    }
-                } else {
-                    log.debug("数据库目录已存在：{}", parentDir != null ? parentDir.getAbsolutePath() : "unknown");
-                }
+    @Primary
+    @ConfigurationProperties("spring.datasource.hikari")
+    public DataSource dataSource(DataSourceProperties properties) {
+        // 在创建数据源之前，先创建数据库目录
+        String url = properties.getUrl();
+        if (url != null && url.startsWith("jdbc:sqlite:")) {
+            createDatabaseDirectory(url);
+        }
+        
+        // 创建数据源
+        return properties.initializeDataSourceBuilder().type(HikariDataSource.class).build();
+    }
+    
+    /**
+     * 创建 SQLite 数据库目录
+     */
+    private void createDatabaseDirectory(String url) {
+        String dbPath = url.substring("jdbc:sqlite:".length());
+        
+        // 移除查询参数
+        int queryIndex = dbPath.indexOf('?');
+        if (queryIndex > 0) {
+            dbPath = dbPath.substring(0, queryIndex);
+        }
+        
+        // 处理变量替换
+        dbPath = dbPath.replace("${user.home}", System.getProperty("user.home"));
+        
+        File dbFile = new File(dbPath);
+        File parentDir = dbFile.getParentFile();
+        
+        if (parentDir != null && !parentDir.exists()) {
+            boolean created = parentDir.mkdirs();
+            if (created) {
+                log.info("已自动创建数据库目录：{}", parentDir.getAbsolutePath());
+            } else {
+                log.warn("创建数据库目录失败：{}", parentDir.getAbsolutePath());
             }
-        };
+        }
     }
 }
