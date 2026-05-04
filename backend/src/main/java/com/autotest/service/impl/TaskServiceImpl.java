@@ -289,7 +289,6 @@ public class TaskServiceImpl implements TaskService {
             TaskServer taskServer = new TaskServer();
             taskServer.setTaskId(task.getId());
             taskServer.setServerId(serverId);  // -1 表示本地执行
-            taskServer.setIsLocal(serverId == -1L);  // 根据 serverId 判断
             taskServer.setOverallStatus("pending");
             taskServer.setCreatedAt(LocalDateTime.now());
             taskServer.setRole(serverId == -1L ? "local" : "default");

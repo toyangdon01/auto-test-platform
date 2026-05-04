@@ -93,7 +93,7 @@
                     @change="(val) => onStepServerChange(index, val)"
                   >
                     <!-- 普通服务器选项 -->
-                    <el-option-group v-if="!stepServerConfigs[index].isLocal" label="服务器">
+                    <el-option-group label="服务器">
                       <el-option
                         v-for="server in enabledServers"
                         :key="server.id"
@@ -114,13 +114,6 @@
                       <span style="color: #999; margin-left: 10px;">平台本地执行</span>
                     </el-option>
                   </el-select>
-                  <el-checkbox 
-                    v-if="stepServerConfigs[index].serverId === -1"
-                    v-model="stepServerConfigs[index].isLocal"
-                    style="margin-left: 10px"
-                  >
-                    本地执行
-                  </el-checkbox>
                 </div>
                 
                 <!-- 步骤参数 -->
@@ -147,10 +140,11 @@
                     v-model="stepServerConfigs[index].stepParams._BACKGROUND"
                     :true-label="true"
                     :false-label="false"
+                    :disabled="stepServerConfigs[index].serverId === -1"
                   >
                     后台执行
                   </el-checkbox>
-                  <el-tooltip content="后台执行的步骤不受网络中断影响，进程会在服务器上持续运行" placement="top">
+                  <el-tooltip :content="stepServerConfigs[index].serverId === -1 ? '本地执行不支持后台运行' : '后台执行的步骤不受网络中断影响，进程会在服务器上持续运行'" placement="top">
                     <el-icon class="field-tip-icon"><QuestionFilled /></el-icon>
                   </el-tooltip>
                 </div>
@@ -347,7 +341,6 @@ interface StepServerConfig {
   displayName: string
   serverId: number | null
   serverName: string
-  isLocal: boolean
   stepParams: Record<string, any>
 }
 
@@ -464,7 +457,6 @@ async function loadScriptSteps(script: Script) {
         displayName: step.displayName || step.name,
         serverId: null,
         serverName: '',
-        isLocal: false,
         stepParams: {}
       }))
       
@@ -522,23 +514,20 @@ async function loadScriptSteps(script: Script) {
       displayName: '执行脚本',
       serverId: null,
       serverName: '',
-      isLocal: false,
       stepParams: {}
     }]
   }
 }
-
+    const server = servers.value.find(s => s.id === serverId)
 // 当步骤选择服务器时
 function onStepServerChange(stepIndex: number, serverId: number) {
   if (serverId === -1) {
     // 本地执行
     stepServerConfigs.value[stepIndex].serverName = '本地环境'
-    stepServerConfigs.value[stepIndex].isLocal = true
   } else {
     const server = servers.value.find(s => s.id === serverId)
     if (server) {
       stepServerConfigs.value[stepIndex].serverName = server.name
-      stepServerConfigs.value[stepIndex].isLocal = false
     }
   }
 }
@@ -570,7 +559,7 @@ async function handleSubmit() {
   
   // 检查所有步骤是否都已分配服务器
   if (scriptSteps.value.length > 0) {
-    const unassignedSteps = stepServerConfigs.value.filter(c => !c.serverId && !c.isLocal)
+    const unassignedSteps = stepServerConfigs.value.filter(c => c.serverId === null)
     if (unassignedSteps.length > 0) {
       ElMessage.error(`请为步骤 "${unassignedSteps[0].displayName}" 选择服务器`)
       return
@@ -585,9 +574,8 @@ async function handleSubmit() {
     }
     if (config.serverId) {
       // 本地执行使用 -1 作为特殊标记
-      const serverIdToAdd = config.isLocal ? -1 : config.serverId
-      if (!stepServerMapping[config.stepName].includes(serverIdToAdd)) {
-        stepServerMapping[config.stepName].push(serverIdToAdd)
+      if (!stepServerMapping[config.stepName].includes(config.serverId)) {
+        stepServerMapping[config.stepName].push(config.serverId)
       }
     }
   })
@@ -604,7 +592,7 @@ async function handleSubmit() {
   
   // 获取所有选中的服务器ID（包含本地执行的 -1）
   const allServerIds = [...new Set(stepServerConfigs.value
-    .map(c => c.isLocal ? -1 : c.serverId)
+    .map(c => c.serverId)
     .filter(id => id !== null && id !== undefined))]
   
   // 检查是否有服务器或本地执行
@@ -717,12 +705,10 @@ function restoreStepServerConfigs(stepServerMapping: Record<string, number[]>, s
       
       if (serverId === -1) {
         stepServerConfigs.value[configIndex].serverName = '本地环境'
-        stepServerConfigs.value[configIndex].isLocal = true
       } else {
         const server = servers.value.find(s => s.id === serverId)
         if (server) {
           stepServerConfigs.value[configIndex].serverName = server.name
-          stepServerConfigs.value[configIndex].isLocal = false
         }
       }
     }

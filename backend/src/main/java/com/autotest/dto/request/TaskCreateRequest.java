@@ -48,11 +48,6 @@ public class TaskCreateRequest implements Serializable {
     private List<Long> serverIds;
 
     /**
-     * 是否包含本地执行
-     */
-    private Boolean isLocal;
-
-    /**
      * 服务器角色配置（可选）
      * 如果不配置，所有服务器使用默认角色
      */

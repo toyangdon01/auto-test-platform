@@ -33,11 +33,6 @@ public class TaskServer implements Serializable {
     private Long serverId;
 
     /**
-     * 是否本地执行（通过 SOL 等本地方式连接目标服务器，而非 SSH）
-     */
-    private Boolean isLocal;
-
-    /**
      * 服务器角色
      */
     private String role;

@@ -584,7 +584,6 @@ public class TaskExecutionService {
             } else {
                 taskServer.setServerId(server.getId());
             }
-            taskServer.setIsLocal(isLocal);
             taskServer.setOverallStatus("running");
             taskServer.setProgress(0);
             taskServerMapper.insert(taskServer);
