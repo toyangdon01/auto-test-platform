@@ -460,12 +460,15 @@ async function loadScriptSteps(script: Script) {
         stepParams: {}
       }))
       
-      // 设置默认参数值
+      // 设置默认参数值（仅当未配置时才设置，保留编辑时的已有配置）
       stepServerConfigs.value.forEach(config => {
         const step = scriptSteps.value.find(s => s.name === config.stepName)
         if (step?.params) {
           step.params.forEach(p => {
-            config.stepParams[p.name] = p.defaultValue !== undefined ? p.defaultValue : p.default
+            // 只在未配置时使用默认值，保留用户的已有配置
+            if (config.stepParams[p.name] === undefined) {
+              config.stepParams[p.name] = p.defaultValue !== undefined ? p.defaultValue : p.default
+            }
           })
         }
       })
@@ -474,9 +477,9 @@ async function loadScriptSteps(script: Script) {
       const parametersData = (res.data as any).parameters || []
       scriptParameters.value = parametersData
       
-      // 设置共享参数默认值
+      // 设置共享参数默认值（仅当未配置时才设置，保留编辑时的已有配置）
       parametersData.forEach((p: any) => {
-        if (p.default !== undefined) {
+        if (p.default !== undefined && formData.sharedParams[p.name] === undefined) {
           formData.sharedParams[p.name] = p.default
         }
       })
