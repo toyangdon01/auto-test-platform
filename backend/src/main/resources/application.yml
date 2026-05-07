@@ -31,6 +31,7 @@ spring:
       idle-timeout: 300000  # 空闲连接超时 5 分钟
       max-lifetime: 1800000  # 连接最大生命周期 30 分钟
       leak-detection-threshold: 60000  # 连接泄漏检测 60 秒
+      connection-init-sql: PRAGMA foreign_keys = ON  # 每次连接时启用外键约束
   
   # Redis 配置
   data:

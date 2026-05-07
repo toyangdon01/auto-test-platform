@@ -226,6 +226,7 @@ public class TaskServiceImpl implements TaskService {
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public Task createTask(TaskCreateRequest request) {
         // 验证脚本
         Script script = scriptMapper.selectById(request.getScriptId());
