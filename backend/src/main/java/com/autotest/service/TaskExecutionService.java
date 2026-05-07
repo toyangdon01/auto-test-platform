@@ -21,6 +21,7 @@ import java.nio.file.Paths;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -633,13 +634,21 @@ public class TaskExecutionService {
             String workDir = "/tmp/test_platform/task_" + task.getId();
             SshService.executeCommand(server, "mkdir -p " + workDir, null, 10000);
             
-            // 上传脚本文件
-            context.log("上传脚本文件...");
-            if (!uploadAllScriptFiles(context, server, scriptVersion, workDir)) {
-                taskStep.setStatus("failed");
-                taskStep.setErrorMessage("脚本上传失败");
-                taskStepMapper.updateById(taskStep);
-                return false;
+            // 检查是否已上传过脚本，避免重复上传
+            Long serverId = server.getId();
+            if (context.isServerUploaded(serverId)) {
+                context.log("脚本已存在，跳过上传");
+            } else {
+                // 上传脚本文件
+                context.log("上传脚本文件...");
+                if (!uploadAllScriptFiles(context, server, scriptVersion, workDir)) {
+                    taskStep.setStatus("failed");
+                    taskStep.setErrorMessage("脚本上传失败");
+                    taskStepMapper.updateById(taskStep);
+                    return false;
+                }
+                // 标记该服务器已上传
+                context.markServerUploaded(serverId);
             }
             
             // 确定执行命令（脚本模式 vs 命令模式）
@@ -1357,6 +1366,8 @@ public class TaskExecutionService {
         private final Consumer<String> logCallback;
         private final StringBuilder logBuffer = new StringBuilder();
         private volatile boolean cancelled = false;
+        // 记录已上传脚本包的服务器（避免重复上传）
+        private final ConcurrentHashMap<Long, Boolean> uploadedServers = new ConcurrentHashMap<>();
 
         public ExecutionContext(Long taskId, Consumer<String> logCallback) {
             this.taskId = taskId;
@@ -1382,6 +1393,22 @@ public class TaskExecutionService {
 
         public boolean isCancelled() {
             return cancelled;
+        }
+
+        /**
+         * 检查服务器是否已上传过脚本
+         */
+        public boolean isServerUploaded(Long serverId) {
+            return serverId != null && uploadedServers.containsKey(serverId);
+        }
+
+        /**
+         * 标记服务器已上传脚本
+         */
+        public void markServerUploaded(Long serverId) {
+            if (serverId != null) {
+                uploadedServers.put(serverId, true);
+            }
         }
     }
     
