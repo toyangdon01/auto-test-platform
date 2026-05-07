@@ -153,7 +153,7 @@ CREATE TABLE IF NOT EXISTS tasks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name VARCHAR(200) NOT NULL,
     description TEXT,
-    script_id BIGINT NOT NULL REFERENCES scripts(id),
+    script_id BIGINT NOT NULL REFERENCES scripts(id) ON DELETE CASCADE,
     script_version VARCHAR(20) NOT NULL,
     shared_params TEXT DEFAULT '{}',  -- JSON
     step_params TEXT,  -- JSON
@@ -429,7 +429,7 @@ CREATE TABLE IF NOT EXISTS pipeline_tasks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     pipeline_id BIGINT NOT NULL REFERENCES pipelines(id) ON DELETE CASCADE,
     name VARCHAR(100) NOT NULL,
-    script_id BIGINT NOT NULL REFERENCES scripts(id),
+    script_id BIGINT NOT NULL REFERENCES scripts(id) ON DELETE CASCADE,
     order_num INTEGER DEFAULT 0,
     server_ids TEXT,
     step_server_mapping TEXT,
