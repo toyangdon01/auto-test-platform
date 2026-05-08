@@ -316,6 +316,7 @@ public class SshService {
 
     /**
      * 上传文件到远程服务器
+     * 如果远程文件已存在且大小与本地文件一致，则跳过上传
      */
     public static boolean uploadFile(Server server, String localPath, String remotePath) {
         Session session = null;
@@ -334,6 +335,21 @@ public class SshService {
             if (lastSlash > 0) {
                 String dir = remotePath.substring(0, lastSlash);
                 createRemoteDirs(channel, dir);
+            }
+            
+            // 检查远程文件是否存在且大小一致
+            try {
+                com.jcraft.jsch.SftpATTRS remoteAttrs = channel.stat(remotePath);
+                java.nio.file.Path localFilePath = java.nio.file.Paths.get(localPath);
+                if (remoteAttrs != null && java.nio.file.Files.exists(localFilePath)) {
+                    long localSize = java.nio.file.Files.size(localFilePath);
+                    if (remoteAttrs.getSize() == localSize) {
+                        System.out.println("[SSH] 文件已存在且大小一致，跳过上传: " + remotePath + " (" + localSize + " bytes)");
+                        return true;
+                    }
+                }
+            } catch (Exception ignored) {
+                // 远程文件不存在，继续上传
             }
             
             // 上传文件

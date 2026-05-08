@@ -52,6 +52,9 @@ public class TaskExecutionService {
     @Value("${autotest.storage.scripts-path:C:/data/auto-test/scripts}")
     private String scriptsPath;
 
+    @Value("${autotest.storage.resources-path}")
+    private String resourcesPath;
+
     @Value("${autotest.storage.results-path}")
     private String resultsPath;
 
@@ -974,7 +977,7 @@ public class TaskExecutionService {
                     ResourceFile rf = resourceFileMapper.selectById(sr.getResourceId());
                     if (rf == null) continue;
                     
-                    String localPath = Paths.get(scriptsPath.replace("scripts", "resources"), rf.getStoragePath()).toString();
+                    String localPath = Paths.get(resourcesPath, rf.getStoragePath()).toString().replace("\\", "/");
                     
                     // 判断目标路径是绝对路径还是相对路径
                     String srTargetPath = sr.getTargetPath();
@@ -1046,11 +1049,13 @@ public class TaskExecutionService {
                     continue;
                 }
                 
-                String localPath = Paths.get(scriptsPath.replace("scripts", "resources"), rf.getStoragePath()).toString();
+                String localPath = Paths.get(resourcesPath, rf.getStoragePath()).toString().replace("\\", "/");
                 
-                // 获取目标路径和权限
-                String targetPathStr = (String) res.get("targetPath");
-                String permissions = (String) res.getOrDefault("permissions", "644");
+                // 获取目标路径和权限（兼容数字和字符串类型）
+                Object targetPathObj = res.get("targetPath");
+                String targetPathStr = targetPathObj != null ? targetPathObj.toString() : null;
+                Object permissionsObj = res.get("permissions");
+                String permissions = permissionsObj != null ? permissionsObj.toString() : "644";
                 
                 // 判断目标路径是绝对路径还是相对路径
                 String targetPath;

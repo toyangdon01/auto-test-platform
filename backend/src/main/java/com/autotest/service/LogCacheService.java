@@ -116,7 +116,12 @@ public class LogCacheService {
         buffer.checkAndTruncate(MAX_LOG_SIZE, TRUNCATE_SIZE);
         
         // 推送到 WebSocket
-        pushToWebSocket(taskId, "log:" + line);
+        // 使用 try-catch 包裹，防止 WebSocket 推送失败影响任务执行
+        try {
+            pushToWebSocket(taskId, "log:" + line);
+        } catch (Exception e) {
+            // 静默处理，不影响调用方
+        }
     }
 
     /**
@@ -127,7 +132,12 @@ public class LogCacheService {
         buffer.appendChunk(chunk);
         
         // 推送到 WebSocket（按行推送）
-        pushToWebSocket(taskId, "chunk:" + chunk);
+        // 使用 try-catch 包裹，防止 WebSocket 推送失败影响任务执行
+        try {
+            pushToWebSocket(taskId, "chunk:" + chunk);
+        } catch (Exception e) {
+            // 静默处理，不影响调用方
+        }
     }
 
     /**
@@ -156,7 +166,11 @@ public class LogCacheService {
         }
         
         // 通知 WebSocket 客户端
-        pushToWebSocket(taskId, "complete:任务执行完成");
+        try {
+            pushToWebSocket(taskId, "complete:任务执行完成");
+        } catch (Exception e) {
+            log.warn("completeTask WebSocket 通知失败: taskId={}", taskId);
+        }
         
         // 延迟清理缓存（保留 30 分钟供查看）
         new Timer().schedule(new TimerTask() {
@@ -173,7 +187,11 @@ public class LogCacheService {
      */
     public void clearCache(Long taskId) {
         logBuffers.remove(taskId);
-        pushToWebSocket(taskId, "cancel:任务已取消");
+        try {
+            pushToWebSocket(taskId, "cancel:任务已取消");
+        } catch (Exception e) {
+            log.warn("clearCache WebSocket 通知失败: taskId={}", taskId);
+        }
         closeWebSocketSessions(taskId);
     }
 
@@ -249,7 +267,14 @@ public class LogCacheService {
                     toRemove.add(session);
                 }
             } catch (IOException e) {
-                log.error("WebSocket 推送失败: sessionId={}", session.getId(), e);
+                log.warn("WebSocket 推送失败(IO): sessionId={}, 移除该会话", session.getId());
+                toRemove.add(session);
+            } catch (IllegalStateException e) {
+                // TEXT_FULL_WRITING 等状态异常，说明会话正在处理中，标记移除而不是阻塞
+                log.warn("WebSocket 推送失败(状态): sessionId={}, 移除该会话", session.getId());
+                toRemove.add(session);
+            } catch (Exception e) {
+                log.warn("WebSocket 推送失败(未知): sessionId={}, 移除该会话", session.getId());
                 toRemove.add(session);
             }
         }
