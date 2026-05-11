@@ -32,7 +32,7 @@ public class ScriptFileServiceImpl implements ScriptFileService {
     private String tempPath;
 
     @Override
-    public Map<String, Object> uploadScriptFile(MultipartFile file) throws IOException {
+    public Map<String, Object> uploadScriptFile(MultipartFile file, String existingTempPath) throws IOException {
         String originalFilename = file.getOriginalFilename();
         if (originalFilename == null || originalFilename.isEmpty()) {
             throw new IllegalArgumentException("文件名不能为空");
@@ -46,9 +46,17 @@ public class ScriptFileServiceImpl implements ScriptFileService {
             throw new IllegalArgumentException("文件类型不允许上传");
         }
 
-        // 创建临时目录
-        Path tempDir = Paths.get(tempPath, "upload_" + System.currentTimeMillis());
-        Files.createDirectories(tempDir);
+        // 使用已存在的临时目录，或创建新的
+        Path tempDir;
+        if (existingTempPath != null && !existingTempPath.isEmpty()) {
+            tempDir = Paths.get(existingTempPath);
+            if (!Files.exists(tempDir)) {
+                Files.createDirectories(tempDir);
+            }
+        } else {
+            tempDir = Paths.get(tempPath, "upload_" + System.currentTimeMillis());
+            Files.createDirectories(tempDir);
+        }
 
         // 保存临时文件
         String safeFileName = sanitizeFileName(originalFilename);
@@ -96,13 +104,18 @@ public class ScriptFileServiceImpl implements ScriptFileService {
             // 单文件脚本
             Map<String, Object> fileInfo = new HashMap<>();
             fileInfo.put("name", safeFileName);
-            fileInfo.put("path", safeFileName);
+            fileInfo.put("path", tempDir.relativize(tempFilePath).toString().replace("\\", "/"));
             fileInfo.put("size", file.getSize());
             fileInfo.put("type", extension);
             fileInfo.put("isEntry", true);
             result.put("fileList", Collections.singletonList(fileInfo));
             result.put("isArchive", false);
             result.put("suggestedEntry", safeFileName);
+        }
+        
+        // 如果使用了已存在的目录，始终返回目录路径而不是文件路径
+        if (existingTempPath != null && !existingTempPath.isEmpty()) {
+            result.put("tempPath", tempDir.toString());
         }
 
         return result;

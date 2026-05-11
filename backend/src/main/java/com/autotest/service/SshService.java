@@ -337,14 +337,14 @@ public class SshService {
                 createRemoteDirs(channel, dir);
             }
             
-            // 检查远程文件是否存在且大小一致
+            // 检查远程文件是否存在且大小一致（跳过上传）
             try {
                 com.jcraft.jsch.SftpATTRS remoteAttrs = channel.stat(remotePath);
                 java.nio.file.Path localFilePath = java.nio.file.Paths.get(localPath);
                 if (remoteAttrs != null && java.nio.file.Files.exists(localFilePath)) {
                     long localSize = java.nio.file.Files.size(localFilePath);
                     if (remoteAttrs.getSize() == localSize) {
-                        System.out.println("[SSH] 文件已存在且大小一致，跳过上传: " + remotePath + " (" + localSize + " bytes)");
+                        log.info("文件已存在且大小一致，跳过上传: {} ({} bytes)", remotePath, localSize);
                         return true;
                     }
                 }
@@ -354,9 +354,23 @@ public class SshService {
             
             // 上传文件
             channel.put(localPath, remotePath);
+            
+            // 验证文件是否上传成功
+            try {
+                com.jcraft.jsch.SftpATTRS attrs = channel.stat(remotePath);
+                if (attrs == null) {
+                    log.error("文件上传成功但验证失败，远程文件不存在: {}", remotePath);
+                    return false;
+                }
+                log.info("文件上传并验证成功: {} ({} bytes)", remotePath, attrs.getSize());
+            } catch (Exception e) {
+                log.error("文件上传成功但验证异常: {} - {}", remotePath, e.getMessage());
+                return false;
+            }
+            
             return true;
         } catch (Exception e) {
-            System.err.println("[SSH] Upload failed: " + e.getMessage());
+            log.error("文件上传失败: {} - {}", remotePath, e.getMessage());
             return false;
         } finally {
             if (channel != null) {
