@@ -130,8 +130,9 @@ public class ScriptController {
     )
     @PostMapping("/upload")
     public ApiResponse<Map<String, Object>> uploadScriptFile(
-            @RequestParam("file") MultipartFile file) throws IOException {
-        Map<String, Object> result = scriptFileService.uploadScriptFile(file);
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(value = "tempPath", required = false) String existingTempPath) throws IOException {
+        Map<String, Object> result = scriptFileService.uploadScriptFile(file, existingTempPath);
         return ApiResponse.success(result);
     }
 

@@ -20,7 +20,7 @@ public interface ScriptFileService {
      * @param file 上传的文件（.sh/.py/.zip/.tar.gz）
      * @return 文件信息
      */
-    Map<String, Object> uploadScriptFile(MultipartFile file) throws IOException;
+    Map<String, Object> uploadScriptFile(MultipartFile file, String existingTempPath) throws IOException;
 
     /**
      * 解压压缩包并获取文件列表
