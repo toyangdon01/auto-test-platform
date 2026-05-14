@@ -273,6 +273,13 @@ public class ScriptController {
         
         scriptVersionMapper.insert(version);
         log.info("创建脚本版本: scriptId={}, version={}", script.getId(), version.getVersion());
+        
+        // 扫描实际文件并更新 fileList（修复单独创建脚本时 fileList 为空的问题）
+        try {
+            updateScriptFileList(script.getId());
+        } catch (IOException e) {
+            log.warn("更新脚本文件列表失败: scriptId={}, error={}", script.getId(), e.getMessage());
+        }
     }
     
     /**
@@ -604,8 +611,39 @@ public class ScriptController {
 
     @Operation(summary = "列出脚本文件")
     @GetMapping("/{id}/file-list")
-    public ApiResponse<List<String>> listScriptFiles(@PathVariable Long id) throws IOException {
-        return ApiResponse.success(scriptFileService.listScriptFiles(id));
+    public ApiResponse<List<Map<String, Object>>> listScriptFiles(@PathVariable Long id) throws IOException {
+        // 返回对象数组（包含 name, path, size, type），与批量导入格式一致
+        String scriptPath = scriptFileService.getScriptPath(id);
+        Path scriptDir = Paths.get(scriptPath);
+        List<Map<String, Object>> fileList = new ArrayList<>();
+        
+        if (Files.exists(scriptDir)) {
+            Files.walk(scriptDir)
+                .filter(path -> !Files.isDirectory(path))
+                .forEach(path -> {
+                    try {
+                        Path relativePath = scriptDir.relativize(path);
+                        Map<String, Object> fileInfo = new LinkedHashMap<>();
+                        fileInfo.put("path", relativePath.toString().replace("\\", "/"));
+                        fileInfo.put("name", path.getFileName().toString());
+                        fileInfo.put("size", Files.size(path));
+                        // 从文件名推断类型
+                        String fileName = path.getFileName().toString().toLowerCase();
+                        if (fileName.endsWith(".sh")) {
+                            fileInfo.put("type", "sh");
+                        } else if (fileName.endsWith(".py")) {
+                            fileInfo.put("type", "py");
+                        } else {
+                            fileInfo.put("type", getFileExtension(fileName));
+                        }
+                        fileList.add(fileInfo);
+                    } catch (IOException e) {
+                        log.warn("读取文件信息失败: {}", path);
+                    }
+                });
+        }
+        
+        return ApiResponse.success(fileList);
     }
 
     @Operation(summary = "删除脚本文件")
