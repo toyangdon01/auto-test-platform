@@ -54,6 +54,32 @@ public class TaskController {
     private final ServerMapper serverMapper;
     private final TaskExecutionService taskExecutionService;
 
+    /**
+     * 允许在浏览器标签页内联渲染的扩展名及其 Content-Type。
+     * 白名单之外的类型一律按附件下载，避免把不可信内容以内联方式交给浏览器解析。
+     */
+    private static final Map<String, String> INLINE_MIME_TYPES = Map.ofEntries(
+            Map.entry("svg", "image/svg+xml;charset=UTF-8"),
+            Map.entry("html", "text/html;charset=UTF-8"),
+            Map.entry("htm", "text/html;charset=UTF-8"),
+            Map.entry("txt", "text/plain;charset=UTF-8"),
+            Map.entry("log", "text/plain;charset=UTF-8"),
+            // application/json 会被浏览器直接下载而非显示，内联时按纯文本渲染
+            Map.entry("json", "text/plain;charset=UTF-8"),
+            Map.entry("xml", "application/xml;charset=UTF-8"),
+            Map.entry("yaml", "text/plain;charset=UTF-8"),
+            Map.entry("yml", "text/plain;charset=UTF-8"),
+            Map.entry("csv", "text/plain;charset=UTF-8"),
+            Map.entry("md", "text/plain;charset=UTF-8"),
+            Map.entry("css", "text/plain;charset=UTF-8"),
+            Map.entry("png", "image/png"),
+            Map.entry("gif", "image/gif"),
+            Map.entry("jpg", "image/jpeg"),
+            Map.entry("jpeg", "image/jpeg"),
+            Map.entry("webp", "image/webp"),
+            Map.entry("pdf", "application/pdf")
+    );
+
     @Operation(
         summary = "获取任务列表",
         description = "分页获取任务列表，支持按名称、状态、脚本ID筛选"
@@ -241,6 +267,7 @@ public class TaskController {
     public void downloadStepFile(
             @PathVariable Long stepId,
             @PathVariable String fileName,
+            @RequestParam(defaultValue = "false") boolean inline,
             HttpServletResponse response) throws IOException {
         
         TaskStep taskStep = taskStepMapper.findByIdWithServer(stepId);
@@ -296,8 +323,22 @@ public class TaskController {
             
             // 设置响应头
             String encodedFilename = URLEncoder.encode(fileName, StandardCharsets.UTF_8).replace("+", "%20");
-            response.setContentType("application/octet-stream");
-            response.setHeader("Content-Disposition", "attachment; filename*=UTF-8''" + encodedFilename);
+            String extension = fileName.contains(".")
+                    ? fileName.substring(fileName.lastIndexOf('.') + 1).toLowerCase()
+                    : "";
+            String inlineMimeType = inline ? INLINE_MIME_TYPES.get(extension) : null;
+
+            if (inlineMimeType != null) {
+                response.setContentType(inlineMimeType);
+                response.setHeader("Content-Disposition", "inline; filename*=UTF-8''" + encodedFilename);
+                // 文件内容来自远端测试服务器。内联渲染时用 CSP sandbox 让该文档获得独立源，
+                // 火焰图与 HTML 自带的脚本仍可正常执行，但读不到本平台的 Cookie 和接口。
+                response.setHeader("Content-Security-Policy", "sandbox allow-scripts allow-popups");
+                response.setHeader("X-Content-Type-Options", "nosniff");
+            } else {
+                response.setContentType("application/octet-stream");
+                response.setHeader("Content-Disposition", "attachment; filename*=UTF-8''" + encodedFilename);
+            }
             response.setContentLength(fileContent.length);
             
             response.getOutputStream().write(fileContent);

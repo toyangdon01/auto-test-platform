@@ -499,11 +499,16 @@
                 <el-tag size="small" effect="plain">{{ row.type === 'directory' ? '目录' : '文件' }}</el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="180">
+            <el-table-column label="操作" width="210">
               <template #default="{ row }">
                 <el-button v-if="isViewable(row.name)" type="primary" link size="small" @click="viewCollectedFile(row)">
                   <el-icon><View /></el-icon>查看
                 </el-button>
+                <el-tooltip v-if="isOpenable(row.name)" content="在新标签页打开" placement="top">
+                  <el-button type="primary" link size="small" @click="openCollectedFileInTab(row)">
+                    <el-icon><TopRight /></el-icon>
+                  </el-button>
+                </el-tooltip>
                 <el-button type="primary" link size="small" @click="downloadCollectedFile(row)">
                   <el-icon><Download /></el-icon>下载
                 </el-button>
@@ -573,6 +578,9 @@
       </div>
       <template #footer>
         <el-button @click="filePreviewVisible = false">关闭</el-button>
+        <el-button v-if="isOpenable(filePreviewName)" @click="openCollectedFileInTab({ name: filePreviewName })">
+          <el-icon><TopRight /></el-icon>在新标签页打开
+        </el-button>
         <el-button type="primary" @click="downloadCollectedFile({ name: filePreviewName })">
           <el-icon><Download /></el-icon>下载
         </el-button>
@@ -591,7 +599,7 @@ import {
   VideoPlay, VideoPause, RefreshRight, Refresh, Loading,
   Monitor, Document, DataLine, CopyDocument, ArrowDown,
   CircleCheck, CircleClose, Clock, Warning, Setting,
-  Folder, Download, View
+  Folder, Download, View, TopRight
 } from '@element-plus/icons-vue'
 import request from '@/utils/request'
 import { taskApi, type TaskStep } from '@/api/task'
@@ -629,9 +637,23 @@ const VIEWABLE_EXTENSIONS = new Set([
   'rb', 'go', 'rs', 'ts', 'jsx', 'tsx', 'vue', 'sql', 'pl'
 ])
 
+// 与后端 INLINE_MIME_TYPES 白名单保持一致：这些类型交给浏览器原生渲染，
+// 可直接在新标签页打开；不在名单内的类型后端会退回附件下载。
+const OPENABLE_EXTENSIONS = new Set([
+  'svg', 'html', 'htm', 'txt', 'log', 'json', 'xml', 'yaml', 'yml',
+  'csv', 'md', 'css', 'png', 'gif', 'jpg', 'jpeg', 'webp', 'pdf'
+])
+
+function extOf(fileName: string): string {
+  return fileName.split('.').pop()?.toLowerCase() || ''
+}
+
 function isViewable(fileName: string): boolean {
-  const ext = fileName.split('.').pop()?.toLowerCase() || ''
-  return VIEWABLE_EXTENSIONS.has(ext)
+  return VIEWABLE_EXTENSIONS.has(extOf(fileName))
+}
+
+function isOpenable(fileName: string): boolean {
+  return OPENABLE_EXTENSIONS.has(extOf(fileName))
 }
 
 // 后台步骤状态查询
@@ -813,6 +835,18 @@ async function downloadCollectedFile(file: any) {
   } catch (e: any) {
     ElMessage.error(e.message || '下载失败')
   }
+}
+
+function openCollectedFileInTab(file: any) {
+  if (!currentStep.value || !file.name) return
+  const url = `/api/v1/tasks/steps/${currentStep.value.id}/files/${encodeURIComponent(file.name)}/download?inline=true`
+  // 不传 'noopener' 特性串：那样 window.open 会按规范返回 null，无法判断是否被拦截
+  const win = window.open(url, '_blank')
+  if (!win) {
+    ElMessage.warning('新标签页被浏览器拦截，请允许弹出窗口后重试')
+    return
+  }
+  win.opener = null
 }
 
 function revokeFilePreviewUrl() {
