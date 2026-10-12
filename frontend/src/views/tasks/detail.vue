@@ -499,8 +499,11 @@
                 <el-tag size="small" effect="plain">{{ row.type === 'directory' ? '目录' : '文件' }}</el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="120">
+            <el-table-column label="操作" width="180">
               <template #default="{ row }">
+                <el-button v-if="isViewable(row.name)" type="primary" link size="small" @click="viewCollectedFile(row)">
+                  <el-icon><View /></el-icon>查看
+                </el-button>
                 <el-button type="primary" link size="small" @click="downloadCollectedFile(row)">
                   <el-icon><Download /></el-icon>下载
                 </el-button>
@@ -560,6 +563,21 @@
         </el-button>
       </template>
     </el-dialog>
+
+    <!-- 文件预览弹窗 -->
+    <el-dialog v-model="filePreviewVisible" :title="`文件预览 - ${filePreviewName}`" width="80%" top="5vh" :close-on-click-modal="true" @closed="revokeFilePreviewUrl">
+      <div v-loading="filePreviewLoading" style="min-height: 300px;">
+        <iframe v-if="filePreviewIsSvg && filePreviewUrl" :src="filePreviewUrl" class="svg-preview" title="SVG 预览" sandbox="allow-scripts allow-popups"></iframe>
+        <pre v-else-if="filePreviewContent" class="text-preview">{{ filePreviewContent }}</pre>
+        <el-empty v-else-if="!filePreviewLoading" description="文件内容为空或无法预览" :image-size="80" />
+      </div>
+      <template #footer>
+        <el-button @click="filePreviewVisible = false">关闭</el-button>
+        <el-button type="primary" @click="downloadCollectedFile({ name: filePreviewName })">
+          <el-icon><Download /></el-icon>下载
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -573,7 +591,7 @@ import {
   VideoPlay, VideoPause, RefreshRight, Refresh, Loading,
   Monitor, Document, DataLine, CopyDocument, ArrowDown,
   CircleCheck, CircleClose, Clock, Warning, Setting,
-  Folder, Download
+  Folder, Download, View
 } from '@element-plus/icons-vue'
 import request from '@/utils/request'
 import { taskApi, type TaskStep } from '@/api/task'
@@ -596,6 +614,25 @@ const currentLogs = ref('')
 const currentResult = ref<any>(null)
 const currentLogPhase = ref<'deploy' | 'run' | 'cleanup' | 'all'>('all')
 const currentStep = ref<TaskStep | null>(null)
+
+const filePreviewVisible = ref(false)
+const filePreviewLoading = ref(false)
+const filePreviewContent = ref('')
+const filePreviewName = ref('')
+const filePreviewIsSvg = ref(false)
+const filePreviewUrl = ref('')
+
+const VIEWABLE_EXTENSIONS = new Set([
+  'svg', 'txt', 'log', 'json', 'xml', 'yaml', 'yml',
+  'html', 'htm', 'css', 'js', 'csv', 'md', 'sh', 'py',
+  'conf', 'cfg', 'ini', 'properties', 'java', 'c', 'cpp', 'h',
+  'rb', 'go', 'rs', 'ts', 'jsx', 'tsx', 'vue', 'sql', 'pl'
+])
+
+function isViewable(fileName: string): boolean {
+  const ext = fileName.split('.').pop()?.toLowerCase() || ''
+  return VIEWABLE_EXTENSIONS.has(ext)
+}
 
 // 后台步骤状态查询
 const checkingBackground = ref(false)
@@ -775,6 +812,37 @@ async function downloadCollectedFile(file: any) {
     }, 100)
   } catch (e: any) {
     ElMessage.error(e.message || '下载失败')
+  }
+}
+
+function revokeFilePreviewUrl() {
+  if (filePreviewUrl.value) {
+    window.URL.revokeObjectURL(filePreviewUrl.value)
+    filePreviewUrl.value = ''
+  }
+}
+
+async function viewCollectedFile(file: any) {
+  if (!currentStep.value || !file.name) return
+  revokeFilePreviewUrl()
+  filePreviewLoading.value = true
+  filePreviewContent.value = ''
+  filePreviewName.value = file.name
+  filePreviewIsSvg.value = file.name.toLowerCase().endsWith('.svg')
+  filePreviewVisible.value = true
+
+  try {
+    const response = await request.get<{ content?: string; size?: string }>(`/tasks/steps/${currentStep.value.id}/files/${encodeURIComponent(file.name)}`)
+    const content = response.data?.content || ''
+    filePreviewContent.value = content
+    if (filePreviewIsSvg.value) {
+      filePreviewUrl.value = window.URL.createObjectURL(new Blob([content], { type: 'image/svg+xml' }))
+    }
+  } catch (e: any) {
+    ElMessage.error(e.message || '文件预览失败')
+    filePreviewContent.value = ''
+  } finally {
+    filePreviewLoading.value = false
   }
 }
 
@@ -1416,6 +1484,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   stopPolling()
+  revokeFilePreviewUrl()
 })
 
 // 提取错误信息
@@ -1947,6 +2016,31 @@ function getErrorMessage(output: string | null): string {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
+}
+
+// 文件预览
+.svg-preview {
+  display: block;
+  width: 100%;
+  height: 72vh;
+  background: #fff;
+  border: 1px solid #ebeef5;
+  border-radius: 4px;
+}
+
+.text-preview {
+  max-height: 70vh;
+  overflow: auto;
+  padding: 16px;
+  background: #f5f7fa;
+  border-radius: 4px;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: #303133;
+  margin: 0;
 }
 </style>
 
