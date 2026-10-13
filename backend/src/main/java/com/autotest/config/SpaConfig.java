@@ -18,11 +18,15 @@ import java.io.IOException;
 @Configuration
 public class SpaConfig implements WebMvcConfigurer {
 
+    private static final Resource INDEX_HTML = new ClassPathResource("static/index.html");
+
+    /** api/ 是全部 REST 接口；ws/ 与 webshell/ 是 @ServerEndpoint WebSocket 端点 */
+    private static final String[] BACKEND_PREFIXES = {"api/", "ws/", "webshell/"};
+
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
-        // 静态资源处理（排除 API 路径）
-        // 由于 context-path 已经是 /api/v1，所有 Controller 都在这个路径下
-        // 所以静态资源处理器不会影响 API 请求
+        // 没有配置 server.servlet.context-path，是各 Controller 自带 /api/v1 前缀，
+        // 所以 "/**" 同样覆盖了 API 路径 —— 回退到 index.html 时必须把后端路径排除掉。
         registry.addResourceHandler("/**")
                 .addResourceLocations("classpath:/static/")
                 .resourceChain(true)
@@ -34,9 +38,27 @@ public class SpaConfig implements WebMvcConfigurer {
                         if (requestedResource.exists() && requestedResource.isReadable()) {
                             return requestedResource;
                         }
-                        // 否则返回 null，让其他处理器处理
-                        return null;
+                        // 打错的接口和缺失的前端资源保持 null，由 NoResourceFoundException 报 404
+                        if (isBackendPath(resourcePath)) {
+                            return null;
+                        }
+                        // 其余是 Vue Router history 模式的深链，交给 index.html 由前端路由接管
+                        return INDEX_HTML.exists() && INDEX_HTML.isReadable() ? INDEX_HTML : null;
                     }
                 });
+    }
+
+    private static boolean isBackendPath(String resourcePath) {
+        for (String prefix : BACKEND_PREFIXES) {
+            if (resourcePath.startsWith(prefix)) {
+                return true;
+            }
+        }
+        // 带扩展名的是静态资源本身，被 index.html 掩盖后表现为白屏且看不出原因。
+        // 只看最后一段：早期段的点（/v1.5/tasks）不影响判断，代价是带点的路径参数
+        // （/tasks/detail/v1.5）会按文件 404 —— 与 webpack historyApiFallback 一致，
+        // 本项目路由参数均为数据库自增 id，不含点。
+        int lastSeparator = resourcePath.lastIndexOf('/');
+        return resourcePath.indexOf('.', lastSeparator + 1) >= 0;
     }
 }

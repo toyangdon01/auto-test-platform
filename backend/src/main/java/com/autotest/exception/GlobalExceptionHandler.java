@@ -9,6 +9,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.util.stream.Collectors;
 
@@ -65,6 +66,16 @@ public class GlobalExceptionHandler {
     public ApiResponse<Void> handleIllegalArgumentException(IllegalArgumentException e) {
         log.warn("非法参数: {}", e.getMessage());
         return ApiResponse.error(400, e.getMessage());
+    }
+
+    /**
+     * 资源未找到（缺失的静态资源、或未匹配到接口的 API 路径）
+     */
+    @ExceptionHandler(NoResourceFoundException.class)
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+    public ApiResponse<Void> handleNoResourceFoundException(NoResourceFoundException e) {
+        log.warn("资源不存在: {}", e.getResourcePath());
+        return ApiResponse.error(404, "请求资源不存在: " + e.getResourcePath());
     }
 
     /**
