@@ -42,12 +42,12 @@ stages:
           - ''
           - '#MAVEN'
           - if [ ! -f /root/temp/maven.tar.gz ];then
-          - '  curl -L https://dlcdn.apache.org/maven/maven-3/3.10.0/binaries/apache-maven-3.10.0-bin.tar.gz -o /root/temp/maven.tar.gz'
+          - '  curl -L https://dlcdn.apache.org/maven/maven-3/${MAVEN_VERSION}/binaries/apache-maven-${MAVEN_VERSION}-bin.tar.gz -o /root/temp/maven.tar.gz'
           - fi
           - tar -xzvf /root/temp/maven.tar.gz 
           - ''
           - export JAVA_HOME="$JDK_DIR/"
-          - export PATH="$(pwd)/apache-maven-3.10.0/bin:$JAVA_HOME/bin:$PATH"
+          - export PATH="$(pwd)/apache-maven-${MAVEN_VERSION}/bin:$JAVA_HOME/bin:$PATH"
           - cd backend
           - mvn package -DskipTests
           - mkdir -p ../dist
@@ -129,7 +129,6 @@ stages:
           - ~/.npm
           - ~/.yarn
           - ~/.m2
-          - ~/temp
         notify: []
         strategy:
           retry: '0'
