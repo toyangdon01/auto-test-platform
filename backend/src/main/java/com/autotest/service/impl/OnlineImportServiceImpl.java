@@ -71,6 +71,14 @@ public class OnlineImportServiceImpl implements OnlineImportService {
     // 临时文件过期时间（30 分钟）
     private static final long TEMP_PATH_EXPIRY_MS = 30 * 60 * 1000;
 
+    // 单次 Git API 调用超时
+    private static final int API_TIMEOUT_MS = 60 * 1000;
+
+    // 下载阶段总时限。文件树 1 次 + 每个文件 1 次 API 调用，逐个 60 秒累加起来没有上界，
+    // 必须整体收口。取 270 秒是给前端 300 秒（script.ts ONLINE_IMPORT_TIMEOUT）留余量，
+    // 让后端先返回可读错误，而不是浏览器先断开、后端仍在继续写库。
+    private static final long DOWNLOAD_BUDGET_MS = 270 * 1000;
+
     /**
      * 从在线仓库预览脚本包
      */
@@ -232,25 +240,64 @@ public class OnlineImportServiceImpl implements OnlineImportService {
         // 创建临时目录
         Path tempDir = Files.createTempDirectory("git-import-");
         
-        // 1. 调用 API 获取文件树
-        List<GitFileInfo> files = fetchFileTree(info, accessToken);
-        log.info("获取到 {} 个文件", files.size());
-        
-        // 2. 下载每个文件
-        for (GitFileInfo file : files) {
-            Path targetPath = tempDir.resolve(file.path);
-            Files.createDirectories(targetPath.getParent());
-            downloadFile(info, file.path, file.sha, accessToken, targetPath);
+        // 本次下载所有 API 调用共用一个截止时间
+        long deadline = System.currentTimeMillis() + DOWNLOAD_BUDGET_MS;
+        try {
+            // 1. 调用 API 获取文件树
+            List<GitFileInfo> files = fetchFileTree(info, accessToken, deadline);
+            log.info("获取到 {} 个文件", files.size());
+            
+            // 2. 下载每个文件
+            for (GitFileInfo file : files) {
+                Path targetPath = tempDir.resolve(file.path);
+                Files.createDirectories(targetPath.getParent());
+                downloadFile(info, file.path, file.sha, accessToken, targetPath, deadline);
+            }
+            
+            log.info("下载完成：{} 个文件到 {}", files.size(), tempDir);
+            return tempDir;
+        } catch (RuntimeException | IOException e) {
+            // 预览失败时 tempDir 不会返回给调用方，只有这里能回收，
+            // 否则半成品仓库会一直留在临时目录
+            deleteDirectoryQuietly(tempDir);
+            throw e;
         }
-        
-        log.info("下载完成：{} 个文件到 {}", files.size(), tempDir);
-        return tempDir;
+    }
+    
+    /**
+     * 剩余预算即本次调用的超时；预算耗尽则终止整个下载
+     */
+    private int remainingTimeoutMs(long deadline) {
+        long remaining = deadline - System.currentTimeMillis();
+        if (remaining <= 0) {
+            throw new BusinessException(String.format(
+                "仓库下载超时（已超过 %d 秒），请指定子目录缩小范围或稍后重试", DOWNLOAD_BUDGET_MS / 1000));
+        }
+        return (int) Math.min(API_TIMEOUT_MS, remaining);
+    }
+    
+    /**
+     * 递归删除目录，失败只记录日志
+     */
+    private void deleteDirectoryQuietly(Path dir) {
+        try (Stream<Path> paths = Files.walk(dir)) {
+            paths.sorted(Comparator.reverseOrder())
+                .forEach(p -> {
+                    try {
+                        Files.delete(p);
+                    } catch (IOException e) {
+                        log.warn("删除临时文件失败：{}", p);
+                    }
+                });
+        } catch (IOException e) {
+            log.warn("清理临时文件失败：{}", e.getMessage());
+        }
     }
     
     /**
      * 获取仓库文件树
      */
-    private List<GitFileInfo> fetchFileTree(GitRepoInfo info, String accessToken) throws IOException {
+    private List<GitFileInfo> fetchFileTree(GitRepoInfo info, String accessToken, long deadline) throws IOException {
         String apiUrl = String.format(
             "https://gitee.com/api/v5/repos/%s/%s/git/trees/%s?recursive=1",
             info.getOwner(), info.getRepo(), info.getBranch()
@@ -262,8 +309,8 @@ public class OnlineImportServiceImpl implements OnlineImportService {
         
         URL url = new URL(apiUrl);
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-        conn.setConnectTimeout(60000);
-        conn.setReadTimeout(60000);
+        conn.setConnectTimeout(remainingTimeoutMs(deadline));
+        conn.setReadTimeout(remainingTimeoutMs(deadline));
         conn.setRequestProperty("Accept", "application/json");
         
         int responseCode = conn.getResponseCode();
@@ -308,7 +355,7 @@ public class OnlineImportServiceImpl implements OnlineImportService {
     /**
      * 下载单个文件
      */
-    private void downloadFile(GitRepoInfo info, String filePath, String sha, String accessToken, Path targetPath) throws IOException {
+    private void downloadFile(GitRepoInfo info, String filePath, String sha, String accessToken, Path targetPath, long deadline) throws IOException {
         // 使用 API 下载文件内容
         String apiUrl = String.format(
             "https://gitee.com/api/v5/repos/%s/%s/contents/%s?ref=%s",
@@ -323,8 +370,8 @@ public class OnlineImportServiceImpl implements OnlineImportService {
         
         URL url = new URL(apiUrl);
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-        conn.setConnectTimeout(60000);
-        conn.setReadTimeout(60000);
+        conn.setConnectTimeout(remainingTimeoutMs(deadline));
+        conn.setReadTimeout(remainingTimeoutMs(deadline));
         conn.setRequestProperty("Accept", "application/json");
         
         int responseCode = conn.getResponseCode();
@@ -526,23 +573,8 @@ public class OnlineImportServiceImpl implements OnlineImportService {
     private void cleanupTempPath(String tempPathId) {
         TempPathInfo tempInfo = TEMP_PATH_CACHE.remove(tempPathId);
         if (tempInfo != null) {
-            try {
-                Path scriptDir = Paths.get(tempInfo.path);
-                // 删除整个目录树
-                try (Stream<Path> paths = Files.walk(scriptDir)) {
-                    paths.sorted(Comparator.reverseOrder())
-                        .forEach(p -> {
-                            try {
-                                Files.delete(p);
-                            } catch (IOException e) {
-                                log.warn("删除临时文件失败：{}", p);
-                            }
-                        });
-                }
-                log.info("清理临时文件完成：{}", tempPathId);
-            } catch (IOException e) {
-                log.warn("清理临时文件失败：{}", e.getMessage());
-            }
+            deleteDirectoryQuietly(Paths.get(tempInfo.path));
+            log.info("清理临时文件完成：{}", tempPathId);
         }
     }
 

@@ -41,6 +41,11 @@ export interface ScriptQueryParams extends PageParams {
   status?: string
 }
 
+// 在线导入要逐文件调用 Gitee API，耗时随仓库文件数增长。
+// 全局默认 30s 短于后端单次 API 的 60s 超时，会让浏览器先断开、后端却仍在导入。
+// 必须大于后端 DOWNLOAD_BUDGET_MS（OnlineImportServiceImpl），由后端先给出明确错误。
+const ONLINE_IMPORT_TIMEOUT = 300000
+
 // 脚本 API
 export const scriptApi = {
   list(params: ScriptQueryParams) {
@@ -75,7 +80,7 @@ export const scriptApi = {
     subDir?: string
     accessToken?: string
   }) {
-    return request.post('/scripts/import/online/preview', data)
+    return request.post('/scripts/import/online/preview', data, { timeout: ONLINE_IMPORT_TIMEOUT })
   },
 
   // 在线导入 - 执行
@@ -84,7 +89,7 @@ export const scriptApi = {
     selectedScripts?: string[]
     conflictStrategy?: 'SKIP' | 'OVERWRITE' | 'RENAME'
   }) {
-    return request.post('/scripts/import/online/execute', data)
+    return request.post('/scripts/import/online/execute', data, { timeout: ONLINE_IMPORT_TIMEOUT })
   },
 }
 
