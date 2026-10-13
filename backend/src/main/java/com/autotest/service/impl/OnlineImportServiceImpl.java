@@ -20,6 +20,7 @@ import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.io.*;
@@ -575,6 +576,43 @@ public class OnlineImportServiceImpl implements OnlineImportService {
         if (tempInfo != null) {
             deleteDirectoryQuietly(Paths.get(tempInfo.path));
             log.info("清理临时文件完成：{}", tempPathId);
+        }
+    }
+
+    /**
+     * 兜底清理孤儿临时目录。
+     * 预览成功但用户没有点「导入」、或进程重启导致内存里的 TEMP_PATH_CACHE 清空时，
+     * 没有人再回收这些目录——本次修复前它们已在此累积了数月。
+     * 缓存条目的过期时间创建于预览时刻且不会续期，因此创建已超过 TTL 的目录必然不可达。
+     */
+    @Scheduled(initialDelay = 30_000, fixedDelay = 10 * 60 * 1000)
+    public void purgeOrphanImportTempDirs() {
+        Path tempRoot = Paths.get(System.getProperty("java.io.tmpdir"));
+        long cutoff = System.currentTimeMillis() - TEMP_PATH_EXPIRY_MS;
+
+        try (Stream<Path> children = Files.list(tempRoot)) {
+            children.filter(p -> p.getFileName().toString().startsWith("git-import-"))
+                    .filter(Files::isDirectory)
+                    .filter(p -> referenceTime(p) < cutoff)
+                    .forEach(p -> {
+                        deleteDirectoryQuietly(p);
+                        log.info("清理孤儿在线导入临时目录：{}", p.getFileName());
+                    });
+        } catch (IOException e) {
+            log.warn("扫描临时目录失败：{}", e.getMessage());
+        }
+    }
+
+    /**
+     * 取创建时间与最后修改时间中较新者：正在下载的目录会不断被刷新，不会被误删；
+     * 读不到属性时返回最大值，宁可留着也不冒险删。
+     */
+    private long referenceTime(Path dir) {
+        try {
+            BasicFileAttributes attr = Files.readAttributes(dir, BasicFileAttributes.class);
+            return Math.max(attr.creationTime().toMillis(), attr.lastModifiedTime().toMillis());
+        } catch (IOException e) {
+            return Long.MAX_VALUE;
         }
     }
 
