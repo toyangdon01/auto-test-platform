@@ -582,9 +582,9 @@ public class ScriptPackageServiceImpl implements ScriptPackageService {
      */
     private void importScriptResources(Long scriptId, List<ScriptConfig.ResourceConfig> resources, Path tempDir) throws IOException {
         Path resourcesDir = tempDir.resolve("resources");
-        if (!Files.exists(resourcesDir)) {
-            log.warn("resources 目录不存在，跳过资源导入");
-            return;
+        boolean hasLocalResources = Files.exists(resourcesDir);
+        if (!hasLocalResources) {
+            log.info("包内无 resources 目录，仅按 resourceMd5 关联平台已有的资源文件");
         }
         
         for (ScriptConfig.ResourceConfig rc : resources) {
@@ -601,6 +601,10 @@ public class ScriptPackageServiceImpl implements ScriptPackageService {
             if (resourceFile != null) {
                 log.info("找到现有资源文件（MD5匹配）：resourceId={}, name={}", resourceFile.getId(), resourceFile.getName());
             } else {
+                if (!hasLocalResources) {
+                    log.warn("平台无该 MD5 且包内没有 resources 目录，跳过资源关联：resourceMd5={}", rc.getResourceMd5());
+                    continue;
+                }
                 // 需要从包中导入资源文件
                 // 根据资源配置中的信息找到对应文件
                 // 由于 manifest 只记录文件名，我们需要在 resources 目录中查找
