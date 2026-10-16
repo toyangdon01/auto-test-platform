@@ -52,7 +52,7 @@
           <el-tag>{{ getCategoryText(row.testCategory) }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="tags" label="标签" min-width="200">
+      <el-table-column prop="tags" label="标签" min-width="280">
         <template #default="{ row }">
           <el-tooltip 
             v-if="parseTags(row.tags).length" 
@@ -92,7 +92,7 @@
           {{ formatTime(row.updatedAt) }}
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="400" fixed="right">
+      <el-table-column label="操作" width="260" fixed="right">
         <template #default="{ row }">
           <el-button type="primary" link @click="handleDetail(row)">详情</el-button>
           <el-button type="primary" link @click="handleRun(row)">执行</el-button>
