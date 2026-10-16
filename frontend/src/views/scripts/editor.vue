@@ -108,6 +108,25 @@
         </div>
       </el-form-item>
 
+      <!-- 标签配置 -->
+      <el-divider content-position="left">标签</el-divider>
+
+      <el-form-item label="">
+        <div class="tag-config">
+          <div v-for="(tag, index) in formData.tags" :key="index" class="tag-item">
+            <el-input v-model="tag.key" placeholder="标签名" style="width: 150px" />
+            <span class="tag-separator">=</span>
+            <el-input v-model="tag.value" placeholder="标签值" style="flex: 1" />
+            <el-button type="danger" link @click="formData.tags.splice(index, 1)">
+              <el-icon><Delete /></el-icon>
+            </el-button>
+          </div>
+          <el-button type="primary" link @click="addTag">
+            <el-icon><Plus /></el-icon> 添加标签
+          </el-button>
+        </div>
+      </el-form-item>
+
       <el-divider content-position="left">参数配置</el-divider>
 
       <el-form-item label="执行参数">
@@ -230,6 +249,7 @@ const formData = reactive({
   description: '',
   testCategory: '',
   runParams: [] as { name: string; type: string; default: string; description: string }[],
+  tags: [] as { key: string; value: string }[],
   fileList: [] as any[],
 })
 
@@ -409,12 +429,20 @@ function formatFileSize(bytes: number) {
   return (bytes / 1024 / 1024).toFixed(1) + ' MB'
 }
 
+function addTag() {
+  formData.tags.push({ key: '', value: '' })
+}
+
 function addParam() {
   formData.runParams.push({ name: '', type: 'string', default: '', description: '' })
 }
 
 async function handleSave(andRun: boolean) {
-  await formRef.value.validate()
+  try {
+    await formRef.value.validate()
+  } catch {
+    return
+  }
 
   const data: any = {
     name: formData.name,
@@ -424,19 +452,25 @@ async function handleSave(andRun: boolean) {
     tempFilePath: tempFilePath.value,
     // 执行参数（参数配置）
     parameters: formData.runParams.filter((p: any) => p.name),
+    // 标签（序列化为JSON字符串）
+    tags: JSON.stringify(formData.tags.filter((t: any) => t.key)),
     // 执行步骤
     steps: stepsData.value,
   }
   
   let savedScriptId: number | null = null
   
-  if (isEdit.value) {
-    savedScriptId = Number(route.params.id)
-    await scriptApi.update(savedScriptId, data)
-  } else {
-    const res = await scriptApi.create(data)
-    // 成功应该返回新建脚本ID
-    if (res.data?.script?.id) { savedScriptId = res.data.script.id } else if (res.data?.id) { savedScriptId = res.data.id }
+  try {
+    if (isEdit.value) {
+      savedScriptId = Number(route.params.id)
+      await scriptApi.update(savedScriptId, data)
+    } else {
+      const res = await scriptApi.create(data)
+      // 成功应该返回新建脚本ID
+      if (res.data?.script?.id) { savedScriptId = res.data.script.id } else if (res.data?.id) { savedScriptId = res.data.id }
+    }
+  } catch (e: any) {
+    return
   }
   
   // 新建模式下，保存关联资源
@@ -482,6 +516,20 @@ async function loadScript() {
       testCategory: res.data.testCategory,
       fileList: res.data.fileList || [],
     })
+    
+    // 加载标签
+    if (res.data.tags) {
+      try {
+        formData.tags = typeof res.data.tags === 'string' 
+          ? JSON.parse(res.data.tags) 
+          : res.data.tags
+      } catch (e) {
+        console.error('解析标签失败', e)
+        formData.tags = []
+      }
+    } else {
+      formData.tags = []
+    }
     
     // 如果使用返回的fileList（没有 type），则用 file-list API 获取
     if (res.data.fileList && res.data.fileList.length > 0) {
@@ -657,6 +705,22 @@ async function saveFileContent() {
     &:hover {
       color: var(--el-color-primary);
     }
+  }
+}
+
+.tag-config {
+  width: 100%;
+}
+
+.tag-item {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+  align-items: center;
+  
+  .tag-separator {
+    color: var(--el-text-color-secondary);
+    font-weight: 600;
   }
 }
 

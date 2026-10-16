@@ -142,6 +142,18 @@ public class ScriptConfigService {
                 config.setTimeout(rootNode.get("timeout").asInt());
             }
             
+            // 解析 tags
+            if (rootNode.has("tags") && rootNode.get("tags").isArray()) {
+                List<ScriptConfig.TagConfig> tags = new ArrayList<>();
+                for (JsonNode tagNode : rootNode.get("tags")) {
+                    ScriptConfig.TagConfig tc = new ScriptConfig.TagConfig();
+                    if (tagNode.has("key")) tc.setKey(tagNode.get("key").asText());
+                    if (tagNode.has("value")) tc.setValue(tagNode.get("value").asText());
+                    tags.add(tc);
+                }
+                config.setTags(tags);
+            }
+            
             // 解析 parameters
             if (rootNode.has("parameters") && rootNode.get("parameters").isArray()) {
                 List<ScriptConfig.ParameterConfig> params = new ArrayList<>();
@@ -423,6 +435,19 @@ public class ScriptConfigService {
         config.setCategory(script.getTestCategory());
         config.setTimeout(script.getDefaultTimeout());
         
+        // 转换标签
+        if (script.getTags() != null && !script.getTags().isEmpty()) {
+            try {
+                List<ScriptConfig.TagConfig> tags = yamlMapper.readValue(
+                    script.getTags(),
+                    new com.fasterxml.jackson.core.type.TypeReference<List<ScriptConfig.TagConfig>>() {}
+                );
+                config.setTags(tags);
+            } catch (Exception e) {
+                log.warn("解析脚本标签失败：scriptId={}, tags={}", scriptId, script.getTags(), e);
+            }
+        }
+        
         // 转换参数
         if (version.getParameters() != null && !version.getParameters().isEmpty()) {
             List<ScriptConfig.ParameterConfig> params = new ArrayList<>();
@@ -544,6 +569,18 @@ public class ScriptConfigService {
         }
         if (config.getTimeout() != null) {
             script.setDefaultTimeout(config.getTimeout());
+        }
+        
+        // 应用标签配置
+        if (config.getTags() != null && !config.getTags().isEmpty()) {
+            try {
+                String tagsJson = yamlMapper.writeValueAsString(config.getTags());
+                script.setTags(tagsJson);
+            } catch (Exception e) {
+                log.warn("序列化标签失败：{}", config.getTags(), e);
+            }
+        } else {
+            script.setTags("[]");
         }
         
         // 应用参数配置

@@ -52,6 +52,32 @@
           <el-tag>{{ getCategoryText(row.testCategory) }}</el-tag>
         </template>
       </el-table-column>
+      <el-table-column prop="tags" label="标签" min-width="200">
+        <template #default="{ row }">
+          <el-tooltip 
+            v-if="parseTags(row.tags).length" 
+            placement="top" 
+            :show-after="300"
+          >
+            <template #content>
+              <div v-for="(tag, index) in parseTags(row.tags)" :key="index">
+                {{ tag.key }}: {{ tag.value }}
+              </div>
+            </template>
+            <div class="tags-cell">
+              <el-tag 
+                v-for="(tag, index) in parseTags(row.tags)" 
+                :key="index" 
+                size="small" 
+                type="info"
+              >
+                {{ tag.key }}: {{ tag.value }}
+              </el-tag>
+            </div>
+          </el-tooltip>
+          <span v-else style="color: #909399;">-</span>
+        </template>
+      </el-table-column>
       <!-- 版本功能暂时隐藏 -->
       <!-- <el-table-column prop="currentVersion" label="当前版本" width="100" /> -->
       <el-table-column prop="status" label="状态" width="100">
@@ -130,6 +156,22 @@
         </el-descriptions-item>
         <el-descriptions-item label="描述" :span="2">
           {{ detailScript.description || '-' }}
+        </el-descriptions-item>
+        <el-descriptions-item label="标签" :span="2">
+          <div class="tags-cell">
+            <template v-if="detailScript.tags">
+              <el-tag 
+                v-for="(tag, index) in parseTags(detailScript.tags)" 
+                :key="index" 
+                size="small" 
+                type="info"
+                style="margin-right: 4px; margin-bottom: 4px;"
+              >
+                {{ tag.key }}: {{ tag.value }}
+              </el-tag>
+            </template>
+            <span v-else style="color: #909399;">-</span>
+          </div>
         </el-descriptions-item>
         <el-descriptions-item label="创建时间">
           {{ formatTime(detailScript.createdAt) }}
@@ -388,6 +430,17 @@ function getCategoryText(category: string) {
   return getCategoryLabel(category)
 }
 
+// 解析标签 JSON 字符串
+function parseTags(tags: string | any[]) {
+  if (!tags) return []
+  if (Array.isArray(tags)) return tags
+  try {
+    return JSON.parse(tags)
+  } catch {
+    return []
+  }
+}
+
 // 格式化脚本名称
 function formatScriptName(name: string) {
   if (!name) return '-'
@@ -528,6 +581,22 @@ function handleBatchExport() {
 .remark-text {
   font-size: 12px;
   color: var(--text-secondary);
+}
+
+.tags-cell {
+  display: flex;
+  flex-wrap: nowrap;
+  overflow: hidden;
+  max-width: 100%;
+  
+  .el-tag {
+    flex-shrink: 0;
+    margin-right: 4px;
+    
+    &:last-child {
+      margin-right: 0;
+    }
+  }
 }
 
 .file-viewer {

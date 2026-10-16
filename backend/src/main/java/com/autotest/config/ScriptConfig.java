@@ -57,6 +57,11 @@ public class ScriptConfig {
     private List<ResourceConfig> resources;
     
     /**
+     * 标签配置
+     */
+    private List<TagConfig> tags;
+    
+    /**
      * 参数配置
      */
     @Data
@@ -108,5 +113,15 @@ public class ScriptConfig {
         private String targetPath;
         private String permissions;
         private Integer order;
+    }
+    
+    /**
+     * 标签配置
+     */
+    @Data
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class TagConfig {
+        private String key;
+        private String value;
     }
 }

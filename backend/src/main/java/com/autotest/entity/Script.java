@@ -84,6 +84,13 @@ public class Script implements Serializable {
     private String status;
 
     /**
+     * 标签（JSON 数组格式）
+     * 示例：[{"key":"CPU","value":"飞腾 S500C"},{"key":"操作系统","value":"kylin server v10 sp3"}]
+     */
+    @Schema(description = "脚本标签，键值对形式", example = "[{\"key\":\"CPU\",\"value\":\"飞腾 S500C\"}]")
+    private String tags;
+
+    /**
      * 创建时间
      */
     @TableField(fill = FieldFill.INSERT)

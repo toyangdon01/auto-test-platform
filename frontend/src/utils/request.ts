@@ -66,24 +66,25 @@ service.interceptors.response.use(
     
     let message = '网络错误'
     if (error.response) {
+      const serverMsg = error.response.data?.message
       switch (error.response.status) {
         case 400:
-          message = '请求参数错误'
+          message = serverMsg || '请求参数错误'
           break
         case 401:
-          message = '未授权，请登录'
+          message = serverMsg || '未授权，请登录'
           break
         case 403:
-          message = '拒绝访问'
+          message = serverMsg || '拒绝访问'
           break
         case 404:
-          message = '请求资源不存在'
+          message = serverMsg || '请求资源不存在'
           break
         case 500:
-          message = '服务器错误'
+          message = serverMsg || '服务器错误'
           break
         default:
-          message = error.response.data?.message || '请求失败'
+          message = serverMsg || '请求失败'
       }
     }
     
