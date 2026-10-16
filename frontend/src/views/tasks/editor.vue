@@ -647,7 +647,7 @@ async function fetchScripts() {
 
 async function fetchServers() {
   try {
-    const res = await serverApi.list()
+    const res = await serverApi.list({ page: 1, size: 1000 })
     if (res.code === 0) {
       servers.value = Array.isArray(res.data) ? res.data : (res.data.items || res.data.records || [])
     }

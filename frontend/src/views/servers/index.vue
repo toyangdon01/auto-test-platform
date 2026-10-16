@@ -64,7 +64,14 @@
     </div>
 
     <!-- 数据表格 -->
-    <el-table v-loading="loading" :data="tableData" stripe @selection-change="handleSelectionChange">
+    <el-table
+      ref="tableRef"
+      v-loading="loading"
+      :data="tableData"
+      stripe
+      @selection-change="handleSelectionChange"
+      @row-click="handleRowClick"
+    >
       <el-table-column type="selection" width="50" />
       <el-table-column prop="name" label="名称" min-width="150" />
       <el-table-column prop="host" label="地址" min-width="180">
@@ -282,6 +289,7 @@ const dialogVisible = ref(false)
 const dialogTitle = ref('添加服务器')
 const submitting = ref(false)
 const formRef = ref()
+const tableRef = ref()
 const editId = ref<number | null>(null)
 
 // 表单数据
@@ -487,6 +495,13 @@ async function handleSubmit() {
 // 表格选择变化
 function handleSelectionChange(selection: ServerWithState[]) {
   selectedIds.value = selection.map(item => item.id)
+}
+
+// 点击行切换选中：复选框列与按钮/链接等交互元素不触发，避免与原生行为冲突
+function handleRowClick(row: ServerWithState, column: { type?: string }, event: MouseEvent) {
+  if (column.type === 'selection') return
+  if ((event.target as HTMLElement).closest('button, a, input, select, textarea, .el-checkbox')) return
+  tableRef.value?.toggleRowSelection(row)
 }
 
 // 批量删除

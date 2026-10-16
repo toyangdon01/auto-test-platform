@@ -106,8 +106,9 @@ const request = {
     return service.put(url, data, config).then((res) => res.data)
   },
 
-  delete<T>(url: string, params?: object): Promise<ApiResponse<T>> {
-    return service.delete(url, { params }).then((res) => res.data)
+  // 第二个参数是 axios 配置：body 用 { data }，查询参数用 { params }
+  delete<T>(url: string, config?: AxiosRequestConfig): Promise<ApiResponse<T>> {
+    return service.delete(url, config).then((res) => res.data)
   },
 }
 

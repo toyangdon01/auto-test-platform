@@ -58,7 +58,9 @@
       v-loading="loading" 
       :data="tableData" 
       stripe
+      ref="tableRef"
       @selection-change="handleSelectionChange"
+      @row-click="handleRowClick"
     >
       <el-table-column type="selection" width="50" />
       <el-table-column prop="name" label="任务名称" min-width="180">
@@ -220,6 +222,7 @@ const tableData = ref<any[]>([])
 const total = ref(0)
 const autoRefresh = ref(true)
 const selectedIds = ref<number[]>([])  // 选中的任务ID
+const tableRef = ref()
 let refreshTimer: ReturnType<typeof setInterval> | null = null
 
 // 实时日志相关
@@ -440,6 +443,12 @@ async function handleDelete(row: any) {
 // 表格选择变化
 function handleSelectionChange(selection: any[]) {
   selectedIds.value = selection.map(item => item.id)
+}
+
+function handleRowClick(row: any, column: { type?: string }, event: MouseEvent) {
+  if (column.type === 'selection') return
+  if ((event.target as HTMLElement).closest('button, a, input, select, textarea, .el-checkbox')) return
+  tableRef.value?.toggleRowSelection(row)
 }
 
 // 批量删除
