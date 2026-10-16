@@ -32,26 +32,25 @@
           <el-button @click="handleReset">重置</el-button>
           <el-button type="success" @click="handleExport">导出</el-button>
           <el-button type="warning" :disabled="selectedResults.length < 2" @click="handleCompare">对比</el-button>
+          <el-button 
+            v-if="selectedResults.length > 0" 
+            type="danger" 
+            @click="handleBatchDelete"
+          >
+            批量删除 ({{ selectedResults.length }})
+          </el-button>
         </el-form-item>
       </el-form>
     </div>
-
-    <!-- 提示信息 -->
-    <el-alert
-      v-if="selectedResults.length > 0"
-      :title="`已选择 ${selectedResults.length} 个结果${selectedResults.length >= 2 ? '，点击对比按钮进行数据对比' : '，至少需要选择2个结果'}`"
-      type="info"
-      show-icon
-      :closable="false"
-      style="margin-bottom: 16px"
-    />
 
     <!-- 表格 -->
     <el-table 
       :data="results" 
       stripe 
       v-loading="loading"
+      ref="tableRef"
       @selection-change="handleSelectionChange"
+      @row-click="handleRowClick"
     >
       <el-table-column type="selection" width="55" />
       <el-table-column prop="id" label="结果编号" width="100" />
@@ -88,9 +87,10 @@
           {{ formatTime(row.createdAt) }}
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="100" fixed="right">
+      <el-table-column label="操作" width="150" fixed="right">
         <template #default="{ row }">
           <el-button type="primary" link @click="handleDetail(row)">详情</el-button>
+          <el-button type="danger" link @click="handleDelete(row)">删除</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -113,6 +113,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import request from '@/utils/request'
 import { formatTime, formatDuration } from '@/utils/format'
 import axios from 'axios'
@@ -144,6 +145,7 @@ const loading = ref(false)
 const results = ref<TestResult[]>([])
 const scripts = ref<{id: number, name: string}[]>([])
 const selectedResults = ref<TestResult[]>([])
+const tableRef = ref()
 
 const searchForm = reactive({
   keyword: '',
@@ -237,6 +239,62 @@ function handleDetail(row: TestResult) {
 
 function handleSelectionChange(selection: TestResult[]) {
   selectedResults.value = selection
+}
+
+function handleRowClick(row: TestResult, column: { type?: string }, event: MouseEvent) {
+  if (column.type === 'selection') return
+  if ((event.target as HTMLElement).closest('button, a, input, select, textarea, .el-checkbox')) return
+  tableRef.value?.toggleRowSelection(row)
+}
+
+async function handleDelete(row: TestResult) {
+  try {
+    await ElMessageBox.confirm('确定要删除该测试结果吗？', '提示', { type: 'warning' })
+    const res = await request.delete(`/results/${row.id}`)
+    if (res.code === 0) {
+      ElMessage.success('删除成功')
+      fetchResults()
+    }
+  } catch (e: any) {
+    if (e !== 'cancel') {
+      ElMessage.error(e.message || '删除失败')
+    }
+  }
+}
+
+async function handleBatchDelete() {
+  if (selectedResults.value.length === 0) {
+    ElMessage.warning('请选择要删除的结果')
+    return
+  }
+  
+  try {
+    await ElMessageBox.confirm(
+      `确定要删除选中的 ${selectedResults.value.length} 个测试结果吗？`,
+      '批量删除',
+      { type: 'warning' }
+    )
+    
+    const results = await Promise.allSettled(
+      selectedResults.value.map(r => request.delete(`/results/${r.id}`))
+    )
+    
+    const successCount = results.filter(r => r.status === 'fulfilled' && (r.value as any).code === 0).length
+    const failCount = results.length - successCount
+    
+    if (failCount === 0) {
+      ElMessage.success(`成功删除 ${successCount} 个结果`)
+    } else {
+      ElMessage.warning(`成功 ${successCount} 个，失败 ${failCount} 个`)
+    }
+    
+    selectedResults.value = []
+    fetchResults()
+  } catch (e: any) {
+    if (e !== 'cancel') {
+      ElMessage.error(e.message || '批量删除失败')
+    }
+  }
 }
 
 function handleCompare() {
