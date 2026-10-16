@@ -712,6 +712,9 @@ public class TaskExecutionService {
                 }
             }
             
+            // 用户发起任务时填写的步骤参数优先级最高，覆盖脚本定义中的默认值
+            applyUserStepParams(params, task, stepName);
+            
             // 判断是否后台执行
             boolean isBackground = false;
             if (task.getStepParams() != null) {
@@ -1508,6 +1511,28 @@ public class TaskExecutionService {
     }
     
     /**
+     * 用发起任务时填写的步骤参数覆盖脚本定义中的默认值
+     * _BACKGROUND 是执行控制位，不作为环境变量下发
+     */
+    private void applyUserStepParams(Map<String, Object> params, Task task, String stepName) {
+        if (task.getStepParams() == null || stepName == null) {
+            return;
+        }
+        Map<String, Object> userParams = task.getStepParams().get(stepName);
+        if (userParams == null) {
+            return;
+        }
+        for (Map.Entry<String, Object> entry : userParams.entrySet()) {
+            String key = entry.getKey();
+            Object value = entry.getValue();
+            if (key == null || key.isEmpty() || "_BACKGROUND".equals(key) || value == null) {
+                continue;
+            }
+            params.put(key, value);
+        }
+    }
+
+    /**
      * 在本地执行步骤（通过 LocalExecutor）
      */
     @SuppressWarnings("unchecked")
@@ -1557,6 +1582,9 @@ public class TaskExecutionService {
                     params.putAll((Map<String, Object>) paramsObj);
                 }
             }
+            
+            // 用户发起任务时填写的步骤参数优先级最高，覆盖脚本定义中的默认值
+            applyUserStepParams(params, task, stepConfig.getName());
             
             // 确定要执行的脚本（优先使用步骤配置）
             String scriptFile = stepConfig.getScript();
