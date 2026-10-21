@@ -51,6 +51,11 @@ public class ScriptConfigService {
     private final ResourceFileMapper resourceFileMapper;
     
     private final ObjectMapper yamlMapper;
+
+    /**
+     * scripts.tags 列存 JSON（前端 JSON.parse/JSON.stringify 读写），标签序列化必须走这个 mapper 而不是 yamlMapper
+     */
+    private final ObjectMapper jsonMapper = new ObjectMapper();
     
     public ScriptConfigService(ScriptMapper scriptMapper, ScriptVersionMapper scriptVersionMapper,
                                ScriptResourceMapper scriptResourceMapper, ResourceFileMapper resourceFileMapper) {
@@ -438,7 +443,7 @@ public class ScriptConfigService {
         // 转换标签
         if (script.getTags() != null && !script.getTags().isEmpty()) {
             try {
-                List<ScriptConfig.TagConfig> tags = yamlMapper.readValue(
+                List<ScriptConfig.TagConfig> tags = jsonMapper.readValue(
                     script.getTags(),
                     new com.fasterxml.jackson.core.type.TypeReference<List<ScriptConfig.TagConfig>>() {}
                 );
@@ -542,6 +547,24 @@ public class ScriptConfigService {
     }
     
     /**
+     * 标签列表转 scripts.tags 列的 JSON 字符串
+     *
+     * @param tags 配置中的标签，null 表示未声明
+     * @return JSON 字符串；未声明标签或序列化失败返回 null，由调用方决定是否覆盖
+     */
+    public String tagsToJson(List<ScriptConfig.TagConfig> tags) {
+        if (tags == null) {
+            return null;
+        }
+        try {
+            return jsonMapper.writeValueAsString(tags);
+        } catch (Exception e) {
+            log.warn("序列化标签失败：{}", tags, e);
+            return null;
+        }
+    }
+
+    /**
      * 应用配置到脚本实体（上传时使用）
      * 
      * @param config 配置对象
@@ -572,16 +595,8 @@ public class ScriptConfigService {
         }
         
         // 应用标签配置
-        if (config.getTags() != null && !config.getTags().isEmpty()) {
-            try {
-                String tagsJson = yamlMapper.writeValueAsString(config.getTags());
-                script.setTags(tagsJson);
-            } catch (Exception e) {
-                log.warn("序列化标签失败：{}", config.getTags(), e);
-            }
-        } else {
-            script.setTags("[]");
-        }
+        String tagsJson = tagsToJson(config.getTags());
+        script.setTags(tagsJson != null ? tagsJson : "[]");
         
         // 应用参数配置
         if (config.getParameters() != null && !config.getParameters().isEmpty()) {

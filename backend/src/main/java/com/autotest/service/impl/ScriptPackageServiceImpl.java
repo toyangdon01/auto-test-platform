@@ -361,6 +361,10 @@ public class ScriptPackageServiceImpl implements ScriptPackageService {
         script.setDefaultTimeout(config.getTimeout() != null ? config.getTimeout() : 3600);
         script.setCurrentVersion("v1.0.0");
         script.setStatus("enabled");
+        String tagsJson = scriptConfigService.tagsToJson(config.getTags());
+        if (tagsJson != null) {
+            script.setTags(tagsJson);
+        }
         
         scriptMapper.insert(script);
         log.info("创建脚本：{}", script.getName());
@@ -424,6 +428,10 @@ public class ScriptPackageServiceImpl implements ScriptPackageService {
         }
         if (config.getTimeout() != null) {
             script.setDefaultTimeout(config.getTimeout());
+        }
+        String tagsJson = scriptConfigService.tagsToJson(config.getTags());
+        if (tagsJson != null) {
+            script.setTags(tagsJson);
         }
         
         scriptMapper.updateById(script);
