@@ -1632,12 +1632,14 @@ public class TaskExecutionService {
             ExecutionResult result;
             if (isScriptMode) {
                 // 脚本文件模式：通过 LocalExecutor 执行
+                long taskTimeoutMs = task.getTimeout() != null ? task.getTimeout() : 0L;
                 result = executor.execute(
                     scriptVersion,
                     scriptFile,
                     params,
                     taskServer,
                     null,
+                    taskTimeoutMs,
                     logConsumer
                 );
             } else {

@@ -16,11 +16,12 @@ public interface LocalExecutor {
     /**
      * 执行脚本
      *
-     * @param scriptVersion 脚本版本信息
-     * @param params        参数
-     * @param taskServer    任务服务器关联
-     * @param server        服务器信息（本地执行时包含连接信息）
-     * @param logConsumer   日志输出回调
+     * @param scriptVersion   脚本版本信息
+     * @param params          参数
+     * @param taskServer      任务服务器关联
+     * @param server          服务器信息（本地执行时包含连接信息）
+     * @param taskTimeoutMs   任务配置的超时时间（毫秒），0 表示任务未配置
+     * @param logConsumer     日志输出回调
      * @return 执行结果
      */
     ExecutionResult execute(
@@ -28,18 +29,20 @@ public interface LocalExecutor {
             Map<String, Object> params,
             TaskServer taskServer,
             Server server,
+            long taskTimeoutMs,
             Consumer<String> logConsumer
     ) throws Exception;
 
     /**
      * 执行指定脚本文件
      *
-     * @param scriptVersion 脚本版本信息
-     * @param scriptFile    要执行的脚本文件（相对于脚本目录）
-     * @param params        参数
-     * @param taskServer    任务服务器关联
-     * @param server        服务器信息
-     * @param logConsumer   日志输出回调
+     * @param scriptVersion   脚本版本信息
+     * @param scriptFile      要执行的脚本文件（相对于脚本目录）
+     * @param params          参数
+     * @param taskServer      任务服务器关联
+     * @param server          服务器信息
+     * @param taskTimeoutMs   任务配置的超时时间（毫秒），0 表示任务未配置
+     * @param logConsumer     日志输出回调
      * @return 执行结果
      */
     ExecutionResult execute(
@@ -48,6 +51,7 @@ public interface LocalExecutor {
             Map<String, Object> params,
             TaskServer taskServer,
             Server server,
+            long taskTimeoutMs,
             Consumer<String> logConsumer
     ) throws Exception;
 

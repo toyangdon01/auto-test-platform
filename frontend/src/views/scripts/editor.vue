@@ -320,6 +320,9 @@ async function handleFileChange(file: any) {
         if (!formData.testCategory && config.category) {
           formData.testCategory = config.category
         }
+        if (config.tags && config.tags.length > 0 && formData.tags.length === 0) {
+          formData.tags = config.tags.map((t: any) => ({ key: t.key || '', value: t.value || '' }))
+        }
         
         // 填充参数配置
         if (config.parameters && config.parameters.length > 0) {

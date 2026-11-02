@@ -1,9 +1,12 @@
 package com.autotest.service;
 
+import com.autotest.entity.Script;
 import com.autotest.entity.Server;
 import com.autotest.entity.ScriptVersion;
 import com.autotest.entity.TaskServer;
+import com.autotest.mapper.ScriptMapper;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -26,6 +29,9 @@ public class PowerShellExecutor implements LocalExecutor {
     @Value("${autotest.local-executor.timeout:300}")
     private int timeout;
 
+    @Autowired
+    private ScriptMapper scriptMapper;
+
     @Value("${autotest.local-executor.powershell-path:powershell.exe}")
     private String powershellPath;
 
@@ -35,10 +41,11 @@ public class PowerShellExecutor implements LocalExecutor {
             Map<String, Object> params,
             TaskServer taskServer,
             Server server,
+            long taskTimeoutMs,
             Consumer<String> logConsumer
     ) throws Exception {
         // 调用新方法，scriptFile 为 null
-        return execute(scriptVersion, null, params, taskServer, server, logConsumer);
+        return execute(scriptVersion, null, params, taskServer, server, taskTimeoutMs, logConsumer);
     }
     
     @Override
@@ -48,6 +55,7 @@ public class PowerShellExecutor implements LocalExecutor {
             Map<String, Object> params,
             TaskServer taskServer,
             Server server,
+            long taskTimeoutMs,
             Consumer<String> logConsumer
     ) throws Exception {
 
@@ -152,7 +160,9 @@ public class PowerShellExecutor implements LocalExecutor {
         CompletableFuture<Void> errFuture = readStreamAsync(process.getErrorStream(), logConsumer, error);
 
         // 等待完成
-        boolean completed = process.waitFor(timeout, TimeUnit.SECONDS);
+        int stepTimeout = resolveTimeout(scriptVersion, taskTimeoutMs);
+        log.info("本地执行超时上限：{} 秒（脚本 {}）", stepTimeout, scriptPath);
+        boolean completed = process.waitFor(stepTimeout, TimeUnit.SECONDS);
 
         long durationMs = System.currentTimeMillis() - startTime;
 
@@ -163,7 +173,7 @@ public class PowerShellExecutor implements LocalExecutor {
                     .success(false)
                     .exitCode(-1)
                     .output(output.toString())
-                    .error("执行超时（" + timeout + "秒）")
+                    .error("执行超时（" + stepTimeout + "秒）")
                     .durationMs(durationMs)
                     .build();
         }
@@ -212,6 +222,27 @@ public class PowerShellExecutor implements LocalExecutor {
             log.warn("PowerShell 执行器不可用：{}", e.getMessage());
             return false;
         }
+    }
+
+    /**
+     * 本地执行超时（秒）：任务配置的超时优先，其次脚本声明的默认超时，最后才是配置兜底值。
+     * 串口类脚本（IPMI SOL 逐段敲字符）单次就要十几分钟，固定 300 秒会中途打断。
+     */
+    private int resolveTimeout(ScriptVersion scriptVersion, long taskTimeoutMs) {
+        if (taskTimeoutMs > 0) {
+            return (int) Math.min(taskTimeoutMs / 1000, Integer.MAX_VALUE);
+        }
+        if (scriptVersion != null && scriptVersion.getScriptId() != null) {
+            try {
+                Script script = scriptMapper.selectById(scriptVersion.getScriptId());
+                if (script != null && script.getDefaultTimeout() != null && script.getDefaultTimeout() > 0) {
+                    return script.getDefaultTimeout();
+                }
+            } catch (Exception e) {
+                log.warn("读取脚本默认超时失败，使用兜底值：{}", e.getMessage());
+            }
+        }
+        return timeout;
     }
 
     private CompletableFuture<Void> readStreamAsync(

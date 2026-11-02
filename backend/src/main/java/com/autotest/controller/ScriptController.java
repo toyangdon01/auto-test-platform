@@ -236,6 +236,12 @@ public class ScriptController {
                     }
                     script.setParameters(params);
                 }
+                String yamlTagsJson = scriptConfigService.tagsToJson(config.getTags());
+                String currentTags = script.getTags();
+                if (yamlTagsJson != null && (currentTags == null || currentTags.isEmpty() || "[]".equals(currentTags.trim()))) {
+                    script.setTags(yamlTagsJson);
+                    scriptMapper.updateById(script);
+                }
             } else if (parseResult.getStatus() == ConfigParseResult.Status.PARSE_ERROR) {
                 log.warn("autotest.yaml 解析失败: {} at {}", parseResult.getError(), parseResult.getErrorLocation());
             }
