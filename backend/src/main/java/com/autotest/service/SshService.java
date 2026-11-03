@@ -315,18 +315,29 @@ public class SshService {
     }
 
     /**
-     * 上传文件到远程服务器
-     * 如果远程文件已存在且大小与本地文件一致，则跳过上传
+     * 上传文件到远程服务器（新建一条独立连接）
+     * 批量上传请改用 uploadFile(Session, ...)，逐文件建连会在远端 PAM 累计认证失败并触发 faillock 锁号
      */
     public static boolean uploadFile(Server server, String localPath, String remotePath) {
         Session session = null;
+        try {
+            session = createConnectedSession(server);
+            return uploadFile(session, localPath, remotePath);
+        } catch (Exception e) {
+            log.error("文件上传失败: {} - {}", remotePath, e.getMessage());
+            return false;
+        } finally {
+            closeSession(session);
+        }
+    }
+
+    /**
+     * 使用已有 Session 上传文件（不关闭 Session，不重新认证）
+     * 如果远程文件已存在且大小与本地文件一致，则跳过上传
+     */
+    public static boolean uploadFile(Session session, String localPath, String remotePath) {
         ChannelSftp channel = null;
         try {
-            JSch jsch = new JSch();
-            session = createSession(jsch, server);
-            session.setTimeout(defaultTimeout);
-            session.connect(defaultTimeout);
-
             channel = (ChannelSftp) session.openChannel("sftp");
             channel.connect(defaultTimeout);
             
@@ -375,9 +386,6 @@ public class SshService {
         } finally {
             if (channel != null) {
                 channel.disconnect();
-            }
-            if (session != null) {
-                session.disconnect();
             }
         }
     }
@@ -627,6 +635,7 @@ public class SshService {
      * 创建 SSH Session
      */
     private static Session createSession(JSch jsch, Server server) throws JSchException {
+        log.info("SSH 新建连接: {}@{}:{}", server.getUsername(), server.getHost(), server.getPort());
         Session session = jsch.getSession(server.getUsername(), server.getHost(), server.getPort());
 
         Properties config = new Properties();

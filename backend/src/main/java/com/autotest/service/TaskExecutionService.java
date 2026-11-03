@@ -63,6 +63,9 @@ public class TaskExecutionService {
     // SSH Session 管理：stepId -> Session（用于 TaskStatusCheckService 检查）
     private final Map<Long, Session> stepSessionMap = new ConcurrentHashMap<>();
 
+    // 处于「建目录/上传，尚未开始执行」阶段的步骤，此阶段没有 Session 属于正常状态
+    private final Set<Long> preparingSteps = ConcurrentHashMap.newKeySet();
+
     // ==================== SSH Session 管理 ====================
 
     /**
@@ -635,7 +638,19 @@ public class TaskExecutionService {
             }
             
             String workDir = "/tmp/test_platform/task_" + task.getId();
-            SshService.executeCommand(server, "mkdir -p " + workDir, null, 10000);
+
+            // 整步复用同一条 SSH 连接：每建一次连接都会在远端 PAM 留下一条认证失败记录，
+            // 逐文件建连会触发 faillock 锁定账号
+            preparingSteps.add(taskStep.getId());
+            session = SshService.createConnectedSession(server);
+            SshService.ExecuteResult mkdirResult =
+                SshService.executeCommandWithSession(session, "mkdir -p " + workDir, null, 10000);
+            if (mkdirResult.getExitCode() != 0) {
+                taskStep.setStatus("failed");
+                taskStep.setErrorMessage("创建工作目录失败: " + workDir + " - " + mkdirResult.getError());
+                taskStepMapper.updateById(taskStep);
+                return false;
+            }
             
             // 检查是否已上传过脚本，避免重复上传
             Long serverId = server.getId();
@@ -644,7 +659,7 @@ public class TaskExecutionService {
             } else {
                 // 上传脚本文件
                 context.log("上传脚本文件...");
-                if (!uploadAllScriptFiles(context, server, scriptVersion, workDir)) {
+                if (!uploadAllScriptFiles(context, session, scriptVersion, workDir)) {
                     taskStep.setStatus("failed");
                     taskStep.setErrorMessage("脚本上传失败");
                     taskStepMapper.updateById(taskStep);
@@ -667,7 +682,12 @@ public class TaskExecutionService {
             }
             
             // 上传步骤专属资源
-            uploadStepResources(context, server, task, stepConfig, workDir);
+            if (!uploadStepResources(context, session, task, stepConfig, workDir)) {
+                taskStep.setStatus("failed");
+                taskStep.setErrorMessage("步骤资源上传失败");
+                taskStepMapper.updateById(taskStep);
+                return false;
+            }
             
             // 构建参数
             Map<String, Object> params = new HashMap<>();
@@ -786,9 +806,9 @@ public class TaskExecutionService {
             
             int timeout = task.getTimeout() != null ? task.getTimeout() : 86400000; // 使用任务配置的超时时间，默认 24 小时
             
-            // 创建并保存 SSH Session（用于后续状态检查）
-            session = SshService.createConnectedSession(server);
+            // 注册 SSH Session 供状态检查使用（Session 在建目录/上传前已建立，此处复用）
             stepSessionMap.put(taskStep.getId(), session);
+            preparingSteps.remove(taskStep.getId());
             
             // 使用 PTY 模式执行用户脚本，以支持 fio 等实时更新输出的程序
             SshService.ExecuteResult execResult = SshService.executeCommandWithSession(session, command, logConsumer, timeout, true);
@@ -850,7 +870,7 @@ public class TaskExecutionService {
                         String actualFilePath = replaceBuiltInParams(filePattern, task, server);
                         context.log("读取结果文件：" + actualFilePath);
                         
-                        SshService.ExecuteResult fileResult = SshService.executeCommand(server, "cat " + actualFilePath, null, 30000);
+                        SshService.ExecuteResult fileResult = SshService.executeCommandWithSession(session, "cat " + actualFilePath, null, 30000);
                         
                         if (fileResult.getExitCode() == 0 && fileResult.getOutput() != null && !fileResult.getOutput().isEmpty()) {
                             fileContent = fileResult.getOutput();
@@ -891,6 +911,8 @@ public class TaskExecutionService {
             taskStep.setFinishedAt(LocalDateTime.now());
             taskStepMapper.updateById(taskStep);
             return false;
+        } finally {
+            preparingSteps.remove(taskStep.getId());
         }
     }
 
@@ -1020,14 +1042,16 @@ public class TaskExecutionService {
      * 上传步骤专属资源
      */
     @SuppressWarnings("unchecked")
-    private void uploadStepResources(ExecutionContext context, Server server, Task task,
+    private boolean uploadStepResources(ExecutionContext context, Session session, Task task,
                                       StepDAG.StepConfig stepConfig, String workDir) {
         List<Map<String, Object>> resources = stepConfig.getResources();
         if (resources == null || resources.isEmpty()) {
-            return;
+            return true;
         }
         
         context.log("上传步骤资源: " + resources.size() + " 个文件");
+        
+        List<String> failedResources = new ArrayList<>();
         
         for (Map<String, Object> res : resources) {
             try {
@@ -1068,13 +1092,13 @@ public class TaskExecutionService {
                     boolean isDirectory = !targetPathStr.matches(".*\\.[a-zA-Z0-9]{1,10}$");
                     if (isDirectory) {
                         // 是目录：创建目录，然后追加文件名
-                        SshService.executeCommand(server, "mkdir -p " + targetPathStr, null, 10000);
+                        SshService.executeCommandWithSession(session, "mkdir -p " + targetPathStr, null, 10000);
                         targetPath = targetPathStr + "/" + rf.getName();
                     } else {
                         // 是文件：确保父目录存在
                         String parentDir = targetPathStr.substring(0, targetPathStr.lastIndexOf("/"));
                         if (!parentDir.isEmpty()) {
-                            SshService.executeCommand(server, "mkdir -p " + parentDir, null, 10000);
+                            SshService.executeCommandWithSession(session, "mkdir -p " + parentDir, null, 10000);
                         }
                         targetPath = targetPathStr;
                     }
@@ -1084,13 +1108,24 @@ public class TaskExecutionService {
                 }
                 
                 context.log("  上传步骤资源: " + rf.getName() + " -> " + targetPath);
-                SshService.uploadFile(server, localPath, targetPath);
-                SshService.executeCommand(server, "chmod " + permissions + " " + targetPath, null, 5000);
+                if (!SshService.uploadFile(session, localPath, targetPath)) {
+                    failedResources.add(rf.getName());
+                    context.log("[ERROR] 步骤资源上传失败: " + rf.getName());
+                    continue;
+                }
+                SshService.executeCommandWithSession(session, "chmod " + permissions + " " + targetPath, null, 5000);
                 
             } catch (Exception e) {
                 context.log("[ERROR] 上传步骤资源失败: " + e.getMessage());
+                failedResources.add(String.valueOf(res.get("resourceId")));
             }
         }
+        
+        if (!failedResources.isEmpty()) {
+            context.log("[ERROR] 共 " + failedResources.size() + " 个步骤资源上传失败: " + failedResources);
+            return false;
+        }
+        return true;
     }
 
     /**
@@ -1116,9 +1151,10 @@ public class TaskExecutionService {
 
     /**
      * 上传所有脚本文件
+     * 复用调用方传入的 Session，任一文件上传失败即返回 false
      */
     @SuppressWarnings("unchecked")
-    private boolean uploadAllScriptFiles(ExecutionContext context, Server server, 
+    private boolean uploadAllScriptFiles(ExecutionContext context, Session session,
                                           ScriptVersion scriptVersion, String workDir) {
         try {
             String storagePath = scriptVersion.getStoragePath();
@@ -1148,20 +1184,22 @@ public class TaskExecutionService {
             context.log("脚本目录: " + actualScriptDir);
             
             List<Map<String, Object>> fileList = scriptVersion.getFileList();
+            List<String> failedFiles = new ArrayList<>();
+            
             if (fileList == null || fileList.isEmpty()) {
                 // 上传目录下所有文件
                 final Path finalScriptDir = actualScriptDir;
-                Files.walk(finalScriptDir)
+                List<Path> localFiles = Files.walk(finalScriptDir)
                     .filter(path -> !Files.isDirectory(path))
-                    .forEach(path -> {
-                        String relativePath = finalScriptDir.relativize(path).toString().replace("\\", "/");
-                        String targetPath = workDir + "/" + relativePath;
-                        try {
-                            SshService.uploadFile(server, path.toString(), targetPath);
-                        } catch (Exception e) {
-                            context.log("[ERROR] 上传文件失败: " + relativePath);
-                        }
-                    });
+                    .collect(Collectors.toList());
+                for (Path path : localFiles) {
+                    String relativePath = finalScriptDir.relativize(path).toString().replace("\\", "/");
+                    String targetPath = workDir + "/" + relativePath;
+                    if (!SshService.uploadFile(session, path.toString(), targetPath)) {
+                        failedFiles.add(relativePath);
+                        context.log("[ERROR] 上传文件失败: " + relativePath);
+                    }
+                }
             } else {
                 // 上传指定文件
                 for (Map<String, Object> fileInfo : fileList) {
@@ -1188,11 +1226,20 @@ public class TaskExecutionService {
                     String targetPath = workDir + "/" + relativePath;
                     
                     if (Files.exists(localPath)) {
-                        SshService.uploadFile(server, localPath.toString(), targetPath);
+                        if (!SshService.uploadFile(session, localPath.toString(), targetPath)) {
+                            failedFiles.add(relativePath);
+                            context.log("[ERROR] 上传文件失败: " + relativePath);
+                        }
                     } else {
                         context.log("[WARN] 文件不存在: " + localPath);
+                        failedFiles.add(relativePath);
                     }
                 }
+            }
+            
+            if (!failedFiles.isEmpty()) {
+                context.log("[ERROR] 共 " + failedFiles.size() + " 个脚本文件上传失败: " + failedFiles);
+                return false;
             }
             
             return true;
@@ -1974,26 +2021,40 @@ public class TaskExecutionService {
                                         ScriptVersion scriptVersion, ExecutionContext context) {
         String workDir = "/tmp/test_platform/task_" + task.getId();
         
-        // 检查目录是否存在，不存在则创建
-        context.log("检查工作目录: " + workDir);
-        String checkDir = "test -d " + workDir + " || mkdir -p " + workDir;
-        SshService.executeCommand(server, checkDir, null, 10000);
-        
-        // 检查脚本文件是否存在
-        String scriptFile = taskStep.getScript();
-        if (scriptFile != null && !scriptFile.isEmpty()) {
-            scriptFile = scriptFile.replaceAll("^\\./", "").replaceAll("/+", "/");
-            String scriptPath = workDir + "/" + scriptFile;
+        Session session = null;
+        preparingSteps.add(taskStep.getId());
+        try {
+            session = SshService.createConnectedSession(server);
             
-            String checkScript = "test -f " + scriptPath + " && echo EXISTS || echo NOT_EXISTS";
-            SshService.ExecuteResult checkResult = SshService.executeCommand(server, checkScript, null, 5000);
+            // 检查目录是否存在，不存在则创建
+            context.log("检查工作目录: " + workDir);
+            String checkDir = "test -d " + workDir + " || mkdir -p " + workDir;
+            SshService.executeCommandWithSession(session, checkDir, null, 10000);
             
-            if (checkResult.getOutput() == null || !checkResult.getOutput().contains("EXISTS")) {
-                context.log("脚本文件不存在，重新上传...");
-                uploadAllScriptFiles(context, server, scriptVersion, workDir);
-            } else {
-                context.log("脚本文件已存在: " + scriptPath);
+            // 检查脚本文件是否存在
+            String scriptFile = taskStep.getScript();
+            if (scriptFile != null && !scriptFile.isEmpty()) {
+                scriptFile = scriptFile.replaceAll("^\\./", "").replaceAll("/+", "/");
+                String scriptPath = workDir + "/" + scriptFile;
+                
+                String checkScript = "test -f " + scriptPath + " && echo EXISTS || echo NOT_EXISTS";
+                SshService.ExecuteResult checkResult =
+                    SshService.executeCommandWithSession(session, checkScript, null, 5000);
+                
+                if (checkResult.getOutput() == null || !checkResult.getOutput().contains("EXISTS")) {
+                    context.log("脚本文件不存在，重新上传...");
+                    if (!uploadAllScriptFiles(context, session, scriptVersion, workDir)) {
+                        throw new IllegalStateException("脚本上传失败");
+                    }
+                } else {
+                    context.log("脚本文件已存在: " + scriptPath);
+                }
             }
+        } catch (Exception e) {
+            throw new RuntimeException("准备步骤执行环境失败: " + e.getMessage(), e);
+        } finally {
+            SshService.closeSession(session);
+            preparingSteps.remove(taskStep.getId());
         }
     }
     
@@ -2292,6 +2353,10 @@ public class TaskExecutionService {
             // Session 不存在，可能是正常结束或异常，先查 DB 确认
             TaskStep dbStep = taskStepMapper.selectById(step.getId());
             if (dbStep != null && "running".equals(dbStep.getStatus())) {
+                // 仍在建目录/上传阶段，尚未注册执行 Session，此时没有 Session 是正常的
+                if (preparingSteps.contains(step.getId())) {
+                    return StepStatusCheckResult.running("UPLOAD_IN_PROGRESS");
+                }
                 return StepStatusCheckResult.failed("SESSION_NOT_FOUND");
             }
             return StepStatusCheckResult.running("SESSION_NOT_FOUND_BUT_STEP_FINISHED");
