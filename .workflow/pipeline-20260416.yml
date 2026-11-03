@@ -61,7 +61,7 @@ stages:
     - cp dist/auto-test-platform.jar dist/auto-test-platform-linux-arm64/auto-test-platform.jar
     - cat > dist/auto-test-platform-linux-arm64/start.sh << 'EOF'
     - '#!/bin/bash'
-    - JRE_DIR="./jdk-17.0.9+9"
+    - JRE_DIR="."
     - export JAVA_HOME="$JRE_DIR/jdk-17.0.9+9-jre"
     - export PATH="$JAVA_HOME/bin:$PATH"
     - java -jar "./auto-test-platform.jar"
