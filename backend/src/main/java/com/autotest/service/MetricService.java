@@ -2,7 +2,8 @@ package com.autotest.service;
 
 import com.autotest.entity.Metric;
 import com.autotest.mapper.MetricMapper;
-import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.baomidou.mybatisplus.core.conditions.Wrapper;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -13,7 +14,14 @@ import java.util.List;
  */
 @Slf4j
 @Service
-public class MetricService extends ServiceImpl<MetricMapper, Metric> {
+@RequiredArgsConstructor
+public class MetricService {
+
+    private final MetricMapper metricMapper;
+
+    public List<Metric> list(Wrapper<Metric> wrapper) {
+        return metricMapper.selectList(wrapper);
+    }
 
     /**
      * 批量保存指标
@@ -22,11 +30,11 @@ public class MetricService extends ServiceImpl<MetricMapper, Metric> {
         if (metrics == null || metrics.isEmpty()) {
             return;
         }
-        
+
         try {
             // 逐个插入（避免 batch insert 的 typeHandler 问题）
             for (Metric metric : metrics) {
-                baseMapper.insert(metric);
+                metricMapper.insert(metric);
             }
             log.debug("保存 {} 条指标数据", metrics.size());
         } catch (Exception e) {
