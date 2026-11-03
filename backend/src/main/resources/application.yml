@@ -65,6 +65,29 @@ spring:
     deserialization:
       fail-on-unknown-properties: false
 
+  # MCP 服务端：智能体通过 /mcp 调用平台能力
+  ai:
+    mcp:
+      server:
+        enabled: true
+        name: auto-test-platform
+        version: 1.0.0
+        type: sync
+        protocol: streamable
+        request-timeout: 120s
+        instructions: >-
+          自动化测试平台工具集。典型流程：list_scripts 选包 -> get_script_contract
+          读参数契约 -> list_servers 选机 -> run_test 提交 -> wait_for_task 等待 ->
+          get_task_result 取结构化结果 -> 需要时 get_step_log 看日志。
+          失败结果带 reason_code 与 is_retryable，据此决定重试还是改参数。
+        streamable-http:
+          mcp-endpoint: /mcp
+        capabilities:
+          tool: true
+          resource: false
+          prompt: false
+          completion: false
+
 # MyBatis-Plus 配置
 mybatis-plus:
   mapper-locations: classpath*:/mapper/**/*.xml

@@ -20,8 +20,8 @@ public class SpaConfig implements WebMvcConfigurer {
 
     private static final Resource INDEX_HTML = new ClassPathResource("static/index.html");
 
-    /** api/ 是全部 REST 接口；ws/ 与 webshell/ 是 @ServerEndpoint WebSocket 端点 */
-    private static final String[] BACKEND_PREFIXES = {"api/", "ws/", "webshell/"};
+    /** api/ 是全部 REST 接口；ws/ 与 webshell/ 是 @ServerEndpoint WebSocket 端点；mcp 是智能体 MCP 端点 */
+    private static final String[] BACKEND_PREFIXES = {"api/", "ws/", "webshell/", "mcp"};
 
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
