@@ -23,7 +23,7 @@ export function paramLabel(param: ParamDefinition): string {
   return param.displayName || param.name
 }
 
-/** options 允许 {label,value} 与裸字符串两种历史形状 */
+/** options 允许 {label,value} 与裸字符串两种历史形状，界面展示用；取不到提交值的项不显示 */
 export function optionChoices(param: ParamDefinition): ParamOption[] {
   const raw = param.options
   if (!Array.isArray(raw)) return []
@@ -41,11 +41,38 @@ export function optionChoices(param: ParamDefinition): ParamOption[] {
   return choices
 }
 
+/**
+ * 是否声明了白名单。与后端 `!options.isEmpty()` 逐字对齐：数组存在且非空即算声明，
+ * 哪怕里面全是要被丢弃的无效项 —— 那种包会让所有取值都被拒，界面不能假装没这回事。
+ */
+export function hasOptionWhitelist(param: ParamDefinition): boolean {
+  return Array.isArray(param.options) && (param.options as unknown[]).length > 0
+}
+
+/** 白名单里真正参与匹配的取值，与后端 TaskServiceImpl.allowedValues 一致（value 为 null 才回落 label） */
+export function allowedOptionValues(param: ParamDefinition): string[] {
+  const raw = param.options
+  if (!Array.isArray(raw)) return []
+  const values: string[] = []
+  for (const item of raw) {
+    if (typeof item === 'string') {
+      if (item.trim() !== '') values.push(item.trim())
+      continue
+    }
+    if (!item) continue
+    const value = item.value ?? item.label
+    if (value === undefined || value === null || String(value).trim() === '') continue
+    values.push(String(value).trim())
+  }
+  return values
+}
+
 export interface ParamProblem {
   code: 'PARAM_REQUIRED' | 'PARAM_NOT_IN_OPTIONS'
   param: string
   step?: string
   message: string
+  allowed?: string[]
 }
 
 function filled(value: unknown): boolean {
@@ -53,7 +80,6 @@ function filled(value: unknown): boolean {
 }
 
 function checkOne(param: ParamDefinition, effective: unknown, hasValue: boolean, where: string, step?: string): ParamProblem | null {
-  const choices = optionChoices(param)
   if (isRequired(param) && !hasValue) {
     const tail = step === undefined && hasDeclaredDefault(param) ? '（脚本声明的默认值不会自动注入）' : ''
     return {
@@ -63,12 +89,14 @@ function checkOne(param: ParamDefinition, effective: unknown, hasValue: boolean,
       message: `${where} 是必填项但未填写${tail}`,
     }
   }
-  if (hasValue && choices.length > 0 && !choices.some(c => c.value === String(effective).trim())) {
+  if (hasValue && hasOptionWhitelist(param) && !allowedOptionValues(param).includes(String(effective).trim())) {
+    const allowed = allowedOptionValues(param)
     return {
       code: 'PARAM_NOT_IN_OPTIONS',
       param: param.name,
       step,
-      message: `${where} 的取值 ${effective} 不在可选值 [${choices.map(c => c.value).join(', ')}] 内`,
+      message: `${where} 的取值 ${effective} 不在可选值 [${allowed.join(', ')}] 内`,
+      allowed
     }
   }
   return null
