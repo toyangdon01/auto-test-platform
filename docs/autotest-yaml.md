@@ -131,7 +131,7 @@ steps:
 |------|------|------|------|
 | `name` | string | ✅ | 脚本名称（唯一） |
 | `description` | string | ❌ | 脚本描述 |
-| `type` | string | ❌ | 脚本类型：shell / python |
+| `type` | string | ❌ | 脚本类型：`shell` / `powershell`。除 `powershell` 外的值（含 `python`、留空）都按 shell 处理，这个字段只在本地执行时决定用哪个执行器 |
 | `category` | string | ❌ | 测试分类 |
 | `timeout` | integer | ❌ | 默认超时时间（秒） |
 
@@ -140,7 +140,10 @@ steps:
 >
 > 包里声明的 `timeout` 会在创建时写进 `scripts.default_timeout`（单位**秒**，任务级超时是毫秒），
 > 脚本编辑页的「默认超时（秒）」能看到并改它；留空就按包里的声明。
-> 步骤没有单独配超时时，执行阶段读的就是这个值。
+>
+> **步骤里没有超时字段**，别往步骤上配 `timeout`，那个键不认识、会被丢弃。执行时的取值顺序是
+> 任务的 `timeout`（毫秒）→ `scripts.default_timeout`（秒，就是这里的 `timeout`）→ 配置的兜底值
+> （`ShellExecutor.resolveTimeout`）。要让某个包跑得更久，改顶层 `timeout` 或建任务时给超时。
 
 #### 参数配置
 
@@ -449,6 +452,72 @@ steps:
         type: pattern
         required: false
 ```
+
+---
+
+## 校验：坏包在导入时就报，而不是跑到一半才炸
+
+解析 `autotest.yaml` 会产出两档问题项。字段契约的唯一真源是
+`backend/src/main/java/com/autotest/config/PackageSchema.java`，校验器和 MCP 的
+`describe_package_spec` 工具都读它 —— **加字段只改这一处**，否则文档和校验会立刻漂移。
+
+| 档位 | 含义 | 处置 |
+|------|------|------|
+| `validationErrors` | 会改变执行结果的形状问题：未知键被静默丢弃、`script` 指不到包内文件、`dependsOn` 指向不存在的步骤或成环、脚本文件是 CRLF…… | MCP 的 `create_script` / `import_package` **默认拒绝**；界面与 REST 上传仍然只回 `warnings`，不挡 |
+| `warnings` | 风格建议（没写 `name`、没写 `type`） | 一律放行，随响应返回 |
+
+分档之前只有 warning：坏包照样导入成功，问题到执行阶段才以 exit 127、"任务一直等着不执行"
+这类形式暴露，排查成本全落在跑任务的人身上。
+
+### 校验是逐键对着原始 YAML 树做的
+
+解析过程按键手工读取，写错的键在 `ScriptConfig` 里已经不存在了，光看模型看不见错。
+所以 `ScriptConfigService.collectSchemaIssues` 拿 `JsonNode` 原始树 + 包目录里的真实文件清单一起比。
+每条问题项是 `{code, path, message, hint}`：`path` 指到具体位置（如 `steps.step_1.script`），
+`hint` 列出该层的合法键，拼错的键还会给候选（前缀命中或编辑距离 ≤ 2，
+例如 `paramaters` → "你是不是想写 'parameters'"）。共 26 个错误码，逐条触发条件见
+`PackageSchema.validationCodes()`。
+
+`script` 的判定：先当包内相对路径查（支持 `steps/step1.sh` 这种子目录）；
+既不是包内文件、也不像一段命令（含空格/制表符，或既无 `.` 又无 `/`）时会被当成 shell 命令执行，
+拼错后缀就是 exit 127，所以现在直接拒。
+
+### 智能体侧：describe_package_spec
+
+MCP 服务端只开 tools 能力（`resource:false / prompt:false`），写包的智能体拿不到本文件。
+因此规范本身做成了一个只读工具，返回内容与 `PackageSchema` 同源：
+
+| 参数 `section` | 返回 |
+|----------------|------|
+| `schema` | `topLevelKeys` / `parameterKeys` / `stepKeys` / `resourceKeys` / `tagKeys` / `optionKeys`，每个键带用途说明 |
+| `rules` | 11 条硬规则（超时单位与回落顺序、共享参数 `default` 不注入、步骤参数 `defaultValue` 注入并覆盖同名共享参数、`options` 严格匹配、LF 换行、覆盖导入整体替换参数定义等） |
+| `example` | `exampleYaml`：一份能通过校验的包声明（配套的 `main.sh` 由提交方一起带上） |
+| `mistakes` | 8 条常见错法 → 症状 → 改法 |
+| `codes` | 26 个错误码及各自触发条件 |
+| `all`（缺省） | 以上全部，外加 `strictValidation`、`howToSubmit`、`howToVerify` |
+
+不合格时返回的是结构化报错，不是泛泛的"解析失败"：
+
+```json
+{
+  "ok": false,
+  "reason_code": "PACKAGE_INVALID",
+  "error": "autotest.yaml 有 5 处问题，未导入；按 errors 逐条改完再试，确认都不影响你要做的事可以传 strict=false",
+  "errors": [
+    { "code": "STEP_SCRIPT_NOT_FOUND", "path": "steps.step_1.script",
+      "error": "包里没有 main.sch，这个值又不像命令，执行时会被当成 shell 命令跑（exit 127）",
+      "hint": "包内文件：main.sh, lib/utils.sh" }
+  ],
+  "next": "describe_package_spec"
+}
+```
+
+确认过这些问题不影响本次提交（例如历史包里残留的未知键），可以传 `strict=false` 放行；
+问题不会静默吞掉，会原样写进返回的 `notes`。`import_package(strategy=SKIP)` 且脚本名已存在时
+这次本来什么都不写，所以那条路径仍按原样返回 `SCRIPT_EXISTS`，不拿校验挡路。
+
+> **界面路径没变**：`ScriptUploadResult` 只带 `warnings` 字段，
+> 所以 `validationErrors` 目前在前端不可见。别把"MCP 会拦"当成"界面也会拦"。
 
 ---
 

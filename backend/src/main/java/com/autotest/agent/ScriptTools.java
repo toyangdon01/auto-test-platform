@@ -1,6 +1,8 @@
 package com.autotest.agent;
 
+import com.autotest.config.PackageSchema;
 import com.autotest.config.ScriptConfig;
+import com.autotest.dto.ConfigIssue;
 import com.autotest.dto.ConfigParseResult;
 import com.autotest.dto.ImportResult;
 import com.autotest.dto.ScriptImportStatus;
@@ -68,13 +70,16 @@ public class ScriptTools {
     @McpTool(name = "import_package", description = "从平台主机上的脚本包目录导入或更新脚本包，等价于 UI 的 ZIP 导入。"
             + "sourceDir 既可以是包集合根目录（其下有 scripts/<包名>/），也可以直接是某个包目录（其内有 autotest.yaml）。"
             + "脚本名取包目录名；冲突默认 SKIP，要覆盖内容必须显式传 strategy=OVERWRITE。"
-            + "注意 OVERWRITE 重写当前版本记录，不会新增版本。",
+            + "注意 OVERWRITE 重写当前版本记录，不会新增版本。"
+            + "默认按 autotest.yaml 规范严格校验，不合格直接返回 errors；先调 describe_package_spec 看规范，"
+            + "确认无碍可传 strict=false 放行。",
             annotations = @McpTool.McpAnnotations(readOnlyHint = false, destructiveHint = false,
                     idempotentHint = true, title = "导入脚本包目录"))
     public Map<String, Object> importPackage(
             @McpToolParam(description = "平台主机上的目录绝对路径，如 D:/scripts-package 或 D:/scripts-package/scripts/netperf") String sourceDir,
             @McpToolParam(required = false, description = "sourceDir 是包集合根目录时，指定导入其中的哪个包") String packageName,
-            @McpToolParam(required = false, description = "冲突策略：SKIP（默认，已存在则不动）、OVERWRITE（覆盖内容）、RENAME（另存为新脚本）") String strategy) {
+            @McpToolParam(required = false, description = "冲突策略：SKIP（默认，已存在则不动）、OVERWRITE（覆盖内容）、RENAME（另存为新脚本）") String strategy,
+            @McpToolParam(required = false, description = "是否严格校验 autotest.yaml，默认 true") Boolean strict) {
 
         Path root = toPath(sourceDir);
         if (root == null) {
@@ -110,20 +115,21 @@ public class ScriptTools {
             return error("SOURCE_IS_TARGET", "源目录位于平台脚本存储目录内，覆盖导入会先删掉它自己: " + scriptDir
                     + "；请把包源码放在存储目录之外，例如 D:/scripts-package");
         }
-        return doImport(scriptDir, packageRoot, strategy);
+        return doImport(scriptDir, packageRoot, strategy, strict != Boolean.FALSE);
     }
 
     @McpTool(name = "create_script", description = "用内联文件内容新建脚本包，供没有平台磁盘访问权限的智能体使用。"
             + "files 的键是包内相对路径、值是文本内容，必须包含 autotest.yaml（步骤与参数契约由它决定）。"
-            + "parameters 支持 name/type/default/description/displayName/required/options，"
-            + "其中 options 可写 {label,value} 或裸字符串；声明后 run_test 会按它校验必填与取值范围。"
+            + "autotest.yaml 的字段契约、最小示例和硬规则都在 describe_package_spec 里，写包前先读它；"
+            + "本工具默认严格校验，不合格返回 PACKAGE_INVALID 与逐条 errors。"
             + "二进制资源（源码 tar 包等）无法内联，需先落到平台主机目录再用 import_package。"
             + "同名脚本已存在时拒绝，此时改用 import_package 更新内容。",
             annotations = @McpTool.McpAnnotations(readOnlyHint = false, destructiveHint = false,
                     idempotentHint = false, title = "新建脚本包"))
     public Map<String, Object> createScript(
             @McpToolParam(description = "脚本名称，同时作为包目录名，需与 autotest.yaml 的 name 一致") String name,
-            @McpToolParam(description = "包内文件，键为相对路径（如 autotest.yaml、main.sh），值为文本内容") Map<String, String> files) {
+            @McpToolParam(description = "包内文件，键为相对路径（如 autotest.yaml、main.sh），值为文本内容") Map<String, String> files,
+            @McpToolParam(required = false, description = "是否严格校验 autotest.yaml，默认 true") Boolean strict) {
 
         if (name == null || name.isBlank()) {
             return error("PARAM_INVALID", "name 不能为空");
@@ -157,10 +163,54 @@ public class ScriptTools {
             return error("INTERNAL", "写入临时包文件失败: " + e.getMessage());
         }
         try {
-            return doImport(packageDir, staging, null);
+            return doImport(packageDir, staging, null, strict != Boolean.FALSE);
         } finally {
             deleteRecursively(staging);
         }
+    }
+
+    @McpTool(name = "describe_package_spec", description = "返回脚本包 autotest.yaml 的字段契约、硬规则、最小可用示例、"
+            + "常见错法和严格校验会拒绝的问题。写包或改包之前先读它："
+            + "create_script/import_package 默认就按这份契约校验，不合格返回 PACKAGE_INVALID 和逐条 errors。"
+            + "只需要一部分时传 section=schema|rules|example|mistakes|codes。",
+            annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false,
+                    idempotentHint = true, title = "脚本包规范"))
+    public Map<String, Object> describePackageSpec(
+            @McpToolParam(required = false, description = "只返回某一部分：schema / rules / example / mistakes / codes，缺省返回全部") String section) {
+
+        String wanted = section == null || section.isBlank() ? "all" : section.trim().toLowerCase(Locale.ROOT);
+        List<String> allowedSections = List.of("all", "schema", "rules", "example", "mistakes", "codes");
+        if (!allowedSections.contains(wanted)) {
+            return error("PARAM_INVALID", "section 只能是 " + allowedSections + "，收到: " + section);
+        }
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("ok", true);
+        out.put("manifestFile", "autotest.yaml");
+        if (matches(wanted, "schema")) {
+            out.put("topLevelKeys", PackageSchema.topLevelDocs());
+            out.put("parameterKeys", PackageSchema.parameterDocs());
+            out.put("stepKeys", PackageSchema.stepDocs());
+            out.put("resourceKeys", new ArrayList<>(PackageSchema.RESOURCE));
+            out.put("tagKeys", new ArrayList<>(PackageSchema.TAG));
+            out.put("optionKeys", new ArrayList<>(PackageSchema.OPTION));
+        }
+        if (matches(wanted, "rules")) {
+            out.put("rules", PackageSchema.RULES);
+        }
+        if (matches(wanted, "example")) {
+            out.put("exampleYaml", PackageSchema.exampleYaml());
+        }
+        if (matches(wanted, "mistakes")) {
+            out.put("commonMistakes", PackageSchema.commonMistakes());
+        }
+        if (matches(wanted, "codes")) {
+            out.put("strictValidation", PackageSchema.validationCodes());
+        }
+        out.put("howToSubmit", "纯文本包用 create_script(name, files)；带二进制的包先把目录放到平台主机，"
+                + "再 import_package(sourceDir)。UI 上传则要求 autotest.yaml 在 zip 根目录。");
+        out.put("howToVerify", "导入后用 get_script_contract 回读步骤和参数，确认没被裁剪");
+        return out;
     }
 
     @McpTool(name = "update_script", description = "修改脚本包的元信息（名称、描述、分类、状态、默认超时），"
@@ -260,7 +310,28 @@ public class ScriptTools {
 
     // ==================== 内部方法 ====================
 
-    private Map<String, Object> doImport(Path scriptDir, Path packageRoot, String strategy) {
+    private static boolean matches(String wanted, String section) {
+        return "all".equals(wanted) || wanted.equals(section);
+    }
+
+    /**
+     * 校验不过时的返回：逐条给出出错位置、后果和改法，让智能体不用读文档就能自己修完再来一次
+     */
+    private Map<String, Object> invalidPackage(ConfigParseResult parsed, String action) {
+        List<Map<String, Object>> issues = new ArrayList<>();
+        for (ConfigIssue issue : parsed.getValidationErrors()) {
+            issues.add(result("code", issue.code(), "path", issue.path(),
+                    "error", issue.message(), "hint", issue.hint()));
+        }
+        Map<String, Object> out = error("PACKAGE_INVALID",
+                "autotest.yaml 有 " + issues.size() + " 处问题，未" + action + "；按 errors 逐条改完再试，"
+                        + "确认都不影响你要做的事可以传 strict=false");
+        out.put("errors", issues);
+        out.put("next", "describe_package_spec");
+        return out;
+    }
+
+    private Map<String, Object> doImport(Path scriptDir, Path packageRoot, String strategy, boolean strict) {
         String scriptName = scriptDir.getFileName().toString();
 
         ConfigParseResult parsed = scriptConfigService.parseConfigFromTempWithDetails(scriptDir.toString());
@@ -282,6 +353,12 @@ public class ScriptTools {
             } catch (IllegalArgumentException e) {
                 return error("PARAM_INVALID", "strategy 只能是 SKIP/OVERWRITE/RENAME，收到: " + strategy);
             }
+        }
+
+        // SKIP 且脚本已存在时这次什么都不写，就不拿校验错误挡路
+        if (strict && parsed.hasValidationErrors()
+                && (useStrategy != ScriptPackageService.ConflictStrategy.SKIP || findByName(scriptName) == null)) {
+            return invalidPackage(parsed, "导入");
         }
 
         ImportResult importResult = new ImportResult();
@@ -319,6 +396,8 @@ public class ScriptTools {
         List<String> notes = new ArrayList<>();
         notes.addAll(importResult.getWarnings());
         notes.addAll(parsed.getWarnings());
+        // strict=false 时校验错误不挡路，但必须让调用方看见
+        notes.addAll(parsed.validationErrorTexts());
         if (config.getName() != null && !config.getName().equals(scriptName)) {
             notes.add("autotest.yaml 的 name=" + config.getName() + "，但脚本名按目录名取 " + scriptName);
         }

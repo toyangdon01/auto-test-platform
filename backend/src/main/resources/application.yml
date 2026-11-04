@@ -80,6 +80,8 @@ spring:
           读参数契约 -> list_servers 选机 -> run_test 提交 -> wait_for_task 等待 ->
           get_task_result 取结构化结果 -> 需要时 get_step_log 看日志。
           失败结果带 reason_code 与 is_retryable，据此决定重试还是改参数。
+          写新包或改包先调 describe_package_spec 拿 autotest.yaml 的字段契约与最小示例；
+          create_script/import_package 默认严格校验，不合格返回 PACKAGE_INVALID 与逐条 errors。
         streamable-http:
           mcp-endpoint: /mcp
         capabilities:

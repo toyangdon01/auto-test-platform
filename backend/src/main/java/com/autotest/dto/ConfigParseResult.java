@@ -50,6 +50,12 @@ public class ConfigParseResult {
      */
     private String errorLocation;
     
+    /**
+     * 校验问题（文件能解析、但内容有问题）。历史上这里只产 warning，坏包照样导入成功、
+     * 到执行阶段才炸；现在区分开：会改变执行结果的是 validationErrors，风格建议是 warnings。
+     */
+    private List<ConfigIssue> validationErrors = new ArrayList<>();
+    
     // ========== 静态工厂方法 ==========
     
     /**
@@ -124,5 +130,36 @@ public class ConfigParseResult {
             warnings = new ArrayList<>();
         }
         warnings.add(warning);
+    }
+    
+    /**
+     * 是否有校验错误
+     */
+    public boolean hasValidationErrors() {
+        return validationErrors != null && !validationErrors.isEmpty();
+    }
+    
+    /**
+     * 添加校验问题
+     */
+    public void addValidationError(ConfigIssue issue) {
+        if (validationErrors == null) {
+            validationErrors = new ArrayList<>();
+        }
+        validationErrors.add(issue);
+    }
+    
+    /**
+     * 校验错误的文字形式，给只需要字符串的调用方（界面、日志）
+     */
+    public List<String> validationErrorTexts() {
+        if (validationErrors == null) {
+            return List.of();
+        }
+        List<String> texts = new ArrayList<>();
+        for (ConfigIssue issue : validationErrors) {
+            texts.add(issue.toText());
+        }
+        return texts;
     }
 }

@@ -1,6 +1,8 @@
 package com.autotest.service;
 
 import com.autotest.config.ScriptConfig;
+import com.autotest.dto.ConfigIssue;
+import com.autotest.dto.ConfigParseResult;
 import com.autotest.entity.Script;
 import com.autotest.entity.ScriptVersion;
 import org.junit.jupiter.api.BeforeEach;
@@ -320,6 +322,180 @@ class ScriptConfigServiceTest {
         assertNull(scriptConfigService.applyDeclaredTimeout(zero));
         assertNull(zero.getDefaultTimeout());
         verify(scriptMapper, never()).updateById(any(Script.class));
+    }
+
+    @Test
+    void testSchemaIssues_CleanPackage_HasNoErrors() throws IOException {
+        Path dir = tempDir.resolve("20");
+        writePackage(dir, "name: demo\n"
+                + "description: 合规包\n"
+                + "type: shell\n"
+                + "category: compute\n"
+                + "timeout: 600\n"
+                + "tags:\n"
+                + "  - key: os\n"
+                + "    value: kylin\n"
+                + "parameters:\n"
+                + "  - name: MODE\n"
+                + "    type: select\n"
+                + "    required: true\n"
+                + "    options:\n"
+                + "      - label: 快速\n"
+                + "        value: fast\n"
+                + "resources:\n"
+                + "  - resourceMd5: abc123\n"
+                + "    targetPath: tools/x.tar.gz\n"
+                + "steps:\n"
+                + "  _meta:\n"
+                + "    note: 元数据不参与执行\n"
+                + "  step_1:\n"
+                + "    script: steps/run.sh\n"
+                + "    dependsOn: []\n"
+                + "  step_2:\n"
+                + "    script: uptime\n"
+                + "    dependsOn: [step_1]\n",
+                "steps/run.sh", "#!/bin/sh\necho ok\n");
+
+        assertTrue(parsePackage(dir).getValidationErrors().isEmpty());
+    }
+
+    @Test
+    void testSchemaIssues_UnknownKeys_ReportedWithLegalList() throws IOException {
+        Path dir = tempDir.resolve("21");
+        writePackage(dir, "name: demo\n"
+                + "version: 1.0.0\n"
+                + "paramaters:\n  - name: A\n"
+                + "type: shell\n"
+                + "steps:\n"
+                + "  step_1:\n"
+                + "    script: main.sh\n"
+                + "    timeout: 30\n",
+                "main.sh", "#!/bin/sh\necho ok\n");
+
+        ConfigParseResult result = parsePackage(dir);
+        List<ConfigIssue> unknown = result.getValidationErrors().stream()
+                .filter(item -> "UNKNOWN_KEY".equals(item.code()))
+                .toList();
+        assertEquals(3, unknown.size(), unknown.toString());
+        assertEquals(List.of("version", "paramaters", "steps.step_1.timeout"),
+                unknown.stream().map(ConfigIssue::path).toList());
+        for (ConfigIssue item : unknown) {
+            assertTrue(item.hint().contains("合法键"), item.hint());
+        }
+        // 拼错的键要给出候选，让智能体一眼看出是写错了不是写漏了
+        assertTrue(unknown.get(1).hint().contains("'parameters'"), unknown.get(1).hint());
+    }
+
+    @Test
+    void testSchemaIssues_ScriptNotFoundButInlineCommandAllowed() throws IOException {
+        Path dir = tempDir.resolve("22");
+        writePackage(dir, "name: demo\ntype: shell\nsteps:\n"
+                + "  step_1:\n    script: main.sch\n"
+                + "  step_2:\n    script: bash run.sh --fast\n"
+                + "  step_3:\n    script: uptime\n", "run.sh", "#!/bin/sh\n");
+
+        List<ConfigIssue> issues = parsePackage(dir).getValidationErrors();
+        assertEquals(1, issues.size(), issues.toString());
+        assertEquals("STEP_SCRIPT_NOT_FOUND", issues.get(0).code());
+        assertTrue(issues.get(0).hint().contains("run.sh"), issues.get(0).hint());
+    }
+
+    @Test
+    void testSchemaIssues_DependencyProblems() throws IOException {
+        Path dir = tempDir.resolve("23");
+        writePackage(dir, "name: demo\ntype: shell\nsteps:\n"
+                + "  a:\n    script: main.sh\n    dependsOn: [missing]\n"
+                + "  b:\n    script: main.sh\n    dependsOn: [c]\n"
+                + "  c:\n    script: main.sh\n    dependsOn: [b]\n", "main.sh", "#!/bin/sh\n");
+
+        List<String> codes = codes(parsePackage(dir));
+        assertTrue(codes.contains("DEPENDS_ON_UNKNOWN"), codes.toString());
+        assertTrue(codes.contains("DEPENDENCY_CYCLE"), codes.toString());
+    }
+
+    @Test
+    void testSchemaIssues_ParameterShapes() throws IOException {
+        Path dir = tempDir.resolve("24");
+        writePackage(dir, "name: demo\ntype: shell\n"
+                + "parameters:\n"
+                + "  - name: A\n    required: \"true\"\n"
+                + "  - name: A\n"
+                + "  - type: string\n"
+                + "  - name: B\n    options:\n"
+                + "      - label: 只填展示名是合法的\n"
+                + "      - label: 空提交值\n        value: \"\"\n",
+                "main.sh", "#!/bin/sh\n");
+
+        List<String> codes = codes(parsePackage(dir));
+        assertTrue(codes.contains("PARAMETER_REQUIRED_NOT_BOOLEAN"), codes.toString());
+        assertTrue(codes.contains("PARAMETER_NAME_DUPLICATED"), codes.toString());
+        assertTrue(codes.contains("PARAMETER_NAME_MISSING"), codes.toString());
+        assertEquals(1, codes.stream().filter("OPTION_VALUE_EMPTY"::equals).count(), codes.toString());
+    }
+
+    @Test
+    void testSchemaIssues_StructureErrors() throws IOException {
+        Path dir = tempDir.resolve("25");
+        writePackage(dir, "name: demo\n"
+                + "type: bash\n"
+                + "timeout: 0\n"
+                + "tags: kylin\n"
+                + "resources:\n  - targetPath: a.sh\n",
+                "main.sh", "#!/bin/sh\n");
+
+        List<String> codes = codes(parsePackage(dir));
+        assertTrue(codes.contains("TYPE_INVALID"), codes.toString());
+        assertTrue(codes.contains("TIMEOUT_INVALID"), codes.toString());
+        assertTrue(codes.contains("TAGS_NOT_ARRAY"), codes.toString());
+        assertTrue(codes.contains("RESOURCE_LOCATOR_MISSING"), codes.toString());
+        assertTrue(codes.contains("STEPS_MISSING"), codes.toString());
+    }
+
+    @Test
+    void testSchemaIssues_StepsArrayWarnsButNotFails() throws IOException {
+        Path dir = tempDir.resolve("26");
+        writePackage(dir, "name: demo\ntype: shell\nsteps:\n"
+                + "  - name: first\n    script: main.sh\n", "main.sh", "#!/bin/sh\n");
+
+        ConfigParseResult result = parsePackage(dir);
+        assertTrue(result.getValidationErrors().isEmpty(), result.getValidationErrors().toString());
+        assertTrue(result.getWarnings().stream().anyMatch(w -> w.contains("数组")), result.getWarnings().toString());
+    }
+
+    @Test
+    void testSchemaIssues_CrlfScriptRejected() throws IOException {
+        Path dir = tempDir.resolve("27");
+        writePackage(dir, "name: demo\ntype: shell\nsteps:\n  step_1:\n    script: main.sh\n",
+                "main.sh", "#!/bin/sh\r\necho ok\r\n");
+
+        List<String> codes = codes(parsePackage(dir));
+        assertTrue(codes.contains("CRLF_SCRIPT"), codes.toString());
+    }
+
+    /**
+     * 写一个包目录：yaml + 若干文件
+     */
+    private Path writePackage(Path dir, String yaml, String... fileNameAndContent) throws IOException {
+        Files.createDirectories(dir);
+        Files.writeString(dir.resolve("autotest.yaml"), yaml);
+        for (int i = 0; i + 1 < fileNameAndContent.length; i += 2) {
+            Path file = dir.resolve(fileNameAndContent[i]);
+            Files.createDirectories(file.getParent());
+            Files.writeString(file, fileNameAndContent[i + 1]);
+        }
+        return dir;
+    }
+
+    private ConfigParseResult parsePackage(Path dir) {
+        return scriptConfigService.parseConfigFromTempWithDetails(dir.toString());
+    }
+
+    private List<String> codes(ConfigParseResult result) {
+        List<String> codes = new ArrayList<>();
+        for (ConfigIssue issue : result.getValidationErrors()) {
+            codes.add(issue.code());
+        }
+        return codes;
     }
 
     /**
