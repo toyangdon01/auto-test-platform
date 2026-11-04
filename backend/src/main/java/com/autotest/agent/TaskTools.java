@@ -183,19 +183,28 @@ public class TaskTools {
 
     @McpTool(name = "get_step_log", description = "分段读取步骤日志，避免一次返回超大文本。"
             + "不传 fromChar 时返回结尾 maxChars 个字符；传了则从该位置往后读。返回 nextFromChar 用于续读。"
-            + "stepId/stepName/serverId 都不传时，优先取第一个失败步骤，否则取第一步。",
+            + "只传 stepId 就够了（步骤 id 全局唯一，不需要 taskId 限定范围）；"
+            + "按步骤名定位才需要 taskId，多机同名步骤再加 serverId。"
+            + "只给 taskId 时，优先取第一个失败步骤，否则取第一步。",
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false,
                     idempotentHint = true,
                     title = "读取步骤日志"))
     public Map<String, Object> getStepLog(
-            @McpToolParam(description = "任务 id") Long taskId,
-            @McpToolParam(required = false, description = "步骤 id；不传则用 stepName 定位") Long stepId,
-            @McpToolParam(required = false, description = "步骤名，如 configure_network") String stepName,
+            @McpToolParam(required = false, description = "任务 id；按 stepId 取日志时不用传") Long taskId,
+            @McpToolParam(required = false, description = "步骤 id，单独传它即可定位") Long stepId,
+            @McpToolParam(required = false, description = "步骤名，如 configure_network；用它定位时需要 taskId") String stepName,
             @McpToolParam(required = false, description = "服务器 id，多机同名步骤用它区分") Long serverId,
             @McpToolParam(required = false, description = "起始字符下标，用于续读") Integer fromChar,
             @McpToolParam(required = false, description = "最多返回字符数，默认 8000，上限 40000") Integer maxChars) {
 
-        TaskStep step = findStep(taskId, stepId, stepName, serverId);
+        TaskStep step;
+        if (taskId == null && stepId != null) {
+            step = taskStepMapper.selectById(stepId);
+        } else if (taskId == null) {
+            return error("PARAM_INVALID", "需要 taskId 限定范围，或者直接给 stepId（步骤 id 全局唯一）");
+        } else {
+            step = findStep(taskId, stepId, stepName, serverId);
+        }
         if (step == null) {
             return error("STEP_NOT_FOUND", "未找到步骤: taskId=" + taskId + ", stepId=" + stepId
                     + ", stepName=" + stepName + ", serverId=" + serverId);
