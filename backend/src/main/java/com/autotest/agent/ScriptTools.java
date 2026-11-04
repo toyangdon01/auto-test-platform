@@ -115,6 +115,8 @@ public class ScriptTools {
 
     @McpTool(name = "create_script", description = "用内联文件内容新建脚本包，供没有平台磁盘访问权限的智能体使用。"
             + "files 的键是包内相对路径、值是文本内容，必须包含 autotest.yaml（步骤与参数契约由它决定）。"
+            + "parameters 支持 name/type/default/description/displayName/required/options，"
+            + "其中 options 可写 {label,value} 或裸字符串；声明后 run_test 会按它校验必填与取值范围。"
             + "二进制资源（源码 tar 包等）无法内联，需先落到平台主机目录再用 import_package。"
             + "同名脚本已存在时拒绝，此时改用 import_package 更新内容。",
             annotations = @McpTool.McpAnnotations(readOnlyHint = false, destructiveHint = false,

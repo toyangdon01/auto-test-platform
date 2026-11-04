@@ -135,6 +135,9 @@ steps:
 | `category` | string | ❌ | 测试分类 |
 | `timeout` | integer | ❌ | 默认超时时间（秒） |
 
+> 在界面上传脚本包时，如果改了脚本名称，平台只会就地重写 `autotest.yaml` 的 `name` 一行，
+> `timeout`、注释和其余字段保持包里的原样（保存/更新脚本才会按数据库整份反写）。
+
 #### 参数配置
 
 | 字段 | 类型 | 必填 | 说明 |
@@ -143,6 +146,38 @@ steps:
 | `type` | string | ❌ | 参数类型：string / number |
 | `default` | any | ❌ | 默认值 |
 | `description` | string | ❌ | 参数描述 |
+| `displayName` | string | ❌ | 界面展示名，任务创建页按 `displayName` → `name` 取标签 |
+| `required` | boolean | ❌ | 必填项。提交任务时没给出取值就被拒绝 |
+| `options` | array | ❌ | 可选值白名单，见下 |
+
+```yaml
+parameters:
+  - name: MODE
+    type: string
+    displayName: 运行模式
+    description: netperf 的运行方向
+    required: true
+    options:
+      - { label: TCP 批量发送, value: bulksend }
+      - { label: TCP 批量接收, value: bulkrecv }
+      - udp                # 裸字符串等价于 { label: udp, value: udp }
+```
+
+`options` 支持 `{label, value}` 对象与裸字符串两种写法，落库统一为 `[{label, value}]`，
+与前端 `ParamDefinition.options` 形状一致；提交任务时按 `value` 校验（区分大小写，前后空白会被忽略）。
+
+校验发生在 `TaskServiceImpl.checkParams`：REST `POST/PUT /tasks`、定时与编排入口、
+以及 MCP 的 `run_test` 都走同一条路径（`run_test` 会先返回结构化的 `PARAM_REQUIRED`
+/ `PARAM_NOT_IN_OPTIONS`，不会创建出必然失败的任务）。共享参数和步骤参数都受校验，步骤维度
+的问题项多带一个 `step` 字段。只对显式声明了 `required: true` 或 `options` 的参数生效，
+历史脚本包行为不变。
+
+注意 `default` 的当前语义：它只用于界面展示与任务编辑页预填，**执行时不会注入环境变量**
+（`TaskExecutionService` 只读任务提交的 `sharedParams`）。所以 `required: true` 的参数即使写了
+`default`，也必须由提交方显式传值；智能体走 MCP 时不会替你填默认值。
+
+注意：覆盖导入（`import_package(strategy=OVERWRITE)` 与 UI 的 ZIP 覆盖）会用 yaml 的声明
+**整体替换** `script_versions.parameters`，在界面上手填的参数定义不会被保留。
 
 #### 步骤配置
 
@@ -204,6 +239,43 @@ steps:
 | `fileCollectEnabled` | boolean | 是否启用文件收集 |
 | `fileCollects` | array | 文件收集配置 |
 | `resources` | array | 步骤专属资源 |
+
+#### 步骤参数 (steps.<步骤名>.params)
+
+步骤参数的定义形状与共享参数一致，支持 `name` / `type` / `displayName` / `description`
+/ `required` / `options`，默认值写 `defaultValue` 或 `default` 都可以（同义，`defaultValue`
+是历史写法，两者同时存在时以 `defaultValue` 为准）。
+
+```yaml
+steps:
+  step_1:
+    displayName: 打流
+    script: main.sh
+    params:
+      - name: LEVEL
+        type: string
+        displayName: 级别
+        required: true
+        defaultValue: fast          # 会注入环境变量
+        options:
+          - { label: 快速, value: fast }
+          - { label: 慢速, value: slow }
+      - name: TAG
+        type: string
+        displayName: 标记
+        required: true              # 没有默认值，提交任务时必须给出（共享参数里给也算）
+```
+
+与共享参数的两处差别，是既有行为，不是笔误：
+
+- **步骤声明的默认值会注入环境变量**，共享参数声明的 `default` 不会；
+- 生效优先级是 用户按步骤填写的取值 > 步骤声明的默认值 > 共享参数取值。
+  所以步骤里声明了某个名字的同名默认值时，任务提交方在 `sharedParams` 里传的值会被盖掉。
+
+校验规则：`steps.<步骤名>.params` 里 `required: true` 且按上面的优先级仍取不到值 → `PARAM_REQUIRED`；
+提交的取值不在该步骤的 `options` 里 → `PARAM_NOT_IN_OPTIONS`（问题项带 `step`）。
+用户按步骤提交的、步骤本身没声明但共享契约声明了的参数，也按共享契约校验，避免绕过。
+`_BACKGROUND` 是界面开关，不参与校验，也不会被导出成环境变量。
 
 #### 文件收集配置 (fileCollects)
 

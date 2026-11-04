@@ -36,8 +36,12 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -251,6 +255,9 @@ public class TaskServiceImpl implements TaskService {
             }
         }
         
+        assertParamsValid(request.getScriptId(), request.getScriptVersion(),
+                request.getSharedParams(), request.getStepParams());
+
         Task task = new Task();
         task.setName(request.getName());
         task.setDescription(request.getDescription());
@@ -327,6 +334,202 @@ public class TaskServiceImpl implements TaskService {
     }
 
     @Override
+    public List<Map<String, Object>> checkParams(Long scriptId, String version,
+                                                 Map<String, Object> sharedParams,
+                                                 Map<String, Map<String, Object>> stepParams) {
+        List<Map<String, Object>> problems = new ArrayList<>();
+        if (scriptId == null) {
+            return problems;
+        }
+        Script script = scriptMapper.selectById(scriptId);
+        if (script == null) {
+            return problems;
+        }
+        String useVersion = StringUtils.hasText(version) ? version : script.getCurrentVersion();
+        if (!StringUtils.hasText(useVersion)) {
+            return problems;
+        }
+        ScriptVersion sv = scriptVersionMapper.selectOne(new LambdaQueryWrapper<ScriptVersion>()
+                .eq(ScriptVersion::getScriptId, scriptId)
+                .eq(ScriptVersion::getVersion, useVersion));
+        // 没有版本或版本没声明参数契约时无从校验，交给脚本自己处理
+        if (sv == null) {
+            return problems;
+        }
+
+        Map<String, Object> shared = sharedParams == null ? Map.of() : sharedParams;
+        Map<String, Map<String, Object>> sharedDefs = indexByName(paramDefs(sv.getParameters()));
+
+        // 共享参数：执行时不会注入 default（TaskExecutionService 只读任务的 sharedParams），
+        // 所以必填项必须由调用方给出取值
+        for (Map<String, Object> def : sharedDefs.values()) {
+            String name = (String) def.get("name");
+            Object value = shared.get(name);
+            checkAgainstDef(def, name, null, value, isPresent(value), problems);
+        }
+
+        Map<String, Object> steps = sv.getSteps();
+        if (steps == null || steps.isEmpty()) {
+            return problems;
+        }
+        for (Map.Entry<String, Object> entry : steps.entrySet()) {
+            String stepName = entry.getKey();
+            if ("_meta".equals(stepName) || !(entry.getValue() instanceof Map)) {
+                continue;
+            }
+            Object paramsObj = ((Map<?, ?>) entry.getValue()).get("params");
+            Map<String, Object> supplied = userStepValues(stepParams, stepName);
+            Set<String> declared = new HashSet<>();
+            for (Map<String, Object> def : paramDefs(paramsObj)) {
+                String name = (String) def.get("name");
+                declared.add(name);
+                // 执行时的优先级：用户填写 > 步骤声明的默认值 > 共享参数
+                Object effective = effectiveStepValue(def, name, supplied.get(name), shared.get(name));
+                checkAgainstDef(def, name, stepName, effective, isPresent(effective), problems);
+            }
+            // 步骤未声明、共享契约声明了的参数，用户仍可按步骤提交，取值同样受约束
+            for (Map.Entry<String, Object> kv : supplied.entrySet()) {
+                String name = kv.getKey();
+                if (name == null || declared.contains(name)) {
+                    continue;
+                }
+                Map<String, Object> def = sharedDefs.get(name);
+                if (def != null) {
+                    checkAgainstDef(def, name, stepName, kv.getValue(), isPresent(kv.getValue()), problems);
+                }
+            }
+        }
+        return problems;
+    }
+
+    /**
+     * 步骤参数的生效取值：用户填写压过步骤默认值，步骤默认值压过共享参数
+     */
+    private Object effectiveStepValue(Map<String, Object> def, String name, Object supplied, Object sharedValue) {
+        if (supplied != null) {
+            return supplied;
+        }
+        Object declared = def.containsKey("defaultValue") ? def.get("defaultValue") : def.get("default");
+        return declared != null ? declared : sharedValue;
+    }
+
+    private void checkAgainstDef(Map<String, Object> def, String name, String stepName,
+                                 Object value, boolean hasValue, List<Map<String, Object>> problems) {
+        List<?> options = def.get("options") instanceof List ? (List<?>) def.get("options") : List.of();
+        String where = stepName == null ? "参数 " + name : "步骤 " + stepName + " 的参数 " + name;
+        if (Boolean.TRUE.equals(def.get("required")) && !hasValue) {
+            String tail = stepName == null && isPresent(def.get("default"))
+                    ? "（脚本声明的 default 不会自动注入，请显式传值）" : "";
+            problems.add(paramProblem("PARAM_REQUIRED", name, stepName,
+                    where + " 是必填项但未提供取值" + tail, List.of()));
+            return;
+        }
+        if (hasValue && !options.isEmpty() && !matchesOption(options, value)) {
+            problems.add(paramProblem("PARAM_NOT_IN_OPTIONS", name, stepName,
+                    where + " 的取值 " + value + " 不在可选值 " + allowedValues(options) + " 内",
+                    allowedValues(options)));
+        }
+    }
+
+    /**
+     * 参数定义列表，只保留带非空 name 的项；_BACKGROUND 是界面开关，不是参数
+     */
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> paramDefs(Object paramsObj) {
+        if (!(paramsObj instanceof List)) {
+            return List.of();
+        }
+        List<Map<String, Object>> defs = new ArrayList<>();
+        for (Object item : (List<?>) paramsObj) {
+            if (!(item instanceof Map)) {
+                continue;
+            }
+            Map<String, Object> def = (Map<String, Object>) item;
+            Object name = def.get("name");
+            if (name instanceof String && !((String) name).isBlank() && !"_BACKGROUND".equals(name)) {
+                defs.add(def);
+            }
+        }
+        return defs;
+    }
+
+    private Map<String, Map<String, Object>> indexByName(List<Map<String, Object>> defs) {
+        Map<String, Map<String, Object>> byName = new LinkedHashMap<>();
+        for (Map<String, Object> def : defs) {
+            byName.put((String) def.get("name"), def);
+        }
+        return byName;
+    }
+
+    private Map<String, Object> userStepValues(Map<String, Map<String, Object>> stepParams, String stepName) {
+        if (stepParams == null) {
+            return Map.of();
+        }
+        Map<String, Object> values = stepParams.get(stepName);
+        return values == null ? Map.of() : values;
+    }
+
+    private Map<String, Object> paramProblem(String code, String param, String stepName,
+                                             String message, List<String> allowedValues) {
+        Map<String, Object> problem = new LinkedHashMap<>();
+        problem.put("code", code);
+        problem.put("param", param);
+        if (stepName != null) {
+            problem.put("step", stepName);
+        }
+        problem.put("message", message);
+        problem.put("allowedValues", allowedValues);
+        return problem;
+    }
+
+    private boolean isPresent(Object value) {
+        return value != null && !(value instanceof String && ((String) value).isBlank());
+    }
+
+    private boolean matchesOption(List<?> options, Object value) {
+        String actual = String.valueOf(value).trim();
+        for (String candidate : allowedValues(options)) {
+            if (candidate.equals(actual)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 可选值列表，兼容 {label,value} 对象与裸字符串两种历史形状
+     */
+    private List<String> allowedValues(List<?> options) {
+        List<String> values = new ArrayList<>();
+        for (Object option : options) {
+            if (option instanceof Map) {
+                Object value = ((Map<?, ?>) option).get("value");
+                if (value == null) {
+                    value = ((Map<?, ?>) option).get("label");
+                }
+                if (isPresent(value)) {
+                    values.add(String.valueOf(value).trim());
+                }
+            } else if (isPresent(option)) {
+                values.add(String.valueOf(option).trim());
+            }
+        }
+        return values;
+    }
+
+    private void assertParamsValid(Long scriptId, String version, Map<String, Object> sharedParams,
+                                   Map<String, Map<String, Object>> stepParams) {
+        List<Map<String, Object>> problems = checkParams(scriptId, version, sharedParams, stepParams);
+        if (problems.isEmpty()) {
+            return;
+        }
+        String detail = problems.stream()
+                .map(problem -> String.valueOf(problem.get("message")))
+                .collect(Collectors.joining("; "));
+        throw BusinessException.of("参数校验失败: " + detail);
+    }
+
+    @Override
     public Task updateTask(Long id, TaskCreateRequest request) {
         Task task = taskMapper.selectById(id);
         if (task == null) {
@@ -337,6 +540,9 @@ public class TaskServiceImpl implements TaskService {
             throw BusinessException.of("执行中的任务不能修改");
         }
         
+        assertParamsValid(task.getScriptId(), task.getScriptVersion(),
+                request.getSharedParams(), request.getStepParams());
+
         // 更新基本信息
         task.setName(request.getName());
         task.setDescription(request.getDescription());

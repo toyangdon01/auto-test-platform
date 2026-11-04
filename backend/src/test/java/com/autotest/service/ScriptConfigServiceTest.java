@@ -206,6 +206,73 @@ class ScriptConfigServiceTest {
         assertFalse(Files.exists(yamlFile));
     }
 
+    @Test
+    void testAlignConfigName_ReplacesOnlyNameLine() throws IOException {
+        setScriptsPath(tempDir.toString());
+
+        Path scriptDir = tempDir.resolve("1");
+        Files.createDirectories(scriptDir);
+        Path yamlFile = scriptDir.resolve("autotest.yaml");
+        Files.writeString(yamlFile, "# 包说明\nname: package-name\ntimeout: 300\ndescription: 保持不动\n");
+
+        scriptConfigService.alignConfigName(1L, "改名后的脚本");
+
+        assertEquals("# 包说明\nname: 改名后的脚本\ntimeout: 300\ndescription: 保持不动\n",
+            Files.readString(yamlFile), "只应改写 name 行，注释、timeout、缩进都要保留");
+    }
+
+    @Test
+    void testAlignConfigName_QuotedNameStaysValidYaml() throws IOException {
+        setScriptsPath(tempDir.toString());
+
+        Path scriptDir = tempDir.resolve("2");
+        Files.createDirectories(scriptDir);
+        Path yamlFile = scriptDir.resolve("autotest.yaml");
+        Files.writeString(yamlFile, "name: old\ntype: shell\n");
+
+        // 名字里带冒号会被 YAML 当成映射分隔符，必须由 yamlMapper 加引号
+        scriptConfigService.alignConfigName(2L, "a: b");
+
+        String content = Files.readString(yamlFile);
+        assertTrue(content.contains("name: \"a: b\""), "实际内容: " + content);
+        assertEquals("a: b", scriptConfigService.parseConfig(2L).getName());
+    }
+
+    @Test
+    void testAlignConfigName_InsertsAfterCommentHeader_WhenMissing() throws IOException {
+        setScriptsPath(tempDir.toString());
+
+        Path scriptDir = tempDir.resolve("3");
+        Files.createDirectories(scriptDir);
+        Path yamlFile = scriptDir.resolve("autotest.yaml");
+        Files.writeString(yamlFile, "# 没有声明 name\n\ntype: shell\n");
+
+        scriptConfigService.alignConfigName(3L, "new-name");
+
+        assertEquals("# 没有声明 name\n\nname: new-name\ntype: shell\n", Files.readString(yamlFile));
+    }
+
+    @Test
+    void testAlignConfigName_KeepsCrlfAndSkipsMissingFile() throws IOException {
+        setScriptsPath(tempDir.toString());
+
+        Path scriptDir = tempDir.resolve("4");
+        Files.createDirectories(scriptDir);
+        Path yamlFile = scriptDir.resolve("autotest.yaml");
+        Files.writeString(yamlFile, "name: old\r\ntimeout: 60\r\n");
+
+        scriptConfigService.alignConfigName(4L, "new-name");
+        assertEquals("name: new-name\r\ntimeout: 60\r\n", Files.readString(yamlFile));
+
+        // 999 没有 autotest.yaml，静默跳过（在线编辑创建的脚本本来就没有配置文件）
+        scriptConfigService.alignConfigName(999L, "new-name");
+        assertFalse(Files.exists(tempDir.resolve("999")));
+
+        // 名字为空不改写
+        scriptConfigService.alignConfigName(4L, "  ");
+        assertEquals("name: new-name\r\ntimeout: 60\r\n", Files.readString(yamlFile));
+    }
+
     /**
      * 设置 scriptsPath（使用反射）
      */

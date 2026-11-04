@@ -6,6 +6,7 @@ import com.autotest.dto.request.TaskQueryRequest;
 import com.autotest.dto.response.TaskDetailResponse;
 import com.autotest.entity.Task;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -29,6 +30,14 @@ public interface TaskService {
      * 创建任务
      */
     Task createTask(TaskCreateRequest request);
+
+    /**
+     * 按脚本版本的参数契约检查共享参数与步骤参数（必填项、可选值白名单）。
+     * 返回空列表表示通过；每项含 code/param/message/allowedValues，步骤参数额外带 step。
+     */
+    List<Map<String, Object>> checkParams(Long scriptId, String version,
+                                          Map<String, Object> sharedParams,
+                                          Map<String, Map<String, Object>> stepParams);
 
     /**
      * 更新任务

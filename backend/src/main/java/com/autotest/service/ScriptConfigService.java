@@ -166,8 +166,10 @@ public class ScriptConfigService {
                     ScriptConfig.ParameterConfig pc = new ScriptConfig.ParameterConfig();
                     if (paramNode.has("name")) pc.setName(paramNode.get("name").asText());
                     if (paramNode.has("type")) pc.setType(paramNode.get("type").asText());
-                    if (paramNode.has("default")) {
-                        JsonNode defaultNode = paramNode.get("default");
+                    JsonNode defaultNode = paramNode.has("default")
+                            ? paramNode.get("default")
+                            : paramNode.get("defaultValue");
+                    if (defaultNode != null) {
                         if (defaultNode.isTextual()) {
                             pc.setDefaultValue(defaultNode.asText());
                         } else if (defaultNode.isNumber()) {
@@ -179,6 +181,13 @@ public class ScriptConfigService {
                         }
                     }
                     if (paramNode.has("description")) pc.setDescription(paramNode.get("description").asText());
+                    if (paramNode.has("displayName")) pc.setDisplayName(paramNode.get("displayName").asText());
+                    if (paramNode.has("required") && paramNode.get("required").isBoolean()) {
+                        pc.setRequired(paramNode.get("required").asBoolean());
+                    }
+                    if (paramNode.has("options") && paramNode.get("options").isArray()) {
+                        pc.setOptions(parseOptions(paramNode.get("options")));
+                    }
                     params.add(pc);
                 }
                 config.setParameters(params);
@@ -412,6 +421,69 @@ public class ScriptConfigService {
     }
     
     /**
+     * 就地改写 autotest.yaml 的顶层 name，只动这一行。
+     * 上传创建走的是原样复制文件，不复用 syncConfig：那会用库里的 default_timeout 盖掉包内声明的
+     * timeout，还会丢掉注释。
+     * 
+     * @param scriptId 脚本 ID
+     * @param name 界面上的脚本名
+     */
+    public void alignConfigName(Long scriptId, String name) {
+        if (scriptId == null || name == null || name.isBlank()) {
+            return;
+        }
+        
+        Path configPath = Paths.get(scriptsPath, scriptId.toString()).resolve(CONFIG_FILE);
+        if (!Files.exists(configPath)) {
+            return;
+        }
+        
+        try {
+            String raw = Files.readString(configPath);
+            String nameLine = yamlMapper.writeValueAsString(Collections.singletonMap("name", name)).trim();
+            String updated;
+            
+            java.util.regex.Matcher matcher =
+                java.util.regex.Pattern.compile("(?m)^name:[^\\r\\n]*").matcher(raw);
+            if (matcher.find()) {
+                if (nameLine.equals(matcher.group())) {
+                    return;
+                }
+                updated = raw.substring(0, matcher.start()) + nameLine + raw.substring(matcher.end());
+            } else {
+                String eol = raw.contains("\r\n") ? "\r\n" : "\n";
+                String[] lines = raw.split("(?<=\\R)");
+                int insertAt = 0;
+                while (insertAt < lines.length && isConfigHeaderNoise(lines[insertAt])) {
+                    insertAt++;
+                }
+                StringBuilder sb = new StringBuilder();
+                for (int i = 0; i < insertAt; i++) {
+                    sb.append(lines[i]);
+                }
+                sb.append(nameLine).append(eol);
+                for (int i = insertAt; i < lines.length; i++) {
+                    sb.append(lines[i]);
+                }
+                updated = sb.toString();
+            }
+            
+            Files.writeString(configPath, updated);
+            log.info("已对齐 autotest.yaml 的 name：{} -> {}", configPath, name);
+        } catch (IOException e) {
+            log.warn("对齐 autotest.yaml 的 name 失败：{}，{}", configPath, e.getMessage());
+        }
+    }
+    
+    /**
+     * name 缺失时插入位置的跳过项：YAML 文档分隔符与注释，不能越过第一个真实字段
+     */
+    private boolean isConfigHeaderNoise(String line) {
+        String trimmed = line.trim();
+        return trimmed.isEmpty() || trimmed.startsWith("#") || "---".equals(trimmed);
+    }
+    
+    /**
      * 从数据库生成配置对象
      * 
      * @param scriptId 脚本 ID
@@ -462,6 +534,11 @@ public class ScriptConfigService {
                 pc.setType((String) param.get("type"));
                 pc.setDefaultValue(param.get("default"));
                 pc.setDescription((String) param.get("description"));
+                pc.setDisplayName((String) param.get("displayName"));
+                if (param.get("required") instanceof Boolean) {
+                    pc.setRequired((Boolean) param.get("required"));
+                }
+                pc.setOptions(toOptionConfigs(param.get("options")));
                 params.add(pc);
             }
             config.setParameters(params);
@@ -565,6 +642,97 @@ public class ScriptConfigService {
     }
 
     /**
+     * 参数定义列表转 script_versions.parameters 列的元素形状。
+     * name/type/default/description 恒定写出；displayName/required/options 仅在 yaml 真声明时写出，
+     * 这样没用到这些字段的包，存储形状与历史保持一致。
+     *
+     * @param params 配置中的参数定义
+     * @return 可直接落库的 Map 列表
+     */
+    public List<Map<String, Object>> toParamMaps(List<ScriptConfig.ParameterConfig> params) {
+        List<Map<String, Object>> result = new ArrayList<>();
+        if (params == null) {
+            return result;
+        }
+        for (ScriptConfig.ParameterConfig pc : params) {
+            Map<String, Object> param = new LinkedHashMap<>();
+            param.put("name", pc.getName());
+            param.put("type", pc.getType() != null ? pc.getType() : "string");
+            param.put("default", pc.getDefaultValue());
+            param.put("description", pc.getDescription());
+            if (pc.getDisplayName() != null) {
+                param.put("displayName", pc.getDisplayName());
+            }
+            if (pc.getRequired() != null) {
+                param.put("required", pc.getRequired());
+            }
+            if (pc.getOptions() != null && !pc.getOptions().isEmpty()) {
+                List<Map<String, Object>> options = new ArrayList<>();
+                for (ScriptConfig.OptionConfig opt : pc.getOptions()) {
+                    Map<String, Object> item = new LinkedHashMap<>();
+                    item.put("label", opt.getLabel());
+                    item.put("value", opt.getValue());
+                    options.add(item);
+                }
+                param.put("options", options);
+            }
+            result.add(param);
+        }
+        return result;
+    }
+
+    /**
+     * 解析 options：支持 {label, value} 对象与裸字符串两种写法
+     */
+    private List<ScriptConfig.OptionConfig> parseOptions(JsonNode optionsNode) {
+        List<ScriptConfig.OptionConfig> options = new ArrayList<>();
+        for (JsonNode item : optionsNode) {
+            ScriptConfig.OptionConfig option = new ScriptConfig.OptionConfig();
+            if (item.isObject()) {
+                String label = item.has("label") ? item.get("label").asText() : null;
+                String value = item.has("value") ? item.get("value").asText() : null;
+                option.setValue(value != null && !value.isEmpty() ? value : label);
+                option.setLabel(label != null && !label.isEmpty() ? label : value);
+            } else {
+                option.setValue(item.asText());
+                option.setLabel(item.asText());
+            }
+            if (option.getValue() != null && !option.getValue().isEmpty()) {
+                options.add(option);
+            }
+        }
+        return options;
+    }
+
+    /**
+     * 数据库 JSON 列里的 options（对象或裸字符串列表）转回配置模型
+     */
+    private List<ScriptConfig.OptionConfig> toOptionConfigs(Object optionsObj) {
+        if (!(optionsObj instanceof List)) {
+            return null;
+        }
+        List<ScriptConfig.OptionConfig> options = new ArrayList<>();
+        for (Object item : (List<?>) optionsObj) {
+            ScriptConfig.OptionConfig option = new ScriptConfig.OptionConfig();
+            if (item instanceof Map) {
+                Object label = ((Map<?, ?>) item).get("label");
+                Object value = ((Map<?, ?>) item).get("value");
+                option.setValue(value != null ? String.valueOf(value) : (label != null ? String.valueOf(label) : null));
+                option.setLabel(label != null ? String.valueOf(label) : option.getValue());
+            } else if (item != null) {
+                option.setValue(String.valueOf(item));
+                option.setLabel(String.valueOf(item));
+            } else {
+                continue;
+            }
+            if (option.getValue() != null && !option.getValue().isEmpty()) {
+                options.add(option);
+            }
+        }
+        return options.isEmpty() ? null : options;
+    }
+
+    /**
      * 应用配置到脚本实体（上传时使用）
      * 
      * @param config 配置对象
@@ -600,16 +768,7 @@ public class ScriptConfigService {
         
         // 应用参数配置
         if (config.getParameters() != null && !config.getParameters().isEmpty()) {
-            List<Map<String, Object>> params = new ArrayList<>();
-            for (ScriptConfig.ParameterConfig pc : config.getParameters()) {
-                Map<String, Object> param = new LinkedHashMap<>();
-                param.put("name", pc.getName());
-                param.put("type", pc.getType() != null ? pc.getType() : "string");
-                param.put("default", pc.getDefaultValue());
-                param.put("description", pc.getDescription());
-                params.add(param);
-            }
-            version.setParameters(params);
+            version.setParameters(toParamMaps(config.getParameters()));
         }
         
         // 应用步骤配置（处理步骤资源中的 resourceMd5）

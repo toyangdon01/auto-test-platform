@@ -712,7 +712,11 @@ public class TaskExecutionService {
                     List<Map<String, Object>> paramDefs = (List<Map<String, Object>>) paramsObj;
                     for (Map<String, Object> paramDef : paramDefs) {
                         String paramName = (String) paramDef.get("name");
+                        // 步骤参数历史上写 defaultValue，与共享参数的 default 同义，两个键都认
                         Object paramValue = paramDef.get("defaultValue");
+                        if (paramValue == null) {
+                            paramValue = paramDef.get("default");
+                        }
                         log.info("Step param: {} = {}", paramName, paramValue);
                         if (paramName != null && paramValue != null) {
                             params.put(paramName, paramValue);
@@ -1614,7 +1618,11 @@ public class TaskExecutionService {
                     List<Map<String, Object>> paramDefs = (List<Map<String, Object>>) paramsObj;
                     for (Map<String, Object> paramDef : paramDefs) {
                         String paramName = (String) paramDef.get("name");
+                        // 步骤参数历史上写 defaultValue，与共享参数的 default 同义，两个键都认
                         Object paramValue = paramDef.get("defaultValue");
+                        if (paramValue == null) {
+                            paramValue = paramDef.get("default");
+                        }
                         if (paramName != null && paramValue != null) {
                             params.put(paramName, paramValue);
                         }

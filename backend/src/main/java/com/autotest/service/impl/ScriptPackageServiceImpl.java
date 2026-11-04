@@ -395,7 +395,7 @@ public class ScriptPackageServiceImpl implements ScriptPackageService {
             version.setSteps(config.getSteps());
         }
         if (config.getParameters() != null) {
-            version.setParameters(convertParameters(config.getParameters()));
+            version.setParameters(scriptConfigService.toParamMaps(config.getParameters()));
         }
         
         scriptVersionMapper.insert(version);
@@ -469,7 +469,7 @@ public class ScriptPackageServiceImpl implements ScriptPackageService {
                 version.setSteps(config.getSteps());
             }
             if (config.getParameters() != null) {
-                version.setParameters(convertParameters(config.getParameters()));
+                version.setParameters(scriptConfigService.toParamMaps(config.getParameters()));
             }
             
             scriptVersionMapper.updateById(version);
@@ -480,22 +480,6 @@ public class ScriptPackageServiceImpl implements ScriptPackageService {
         
         result.addImported(scriptName, scriptId, "已更新");
         log.info("脚本更新成功：scriptId={}, name={}", scriptId, script.getName());
-    }
-    
-    /**
-     * 转换参数格式
-     */
-    private List<Map<String, Object>> convertParameters(List<ScriptConfig.ParameterConfig> params) {
-        List<Map<String, Object>> result = new ArrayList<>();
-        for (ScriptConfig.ParameterConfig pc : params) {
-            Map<String, Object> param = new LinkedHashMap<>();
-            param.put("name", pc.getName());
-            param.put("type", pc.getType() != null ? pc.getType() : "string");
-            param.put("default", pc.getDefaultValue());
-            param.put("description", pc.getDescription());
-            result.add(param);
-        }
-        return result;
     }
     
     /**

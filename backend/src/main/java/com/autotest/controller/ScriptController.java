@@ -224,17 +224,7 @@ public class ScriptController {
                     script.setSteps(config.getSteps());
                 }
                 if (config.getParameters() != null && !config.getParameters().isEmpty()) {
-                    // 转换 ParameterConfig 为 Map
-                    List<Map<String, Object>> params = new ArrayList<>();
-                    for (ScriptConfig.ParameterConfig pc : config.getParameters()) {
-                        Map<String, Object> param = new LinkedHashMap<>();
-                        param.put("name", pc.getName());
-                        param.put("type", pc.getType() != null ? pc.getType() : "string");
-                        param.put("default", pc.getDefaultValue());
-                        param.put("description", pc.getDescription());
-                        params.add(param);
-                    }
-                    script.setParameters(params);
+                    script.setParameters(scriptConfigService.toParamMaps(config.getParameters()));
                 }
                 String yamlTagsJson = scriptConfigService.tagsToJson(config.getTags());
                 String currentTags = script.getTags();
@@ -249,6 +239,9 @@ public class ScriptController {
         
         // 创建版本记录
         createInitialVersion(script);
+        
+        // 包文件是原样复制进来的，改名要写回 autotest.yaml 的 name，否则下次从文件重导又变回包名
+        scriptConfigService.alignConfigName(script.getId(), script.getName());
         
         return ApiResponse.success(ScriptUploadResult.of(script, parseResult));
     }

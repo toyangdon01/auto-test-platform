@@ -75,7 +75,7 @@ public class CatalogTools {
             item.put("scriptType", s.getScriptType());
             item.put("testCategory", s.getTestCategory());
             item.put("status", s.getStatus());
-            item.put("defaultTimeout", s.getDefaultTimeout());
+            item.put("defaultTimeoutSeconds", s.getDefaultTimeout());
             item.put("tags", tags);
             items.add(item);
             if (items.size() >= max) {
@@ -85,8 +85,10 @@ public class CatalogTools {
         return result("scripts", items, "count", items.size());
     }
 
-    @McpTool(name = "get_script_contract", description = "读取脚本包的执行契约：步骤 DAG、入口脚本、"
-            + "共享参数定义（名称/类型/默认值/可选值/说明）、文件清单与版本列表。提交任务前必须先读它来填参数。",
+    @McpTool(name = "get_script_contract", description = "读取脚本包的执行契约：步骤 DAG（含每个步骤自己的参数定义 steps.<步骤名>.params，"
+            + "形状与共享参数一致，其 defaultValue/default 会注入环境变量）、入口脚本、"
+            + "共享参数定义（名称/类型/默认值/可选值 options/是否必填 required/展示名 displayName/说明）、"
+            + "文件清单与版本列表。提交任务前必须先读它来填参数；共享参数和 stepParams 里 required 缺值或取值不在 options 内都会被 run_test 拒绝。",
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false,
                     idempotentHint = true,
                     title = "读取脚本参数契约"))
@@ -124,7 +126,7 @@ public class CatalogTools {
         contract.put("version", sv.getVersion());
         contract.put("scriptType", script.getScriptType());
         contract.put("tags", parseTags(script.getTags()));
-        contract.put("defaultTimeoutMs", script.getDefaultTimeout());
+        contract.put("defaultTimeoutSeconds", script.getDefaultTimeout());
         contract.put("files", files);
         contract.put("sharedParams", sv.getParameters() == null ? List.of() : sv.getParameters());
         contract.put("steps", sv.getSteps() == null ? Map.of() : sv.getSteps());

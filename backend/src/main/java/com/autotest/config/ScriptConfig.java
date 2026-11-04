@@ -1,5 +1,6 @@
 package com.autotest.config;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
@@ -69,11 +70,37 @@ public class ScriptConfig {
     public static class ParameterConfig {
         private String name;
         private String type;
-        
+
         @JsonProperty("default")
+        @JsonAlias("defaultValue")
         private Object defaultValue;  // 可以是字符串、数字等
-        
+
         private String description;
+
+        /**
+         * 界面展示名，前端按 displayName -> name 的优先级取
+         */
+        private String displayName;
+
+        /**
+         * 是否必填；共享参数缺值即拒（其 default 不会注入），步骤参数可由声明的默认值满足
+         */
+        private Boolean required;
+
+        /**
+         * 可选值白名单，提交任务时校验取值范围
+         */
+        private List<OptionConfig> options;
+    }
+
+    /**
+     * 参数可选值。autotest.yaml 里既支持 {label, value} 对象，也支持裸字符串（此时 label 与 value 同值）
+     */
+    @Data
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class OptionConfig {
+        private String label;
+        private String value;
     }
     
     /**
