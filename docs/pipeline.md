@@ -375,3 +375,106 @@ stepServerMapping:
 2. **步骤支持多服务器**：一个步骤可以绑定多台服务器并行执行
 3. **导出过滤空值**：空对象、空数组、`default` 映射不会导出
 4. **脚本必须定义步骤**：无步骤的脚本无法创建任务
+
+---
+
+## 智能体接入（MCP）
+
+后端内置的 MCP endpoint（`POST /mcp`）把编排开放成 12 个工具，实现在
+`backend/src/main/java/com/autotest/agent/PipelineTools.java`。建、改都收 **YAML 文本**，
+与界面「导入 YAML」共用 `PipelineImportService` 那一条路径 —— 智能体只需学一种格式，
+也避免把「任务列表 + 步骤映射 + 两层参数」这种三层嵌套塞进工具参数。
+
+### 工具
+
+| 工具 | 作用 | 关键返回 |
+|------|------|----------|
+| `list_pipelines` | 按名称找编排 | `id`、`taskCount`、`lastRun` |
+| `get_pipeline` | 看完整定义 | `tasks[]`（含 `pipelineTaskId`）、**`problems`**（体检结果） |
+| `create_pipeline` | YAML 新建 | 新建后的 `get_pipeline` 视图，`created: true` |
+| `update_pipeline` | YAML 整体替换 | 同上 + `notes`（提示 `pipelineTaskId` 已重建） |
+| `delete_pipeline` | 删除编排及其任务定义、全部执行记录 | `deletedTaskCount`、`deletedRunCount` |
+| `run_pipeline` | 触发执行，可选临时改主机 | `runId`、`tasks[]`（子任务 `taskId`） |
+| `wait_for_pipeline_run` | 阻塞等终态，默认 30s、上限 110s | `finished`、`status`、`taskSummary` |
+| `get_pipeline_run` | 看一次执行 | `tasks[].taskId` → 转 `get_task_result` |
+| `list_pipeline_runs` | 列执行记录 | `runId`、`status` |
+| `cancel_pipeline_run` | 取消执行 | `status`、`taskSummary` |
+| `export_pipeline` | 导出 YAML（改编排的起点） | `yaml`、`topLevelKeys`、`taskKeys` |
+| `describe_pipeline_spec` | 库里没有可抄的编排时，自述这份 YAML 契约 | `topLevelKeys`/`taskKeys`/`serverKeys`（带每个键的用途）、`rules`（12 条）、`exampleYaml`、`commonMistakes`、`howToAuthor` |
+
+典型链路：`list_pipelines` → `get_pipeline`（读 `problems`）→ `run_pipeline` →
+`wait_for_pipeline_run` → `get_pipeline_run` 拿子任务 `taskId` → `get_task_result` / `get_step_log`。
+新建优先走 `export_pipeline` 抄现成的改；库里没有相近的编排就先 `describe_pipeline_spec`，
+它把键表、硬规则、一份带注释的最小示例和常见错法一起返回（示例里的 `<...>` 必须换成
+`get_script_contract` 与 `list_servers` 查到的真实值，猜出来的名字会撞上精确的错误码）。
+
+### 键契约
+
+合法键集只有一处真源：`PipelineTools` 的 `TOP_DOCS` / `TASK_DOCS` / `SERVER_DOCS` 三张「键 -> 用途」表，
+校验用的 `YAML_TOP` / `YAML_TASK` / `YAML_SERVER` 就是它们的 keySet，`describe_pipeline_spec` 返回的也是它们。
+**加字段只改这张表**，否则校验与自述会立刻漂移。**全驼峰**：
+
+- 顶层：`name`、`description`、`maxParallel`、`servers`、`tasks`。`max_parallel` 会被拒并提示「是不是想写 maxParallel？」
+- 任务：`name`、`script`、`scriptId`、`dependsOn`、`timeout`、`stepServerMapping`、`sharedParams`、`stepParams`。
+  **任务级没有 `servers` 键**，主机只在 `stepServerMapping` 里按 `{步骤名: [服务器名或 id]}` 给。
+- `timeout` 在 YAML 里是**秒**，导入时 ×1000 存进 `pipeline_tasks.timeout`（毫秒）；导出时 ÷1000 回到秒。
+- `servers` 段的 `authType` 只认 `password` / `key`。曾经各处注释与示例写的 `ssh_key` 是错的（已改正）：
+  `SshService` 的两个分支只匹配 `password` 和 `key`，写别的值既不设密码也不加载私钥，一路带到连接失败才知道原因。
+  YAML 导入留空按 `password`（`ServerYamlConfig.toCreateRequest`），MCP 的 `create_server` 则必填且不猜。
+
+写坏的键不会被静默丢掉：未知键 → `UNKNOWN_KEY` 并列出该层合法键 + 拼写候选；类型不对（如 `timeout: abc`）
+→ `YAML_TYPE_INVALID` 并带上 Jackson 的原文。校验用的是独立的 `YAML_READER`，不共用 Spring 那个
+`fail-on-unknown-properties: false` 的 mapper —— 否则未知键在反序列化阶段就消失了，报不出来。
+
+### 结构化拒绝
+
+不合格不提交，返回逐条问题而不是「解析失败」：
+
+```json
+{
+  "ok": false,
+  "reason_code": "PIPELINE_INVALID",
+  "error": "编排有 2 处问题，未提交；按 errors 逐条改完再试",
+  "errors": [
+    { "code": "DEPENDS_ON_CYCLE", "where": "a",
+      "message": "依赖成环，调度永远结束不了: a -> b -> a" },
+    { "code": "NO_SERVERS", "where": "tasks[1]",
+      "message": "没有可用主机：stepServerMapping 至少要给一个步骤指定存在的服务器名或 id" }
+  ],
+  "next": "get_pipeline 或 export_pipeline"
+}
+```
+
+`where` 在 `create_pipeline` / `update_pipeline` 里是 YAML 路径（`tasks[1].dependsOn`），
+在 `get_pipeline.problems` 里是任务名 —— 后者是给「库里的存量编排体检」用的，同一套校验规则。
+
+`run_pipeline` 的守卫按顺序：`PIPELINE_NOT_FOUND` → `PIPELINE_DISABLED` → `NO_TASKS` →
+`ALREADY_RUNNING`（独立 reason_code，不和校验混在一坨 errors 里，避免智能体把「上一条还在跑」当成
+「YAML 写错了」去改配置）→ 校验 → `BUSY`（同一批主机上已有 pending/running 任务，SSH 池只有 2 条连接）。
+
+### 服务层的坑，以及 MCP 侧怎么挡
+
+`PipelineServiceImpl` 有几种失败方式不报错，只让结果不对。这些在 MCP 边界上全部提前拦掉：
+
+| 情形 | 服务层原本的行为 | MCP 侧 |
+|------|------------------|--------|
+| 任务没有可用主机 | `continue` 静默跳过，不建子任务；依赖它的任务永远等 | `NO_SERVERS` / `SERVER_NOT_FOUND`，提交前拒 |
+| `dependsOn` 成环 | `executeTasksDAG` 无 sleep 忙等，CPU 打满 | `DEPENDS_ON_CYCLE`，DFS 三色标记并给出环路径 |
+| `dependsOn` 指向不存在的任务 | 该依赖被直接丢弃，**顺序不生效**且无提示 | `DEPENDS_ON_UNKNOWN`（`get_pipeline.problems` 同样报） |
+| 任务重名 | `Collectors.toMap` 抛 `IllegalStateException`，整条编排点不动 | `TASK_NAME_DUPLICATE` |
+| 编排 `enabled=false` | `executePipeline` 不看这个标记，照跑 | `PIPELINE_DISABLED` 拒绝执行；任务级 `enabled=false` 服务层也不看，只能在返回的 `warnings` 里说清楚 |
+| 删除正在跑的编排 | 无守卫，直接连带删掉执行记录 | `PIPELINE_RUNNING` 拒绝，要求先 `cancel_pipeline_run`；删除还要求显式 `confirm=true` |
+| `servers` 段同名 | 按名称更新，**凭据一起被覆盖** | `SERVER_EXISTS_WOULD_OVERWRITE`，确需覆盖才传 `allowExistingServerUpdates=true` |
+
+`update_pipeline` 继承服务层「先删后插」的实现，`pipelineTaskId` 每次都是新 id，历史执行记录不受影响；
+返回值里的 `notes` 会提示 `run_pipeline` 的 `serverMapping` 键要按本次返回的 id 或任务名重新取。
+
+### 取消语义（本次改动，界面同样受益）
+
+`cancel_pipeline_run` 只写库，不改那个正在调度的线程。原来有两个真问题：
+
+1. 取消后调度循环继续把剩余任务发出去 —— 现在 `executeTasksDAG` 每轮读回 run 状态，`cancelled` 立即 break；
+2. 结束时用 `failed.isEmpty()` 覆写状态，把 `cancelled` 改成 `completed` / `failed` —— 现在终态写入跳过 `cancelled`。
+
+因此取消后 run 会停在 `cancelled`，未启动的子任务保持 `cancelled` 且 `startedAt` 为空，再次取消返回
+`ALREADY_TERMINAL`。

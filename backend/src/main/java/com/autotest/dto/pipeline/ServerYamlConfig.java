@@ -33,7 +33,7 @@ public class ServerYamlConfig {
     private String username;
 
     /**
-     * 认证类型: password / ssh_key
+     * 认证类型: password / key
      */
     private String authType;
 

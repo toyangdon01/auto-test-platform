@@ -371,6 +371,13 @@ public class PipelineServiceImpl implements PipelineService {
         Set<Long> failed = new HashSet<>();
         
         while (completed.size() + failed.size() < taskIds.size()) {
+            // cancelPipelineRun 只改库，不改这个线程；不读回状态就会把剩余任务继续发出去
+            PipelineRun current = pipelineRunMapper.selectById(runId);
+            if (current != null && "cancelled".equals(current.getStatus())) {
+                log.info("Pipeline run {} 已取消，停止调度剩余任务", runId);
+                break;
+            }
+
             // 找出可以执行的任务（依赖都已完成）
             List<Long> readyToRun = new ArrayList<>();
             for (Long ptId : pipelineTaskToTaskId.keySet()) {
@@ -433,7 +440,7 @@ public class PipelineServiceImpl implements PipelineService {
         
         // 更新编排执行状态
         PipelineRun run = pipelineRunMapper.selectById(runId);
-        if (run != null) {
+        if (run != null && !"cancelled".equals(run.getStatus())) {
             run.setStatus(failed.isEmpty() ? "completed" : "failed");
             run.setFinishedAt(LocalDateTime.now());
             pipelineRunMapper.updateById(run);

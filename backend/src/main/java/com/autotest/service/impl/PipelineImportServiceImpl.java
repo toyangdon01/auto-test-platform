@@ -53,12 +53,7 @@ public class PipelineImportServiceImpl implements PipelineImportService {
     @Transactional(rollbackFor = Exception.class)
     public Pipeline importFromYaml(String yamlContent) {
         // 1. 解析 YAML
-        PipelineYamlConfig config;
-        try {
-            config = yamlMapper.readValue(yamlContent, PipelineYamlConfig.class);
-        } catch (Exception e) {
-            throw new BusinessException("YAML 解析失败: " + e.getMessage());
-        }
+        PipelineYamlConfig config = parseYaml(yamlContent);
 
         // 2. 校验必填字段
         validateConfig(config);
@@ -81,6 +76,36 @@ public class PipelineImportServiceImpl implements PipelineImportService {
 
         // 7. 调用现有服务创建
         return pipelineService.createPipeline(pipeline, tasks);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Pipeline updateFromYaml(Long pipelineId, String yamlContent) {
+        Pipeline existing = pipelineService.getPipelineById(pipelineId);
+        if (existing == null) {
+            throw new BusinessException("Pipeline 不存在: " + pipelineId);
+        }
+
+        PipelineYamlConfig config = parseYaml(yamlContent);
+        validateConfig(config);
+        Map<String, Long> serverNameToId = processServers(config.getServers());
+        Map<String, Long> scriptNameToId = processScripts(config.getTasks());
+        List<PipelineTask> tasks = buildPipelineTasks(config.getTasks(), serverNameToId, scriptNameToId);
+
+        Pipeline update = new Pipeline();
+        update.setName(config.getName());
+        update.setDescription(config.getDescription());
+        update.setMaxParallel(config.getMaxParallel() != null ? config.getMaxParallel() : 5);
+        update.setEnabled(true);
+        return pipelineService.updatePipeline(pipelineId, update, tasks);
+    }
+
+    private PipelineYamlConfig parseYaml(String yamlContent) {
+        try {
+            return yamlMapper.readValue(yamlContent, PipelineYamlConfig.class);
+        } catch (Exception e) {
+            throw new BusinessException("YAML 解析失败: " + e.getMessage());
+        }
     }
 
     /**

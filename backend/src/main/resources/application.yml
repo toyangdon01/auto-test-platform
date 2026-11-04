@@ -82,6 +82,11 @@ spring:
           失败结果带 reason_code 与 is_retryable，据此决定重试还是改参数。
           写新包或改包先调 describe_package_spec 拿 autotest.yaml 的字段契约与最小示例；
           create_script/import_package 默认严格校验，不合格返回 PACKAGE_INVALID 与逐条 errors。
+          多机/多脚本的批量场景走编排：list_pipelines -> get_pipeline（problems 字段是体检结果）->
+          run_pipeline -> wait_for_pipeline_run -> get_pipeline_run 拿子任务 taskId，再按单任务流程看结果。
+          建改编排用 YAML 文本：先 export_pipeline 抄现成的改，没有可抄的先 describe_pipeline_spec 拿字段契约与最小示例，
+          再 create_pipeline / update_pipeline 提交，
+          键名全驼峰（maxParallel、stepServerMapping），坏 YAML 返回 PIPELINE_INVALID 与逐条 errors。
         streamable-http:
           mcp-endpoint: /mcp
         capabilities:

@@ -18,6 +18,15 @@ public interface PipelineImportService {
     Pipeline importFromYaml(String yamlContent);
 
     /**
+     * 用 YAML 内容整体替换已有 Pipeline（任务列表按删除重建，pipelineTaskId 会变）
+     *
+     * @param pipelineId  已有编排 id
+     * @param yamlContent YAML 内容
+     * @return 更新后的 Pipeline
+     */
+    Pipeline updateFromYaml(Long pipelineId, String yamlContent);
+
+    /**
      * 导出 Pipeline 为 YAML
      *
      * @param pipelineId Pipeline ID

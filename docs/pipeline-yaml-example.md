@@ -14,7 +14,7 @@ servers:
     host: 192.168.1.100           # 必填：服务器地址
     port: 22                      # 可选：SSH 端口，默认 22
     username: root                 # 必填：用户名
-    authType: password            # 可选：认证类型，password 或 ssh_key，默认 password
+    authType: password            # 可选：只能是 password 或 key；留空按 password（写别的值 SSH 层两个分支都不进，连接必失败）
     authSecret: your-password     # 必填：密码或 SSH 私钥内容
     tags: [test]                  # 可选：标签列表
     remark: 测试服务器             # 可选：备注
