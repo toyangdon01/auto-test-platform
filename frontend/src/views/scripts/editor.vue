@@ -131,6 +131,7 @@
 
       <el-form-item label="执行参数">
         <div class="param-config">
+          <div class="param-hint">{{ PARAM_FIELD_TIPS.sharedDefault }}；限定可选值后取值框会变成下拉框。</div>
           <div v-for="(param, index) in formData.runParams" :key="index" class="param-item">
             <el-input v-model="param.name" placeholder="参数名" style="width: 120px" />
             <el-select v-model="param.type" placeholder="类型" style="width: 90px" teleported>
@@ -138,8 +139,27 @@
               <el-option label="数字" value="number" />
               <el-option label="布尔" value="boolean" />
             </el-select>
-            <el-input v-model="param.default" placeholder="默认值" style="width: 120px" />
-            <el-input v-model="param.description" placeholder="参数描述" style="flex: 1" />
+            <el-input
+              :model-value="param.default == null ? '' : String(param.default)"
+              placeholder="默认值"
+              style="width: 110px"
+              @update:model-value="(v: string) => (param.default = v)"
+            />
+            <el-input v-model="param.displayName" placeholder="展示名" style="width: 110px" />
+            <el-input v-model="param.description" placeholder="参数描述" style="flex: 1; min-width: 140px" />
+            <el-tooltip :content="PARAM_FIELD_TIPS.required" placement="top">
+              <el-switch
+                :model-value="param.required === true"
+                size="small"
+                active-text="必填"
+                @update:model-value="(v: any) => (param.required = !!v)"
+              />
+            </el-tooltip>
+            <el-tooltip :content="PARAM_FIELD_TIPS.options" placement="top">
+              <span>
+                <ParamOptionsEditor :options="param.options" @update:options="(v: any) => (param.options = v)" />
+              </span>
+            </el-tooltip>
             <el-button type="danger" link @click="formData.runParams.splice(index, 1)">
               <el-icon><Delete /></el-icon>
             </el-button>
@@ -213,11 +233,13 @@ import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Delete, UploadFilled, QuestionFilled } from '@element-plus/icons-vue'
-import { scriptApi } from '@/api/script'
+import { scriptApi, type ParamDefinition } from '@/api/script'
 import { scriptResourceApi, type ScriptResource } from '@/api/resource'
 import request from '@/utils/request'
+import { PARAM_FIELD_TIPS } from '@/config/fieldTips'
 import ResourceConfig from './ResourceConfig.vue'
 import StepConfig from './StepConfig.vue'
+import ParamOptionsEditor from '@/components/ParamOptionsEditor.vue'
 import { TEST_CATEGORIES } from '@/config/categories'
 
 const route = useRoute()
@@ -248,7 +270,7 @@ const formData = reactive({
   name: '',
   description: '',
   testCategory: '',
-  runParams: [] as { name: string; type: string; default: string; description: string }[],
+  runParams: [] as ParamDefinition[],
   tags: [] as { key: string; value: string }[],
   fileList: [] as any[],
 })
@@ -324,14 +346,20 @@ async function handleFileChange(file: any) {
           formData.tags = config.tags.map((t: any) => ({ key: t.key || '', value: t.value || '' }))
         }
         
-        // 填充参数配置
+        // 填充参数配置：必须整条透传，保存时后端会按这份定义反写 autotest.yaml，
+        // 这里少带一个键就等于把包里的契约删掉
         if (config.parameters && config.parameters.length > 0) {
-          formData.runParams = config.parameters.map((p: any) => ({
-            name: p.name || '',
-            type: p.type || 'string',
-            default: p.default !== undefined ? String(p.default) : '',
-            description: p.description || ''
-          }))
+          formData.runParams = config.parameters.map((p: any) => {
+            const declared = p.default !== undefined && p.default !== null ? p.default : p.defaultValue
+            return {
+              ...p,
+              name: p.name || '',
+              type: p.type || 'string',
+              // 包里没有声明默认值时不要凭空补空串，否则会把 default: "" 写回 yaml
+              ...(declared !== undefined && declared !== null ? { default: declared } : {}),
+              description: p.description || '',
+            }
+          })
         }
         
         // 填充执行步骤
@@ -731,8 +759,15 @@ async function saveFileContent() {
   width: 100%;
 }
 
+.param-hint {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  margin-bottom: 8px;
+}
+
 .param-item {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 8px;
   align-items: center;

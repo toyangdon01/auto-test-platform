@@ -886,18 +886,28 @@ function getServerName(serverId: number): string {
   return server?.serverName || ''
 }
 
+// 共享参数优先；同名键也可能只声明在某一步的 params 里，回退到那里取展示名/描述
+function findAnyParamDef(paramName: string): any {
+  const shared = scriptInfo.value?.parameters?.find((p: any) => p.name === paramName)
+  if (shared) return shared
+  const steps = scriptInfo.value?.steps
+  if (!steps) return null
+  for (const [stepName, stepDef] of Object.entries(steps)) {
+    if (stepName === '_meta') continue
+    const hit = (stepDef as any)?.params?.find((p: any) => p.name === paramName)
+    if (hit) return hit
+  }
+  return null
+}
+
 // 获取共享参数的显示名称
 function getParamDisplayName(paramName: string): string {
-  if (!scriptInfo.value?.parameters) return paramName
-  const paramDef = scriptInfo.value.parameters.find((p: any) => p.name === paramName)
-  return paramDef?.displayName || paramName
+  return findAnyParamDef(paramName)?.displayName || paramName
 }
 
 // 获取共享参数的描述
 function getParamDescription(paramName: string): string {
-  if (!scriptInfo.value?.parameters) return ''
-  const paramDef = scriptInfo.value.parameters.find((p: any) => p.name === paramName)
-  return paramDef?.description || ''
+  return findAnyParamDef(paramName)?.description || ''
 }
 
 // 获取步骤的显示名称

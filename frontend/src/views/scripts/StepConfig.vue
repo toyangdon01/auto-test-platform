@@ -110,13 +110,23 @@
           <el-form-item label="步骤参数">
             <div class="params-container">
               <div v-for="(param, pIndex) in step.params" :key="pIndex" class="param-row">
-                <el-input v-model="param.name" placeholder="参数名" style="width: 150px" />
-                <el-input v-model="param.defaultValue" placeholder="默认值" style="width: 150px; margin-left: 5px" />
-                <el-input v-model="param.description" placeholder="说明" style="width: 200px; margin-left: 5px" />
+                <el-input v-model="param.name" placeholder="参数名" style="width: 140px" />
+                <el-input v-model="param.defaultValue" placeholder="默认值" style="width: 120px; margin-left: 5px" />
+                <el-input v-model="param.displayName" placeholder="展示名" style="width: 120px; margin-left: 5px" />
+                <el-input v-model="param.description" placeholder="说明" style="width: 160px; margin-left: 5px" />
+                <el-tooltip :content="PARAM_FIELD_TIPS.required" placement="top">
+                  <el-switch v-model="param.required" size="small" active-text="必填" style="margin-left: 5px" />
+                </el-tooltip>
+                <el-tooltip :content="PARAM_FIELD_TIPS.options" placement="top">
+                  <span style="margin-left: 5px">
+                    <ParamOptionsEditor :options="param.options" @update:options="(v: any) => (param.options = v)" />
+                  </span>
+                </el-tooltip>
                 <el-button type="danger" link @click="step.params.splice(pIndex, 1)" style="margin-left: 5px">
                   <el-icon><Delete /></el-icon>
                 </el-button>
               </div>
+              <div class="param-hint">{{ PARAM_FIELD_TIPS.stepDefault }}</div>
               <el-button type="primary" link @click="addParam(step)">
                 <el-icon><Plus /></el-icon> 添加参数
               </el-button>
@@ -321,14 +331,17 @@ import { ref, computed, watch, nextTick, onMounted } from 'vue'
 import { Plus, Delete, Close, QuestionFilled } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { resourceApi, type ResourceFile } from '@/api/resource'
+import { PARAM_FIELD_TIPS } from '@/config/fieldTips'
+import type { ParamDefinition } from '@/api/script'
+import ParamOptionsEditor from '@/components/ParamOptionsEditor.vue'
 
 // 防止循环更新的标志
 let isUpdating = false
 
-interface StepParam {
+interface StepParam extends ParamDefinition {
   name: string
-  defaultValue: string
-  description: string
+  defaultValue?: string
+  description?: string
 }
 
 interface StartupProbe {
@@ -770,7 +783,14 @@ onMounted(() => {
     
     .param-row {
       display: flex;
+      flex-wrap: wrap;
       align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .param-hint {
+      font-size: 12px;
+      color: var(--el-text-color-secondary);
       margin-bottom: 8px;
     }
   }

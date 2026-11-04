@@ -1,21 +1,24 @@
 import request, { type PageParams, type PageResult } from '@/utils/request'
 
-// 参数定义
-export interface ParamDefinition {
-  name: string
+// 参数可选值。yaml 里允许裸字符串，入库时后端归一化成 [{label,value}]
+export interface ParamOption {
   label: string
-  type: 'string' | 'integer' | 'float' | 'boolean' | 'select'
-  required: boolean
-  default?: string | number | boolean
-  unit?: string
-  description?: string
-  options?: Array<{ label: string; value: string }>
+  value: string
 }
 
-export interface ScriptParameters {
-  shared?: ParamDefinition[]
-  deploy?: ParamDefinition[]
-  run?: ParamDefinition[]
+// 参数定义，对应 script_versions.parameters（共享）与 script_versions.steps.<步骤名>.params（步骤）
+export interface ParamDefinition {
+  name: string
+  type?: string
+  /** 共享参数的默认值：只做界面预填，执行时不会注入环境变量 */
+  default?: string | number | boolean
+  /** 步骤参数的默认值（历史键名）：执行时会注入环境变量 */
+  defaultValue?: string | number | boolean
+  description?: string
+  displayName?: string
+  required?: boolean
+  options?: ParamOption[] | string[]
+  [key: string]: unknown
 }
 
 // 脚本类型
@@ -26,7 +29,7 @@ export interface Script {
   testCategory: string
   scriptType: 'shell' | 'python'
   fileList?: Array<{ path: string; size: number }>
-  parameters?: ScriptParameters
+  parameters?: ParamDefinition[]
   parseRules?: Record<string, unknown>
   currentVersion: string
   defaultTimeout?: number
@@ -121,8 +124,7 @@ export interface TaskCreateParams {
   scriptVersion: string
   serverIds: number[]
   sharedParams?: Record<string, unknown>
-  deployParams?: Record<string, unknown>
-  runParams?: Record<string, unknown>
+  stepParams?: Record<string, Record<string, unknown>>
   lifecycleConfig?: {
     skipDeploy?: boolean
     skipCleanup?: boolean

@@ -118,14 +118,20 @@
                   <div class="params-grid">
                     <div v-for="param in step.params" :key="param.name" class="param-item">
                       <div class="param-header">
-                        <span class="param-label">{{ param.displayName || param.name }}</span>
+                        <span class="param-label">
+                          {{ paramLabel(param) }}
+                          <span v-if="isRequired(param)" class="required-star" title="必填">*</span>
+                        </span>
                         <span v-if="param.description" class="param-desc">{{ param.description }}</span>
                       </div>
-                      <el-input
-                        v-model="stepServerConfigs[index].stepParams[param.name]"
-                        size="small"
-                        :placeholder="param.defaultValue?.toString() || param.default?.toString()"
+                      <ParamValueInput
+                        :param="param"
+                        :model-value="stepServerConfigs[index].stepParams[param.name]"
+                        @update:model-value="(v: any) => (stepServerConfigs[index].stepParams[param.name] = v)"
                       />
+                      <div v-if="defaultRaw(param)" class="param-default-hint">
+                        默认值 {{ defaultRaw(param) }}，留空则注入该默认值
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -149,14 +155,14 @@
     </section>
 
     <!-- ③ 共享参数 -->
-    <section id="task-section-params" class="form-section">
+    <section id="task-section-params" class="form-section" :class="sectionClass('params')">
       <header class="section-head">
         <span class="section-index">3</span>
         <div class="section-heading">
           <h4 class="section-title">共享参数</h4>
-          <p class="section-sub">所有步骤共用的参数，留空则使用脚本定义的默认值</p>
+          <p class="section-sub">所有步骤共用的参数，默认值已预填；清空后不会自动注入，脚本会读到空值</p>
         </div>
-        <span class="section-state neutral">{{ selectedScript ? `${scriptParameters.length} 个参数` : '待选择脚本' }}</span>
+        <span class="section-state">{{ sectionBadge('params') }}</span>
       </header>
 
       <div class="section-body">
@@ -184,17 +190,22 @@
           <el-form v-if="scriptParameters.length > 0" :model="formData" label-width="140px" class="params-form">
             <el-row :gutter="20">
               <el-col :span="12" v-for="param in scriptParameters" :key="param.name">
-                <el-form-item :label="param.displayName || param.name">
+                <el-form-item :label="paramLabel(param)">
                   <template #label>
-                    {{ param.displayName || param.name }}
+                    {{ paramLabel(param) }}
+                    <span v-if="isRequired(param)" class="required-star" title="必填">*</span>
                     <el-tooltip v-if="param.description" :content="param.description" placement="top">
                       <el-icon class="field-tip-icon"><QuestionFilled /></el-icon>
                     </el-tooltip>
                   </template>
-                  <el-input
-                    v-model="formData.sharedParams[param.name]"
-                    :placeholder="'默认: ' + param.default"
+                  <ParamValueInput
+                    :param="param"
+                    :model-value="formData.sharedParams[param.name]"
+                    size="default"
+                    :placeholder="defaultRaw(param) ? '默认: ' + defaultRaw(param) : ''"
+                    @update:model-value="(v: any) => (formData.sharedParams[param.name] = v)"
                   />
+                  <div v-if="shadowText(param.name)" class="param-shadow-hint">{{ shadowText(param.name) }}</div>
                 </el-form-item>
               </el-col>
             </el-row>
@@ -351,7 +362,18 @@ import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { QuestionFilled, CircleCheckFilled, WarningFilled } from '@element-plus/icons-vue'
 import { scriptApi, taskApi, type Script } from '@/api/script'
+import type { ParamDefinition } from '@/api/script'
 import MetricCollectConfig from '@/components/MetricCollectConfig.vue'
+import ParamValueInput from '@/components/ParamValueInput.vue'
+import {
+  checkSharedParams,
+  checkStepParams,
+  declaredDefault,
+  isRequired,
+  paramLabel,
+  shadowedBySteps,
+  type ParamProblem,
+} from '@/utils/paramContract'
 import { serverApi, type Server } from '@/api/server'
 import request from '@/utils/request'
 
@@ -376,7 +398,7 @@ const enabledServers = computed(() => servers.value.filter(s => (s as any).enabl
 interface StepDefinition {
   name: string
   displayName: string
-  params: { name: string; displayName: string; type: string; defaultValue?: any; default?: any; required?: boolean; description?: string }[]
+  params: ParamDefinition[]
   dependsOn: string[]
   resultCollector: boolean
 }
@@ -391,7 +413,7 @@ interface StepServerConfig {
 
 const scriptSteps = ref<StepDefinition[]>([])
 const stepServerConfigs = ref<StepServerConfig[]>([])
-const scriptParameters = ref<{ name: string; displayName?: string; default?: any; description?: string }[]>([])
+const scriptParameters = ref<ParamDefinition[]>([])
 
 const formData = reactive({
   name: '',
@@ -415,7 +437,7 @@ const selectedServerIds = computed(() => {
   return []
 })
 
-type SectionKey = 'script' | 'server' | 'exec'
+type SectionKey = 'script' | 'server' | 'params' | 'exec'
 
 interface Issue {
   section: SectionKey
@@ -425,8 +447,22 @@ interface Issue {
 const SECTION_TITLES: Record<SectionKey, string> = {
   script: '选择脚本',
   server: '步骤与服务器',
+  params: '参数取值',
   exec: '执行设置',
 }
+
+// 与后端 TaskServiceImpl.checkParams 同一套规则，先在前端拦一遍，
+// 免得提交后被 REST 打回一个 code:1 让人猜是哪个参数的问题。
+const paramProblems = computed<ParamProblem[]>(() => {
+  if (!selectedScript.value) return []
+  const problems = checkSharedParams(scriptParameters.value, formData.sharedParams)
+  stepServerConfigs.value.forEach((config, index) => {
+    const step = scriptSteps.value[index]
+    if (!step) return
+    problems.push(...checkStepParams(step.params || [], config.stepParams, formData.sharedParams, step.name))
+  })
+  return problems
+})
 
 // 平铺布局下没有「下一步」这个卡点，改为集中式校验：
 // 每个区块的完成度与底部汇总条都由这一份 issues 派生，避免出现两套判断逻辑。
@@ -440,6 +476,9 @@ const issues = computed<Issue[]>(() => {
       if (config.serverId === null || config.serverId === undefined) {
         list.push({ section: 'server', message: `步骤「${config.displayName}」未选择执行服务器` })
       }
+    })
+    paramProblems.value.forEach(problem => {
+      list.push({ section: 'params', message: problem.message })
     })
   }
 
@@ -457,7 +496,7 @@ const issues = computed<Issue[]>(() => {
 })
 
 const groupedIssues = computed(() => {
-  const order: SectionKey[] = ['script', 'server', 'exec']
+  const order: SectionKey[] = ['script', 'server', 'params', 'exec']
   return order
     .map(section => ({ section, title: SECTION_TITLES[section], items: issues.value.filter(i => i.section === section) }))
     .filter(g => g.items.length > 0)
@@ -469,20 +508,36 @@ function issueCount(section: SectionKey) {
 
 // 未尝试提交前显示中性的「待完成」，尝试后才升级为红色「未通过」，避免一进来满屏报错。
 function sectionClass(section: SectionKey): string {
-  if (section === 'server' && !selectedScript.value) return 'is-idle'
+  if ((section === 'server' || section === 'params') && !selectedScript.value) return 'is-idle'
   const n = issueCount(section)
   if (n === 0) return 'is-done'
   return submitAttempted.value ? 'is-error' : 'is-todo'
 }
 
 function sectionBadge(section: SectionKey): string {
-  if (section === 'server' && !selectedScript.value) return '待选择脚本'
+  if ((section === 'server' || section === 'params') && !selectedScript.value) return '待选择脚本'
   const n = issueCount(section)
   if (n === 0) {
     if (section === 'server') return `${stepServerConfigs.value.length} 个步骤已分配`
+    if (section === 'params') return `${scriptParameters.value.length} 个参数`
     return '已完成'
   }
   return submitAttempted.value ? `${n} 项未完成` : '待填写'
+}
+
+function defaultRaw(param: ParamDefinition): string {
+  const value = declaredDefault(param)
+  return value === undefined || value === null ? '' : String(value)
+}
+
+// 步骤里同名参数一旦声明了默认值，后端会无条件导出它盖掉共享取值，界面必须说清楚
+function shadowText(name: string): string {
+  const shadowed = shadowedBySteps(
+    scriptSteps.value.map(step => ({ stepName: step.displayName || step.name, params: step.params || [] })),
+    name
+  )
+  if (shadowed.length === 0) return ''
+  return `步骤「${shadowed.map(s => s.stepName).join('、')}」声明了同名默认值，这些步骤不会用到这里的取值`
 }
 
 function jumpTo(section: SectionKey) {
@@ -571,7 +626,8 @@ async function loadScriptSteps(script: Script) {
           step.params.forEach(p => {
             // 只在未配置时使用默认值，保留用户的已有配置
             if (config.stepParams[p.name] === undefined) {
-              config.stepParams[p.name] = p.defaultValue !== undefined ? p.defaultValue : p.default
+              const value = declaredDefault(p)
+              if (value !== undefined) config.stepParams[p.name] = value
             }
           })
         }
@@ -1063,6 +1119,9 @@ function restoreStepServerConfigs(stepServerMapping: Record<string, number[]>, s
           flex-direction: column;
           align-items: flex-start;
           gap: 4px;
+          // 参数控件可能是 el-select，它没有内容宽度可撑开，这里给个固定宽度
+          width: 240px;
+          max-width: 100%;
 
           .param-header {
             display: flex;
@@ -1078,6 +1137,16 @@ function restoreStepServerConfigs(stepServerMapping: Record<string, number[]>, s
           .param-desc {
             font-size: 12px;
             color: var(--el-text-color-placeholder);
+          }
+
+          .param-default-hint {
+            font-size: 12px;
+            color: var(--el-text-color-placeholder);
+          }
+
+          :deep(.el-input),
+          :deep(.el-select) {
+            width: 100%;
           }
         }
       }
@@ -1104,6 +1173,23 @@ function restoreStepServerConfigs(stepServerMapping: Record<string, number[]>, s
 }
 
 // ===== 字段辅助 =====
+.required-star {
+  color: var(--el-color-danger);
+  margin-left: 2px;
+  font-weight: 600;
+}
+
+.params-form :deep(.el-select) {
+  width: 100%;
+}
+
+.param-shadow-hint {
+  width: 100%;
+  font-size: 12px;
+  color: var(--el-color-warning);
+  line-height: 1.5;
+}
+
 .field-tip-icon {
   margin-left: 4px;
   color: var(--el-text-color-secondary);

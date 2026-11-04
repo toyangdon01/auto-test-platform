@@ -110,12 +110,16 @@
                         <div class="field-label">步骤参数</div>
                         <div class="params-row">
                           <div v-for="param in step.params" :key="param.name" class="param-item">
-                            <span class="param-label">{{ param.displayName || param.name }}</span>
-                            <el-input
-                              v-model="task.stepServerConfigs[stepIndex].stepParams[param.name]"
-                              size="small"
-                              :placeholder="param.defaultValue?.toString() || param.default?.toString()"
+                            <span class="param-label">
+                              {{ paramLabel(param) }}
+                              <span v-if="isRequired(param)" class="required-star">*</span>
+                            </span>
+                            <ParamValueInput
+                              :param="param"
+                              :model-value="task.stepServerConfigs[stepIndex].stepParams[param.name]"
+                              @update:model-value="(v: any) => (task.stepServerConfigs[stepIndex].stepParams[param.name] = v)"
                             />
+                            <span v-if="defaultRaw(param)" class="param-hint">默认 {{ defaultRaw(param) }}，留空则注入</span>
                           </div>
                         </div>
                       </el-col>
@@ -130,11 +134,19 @@
               <el-divider content-position="left">共享参数</el-divider>
               <el-row :gutter="20">
                 <el-col :span="8" v-for="param in task.scriptParameters" :key="param.name">
-                  <el-form-item :label="param.displayName || param.name">
-                    <el-input
-                      v-model="task.sharedParams[param.name]"
-                      :placeholder="'默认: ' + (param.default || '')"
+                  <el-form-item :label="paramLabel(param)">
+                    <template #label>
+                      {{ paramLabel(param) }}
+                      <span v-if="isRequired(param)" class="required-star">*</span>
+                    </template>
+                    <ParamValueInput
+                      :param="param"
+                      :model-value="task.sharedParams[param.name]"
+                      size="default"
+                      :placeholder="defaultRaw(param) ? '默认: ' + defaultRaw(param) : ''"
+                      @update:model-value="(v: any) => (task.sharedParams[param.name] = v)"
                     />
+                    <span v-if="shadowText(task, param.name)" class="param-shadow-hint">{{ shadowText(task, param.name) }}</span>
                   </el-form-item>
                 </el-col>
               </el-row>
@@ -152,13 +164,15 @@ import { ref, reactive, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { getPipeline, createPipeline, updatePipeline, getPipelineTasks } from '@/api/pipeline'
-import { scriptApi } from '@/api/script'
+import { scriptApi, type ParamDefinition } from '@/api/script'
 import { serverApi } from '@/api/server'
+import ParamValueInput from '@/components/ParamValueInput.vue'
+import { checkSharedParams, checkStepParams, declaredDefault, isRequired, paramLabel, shadowedBySteps } from '@/utils/paramContract'
 
 interface StepDefinition {
   name: string
   displayName: string
-  params: { name: string; displayName: string; type: string; defaultValue?: any; default?: any }[]
+  params: ParamDefinition[]
   dependsOn: string[]
 }
 
@@ -175,7 +189,7 @@ interface TaskConfig {
   dependsOn: string[]
   timeout: number
   scriptSteps: StepDefinition[]
-  scriptParameters: { name: string; displayName?: string; default?: any }[]
+  scriptParameters: ParamDefinition[]
   stepServerConfigs: StepServerConfig[]
   sharedParams: Record<string, any>
 }
@@ -291,7 +305,8 @@ function applyScriptToTask(script: any, task: TaskConfig) {
     const step = steps.find(s => s.name === config.stepName)
     if (step?.params) {
       step.params.forEach(p => {
-        config.stepParams[p.name] = p.defaultValue !== undefined ? p.defaultValue : p.default
+        const value = declaredDefault(p)
+        if (value !== undefined) config.stepParams[p.name] = value
       })
     }
   })
@@ -420,10 +435,44 @@ async function loadPipeline() {
   }
 }
 
+function defaultRaw(param: ParamDefinition): string {
+  const value = declaredDefault(param)
+  return value === undefined || value === null ? '' : String(value)
+}
+
+function shadowText(task: TaskConfig, name: string): string {
+  const shadowed = shadowedBySteps(
+    task.scriptSteps.map(step => ({ stepName: step.displayName || step.name, params: step.params || [] })),
+    name
+  )
+  if (shadowed.length === 0) return ''
+  return `步骤「${shadowed.map(s => s.stepName).join('、')}」有同名默认值，这些步骤不用这里的取值`
+}
+
+// 与后端 TaskServiceImpl.checkParams 同一套规则；定时与编排在真正执行前不会报错，
+// 所以只能在这里拦住，否则问题要等到下一次触发才暴露。
+function findParamProblems(task: TaskConfig): string[] {
+  const problems = checkSharedParams(task.scriptParameters || [], task.sharedParams).map(p => p.message)
+  task.stepServerConfigs.forEach((config, index) => {
+    const step = task.scriptSteps[index]
+    if (!step) return
+    problems.push(...checkStepParams(step.params || [], config.stepParams, task.sharedParams, step.name).map(p => p.message))
+  })
+  return problems
+}
+
 async function handleSave() {
   if (!form.value.name) {
     ElMessage.warning('请输入编排名称')
     return
+  }
+
+  for (const task of form.value.tasks) {
+    const problems = findParamProblems(task)
+    if (problems.length > 0) {
+      ElMessage.error(`任务「${task.name || '未命名'}」参数有问题：${problems[0]}`)
+      return
+    }
   }
 
   saving.value = true
@@ -616,8 +665,15 @@ onMounted(async () => {
             white-space: nowrap;
           }
           
-          .el-input {
-            width: 120px;
+          .param-hint {
+            font-size: 12px;
+            color: var(--el-text-color-placeholder);
+            white-space: nowrap;
+          }
+
+          :deep(.el-input),
+          :deep(.el-select) {
+            width: 130px;
           }
         }
       }
@@ -627,6 +683,23 @@ onMounted(async () => {
 
 .shared-params {
   margin-top: 16px;
+
+  :deep(.el-select) {
+    width: 100%;
+  }
+}
+
+.required-star {
+  color: var(--el-color-danger);
+  margin-left: 2px;
+  font-weight: 600;
+}
+
+.param-shadow-hint {
+  width: 100%;
+  font-size: 12px;
+  color: var(--el-color-warning);
+  line-height: 1.5;
 }
 
 .field-label {
