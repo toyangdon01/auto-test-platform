@@ -45,17 +45,6 @@ public interface TaskMapper extends BaseMapper<Task> {
                                           @Param("scriptId") Long scriptId);
     
     /**
-     * 查询任务详情（确保 JSONB 字段被正确加载）
-     */
-    @Select("SELECT id, name, description, script_id, script_version, " +
-            "       shared_params, step_params, step_server_mapping, role_execution_strategy, " +
-            "       status, deploy_status, run_status, cleanup_status, " +
-            "       total_servers, completed_servers, passed_servers, failed_servers, " +
-            "       started_at, finished_at, created_at, updated_at " +
-            "FROM tasks WHERE id = #{taskId}")
-    Task selectTaskWithParams(@Param("taskId") Long taskId);
-    
-    /**
      * 禁用外键检查（SQLite）
      */
     @Update("PRAGMA foreign_keys = OFF")

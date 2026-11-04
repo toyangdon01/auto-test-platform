@@ -105,12 +105,6 @@ public class TaskExecutionService {
             return result;
         }
 
-        // 确保 sharedParams 被正确加载（MyBatis-Plus 可能不会自动应用 TypeHandler）
-        if (task.getSharedParams() == null) {
-            // 通过自定义查询确保 JSONB 字段被正确加载
-            task = taskMapper.selectTaskWithParams(taskId);
-        }
-        
         log.info("[DEBUG] Task {} sharedParams: {}", taskId, task.getSharedParams());
         log.info("[DEBUG] Task {} stepParams: {}", taskId, task.getStepParams());
 

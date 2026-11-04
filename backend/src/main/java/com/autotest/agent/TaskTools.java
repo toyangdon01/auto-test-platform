@@ -167,7 +167,8 @@ public class TaskTools {
     }
 
     @McpTool(name = "get_step_log", description = "分段读取步骤日志，避免一次返回超大文本。"
-            + "不传 fromChar 时返回结尾 maxChars 个字符；传了则从该位置往后读。返回 nextFromChar 用于续读。",
+            + "不传 fromChar 时返回结尾 maxChars 个字符；传了则从该位置往后读。返回 nextFromChar 用于续读。"
+            + "stepId/stepName/serverId 都不传时，优先取第一个失败步骤，否则取第一步。",
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false,
                     idempotentHint = true,
                     title = "读取步骤日志"))
@@ -278,8 +279,8 @@ public class TaskTools {
     // ==================== 内部方法 ====================
 
     private Task loadTask(Long taskId) {
-        // 不用 TaskMapper.selectTaskWithParams：它的 SQL 还停留在 deploy_status / total_servers
-        // 这些早已不存在的列上，一旦被调用就抛 SQLITE_ERROR
+        // selectById 已按 @TableName(autoResultMap = true) 应用 JSON 列的 TypeHandler，
+        // sharedParams / stepParams 能直接反序列化成 Map
         return taskMapper.selectById(taskId);
     }
 
@@ -339,7 +340,20 @@ public class TaskTools {
     }
 
     private TaskStep findStep(Long taskId, Long stepId, String stepName, Long serverId) {
-        for (TaskStep s : taskStepMapper.findByTaskIdWithServer(taskId)) {
+        List<TaskStep> steps = taskStepMapper.findByTaskIdWithServer(taskId);
+        if (stepId == null && stepName == null && serverId == null) {
+            TaskStep first = null;
+            for (TaskStep s : steps) {
+                if (first == null) {
+                    first = s;
+                }
+                if ("failed".equals(s.getStatus()) || "error".equals(s.getStatus())) {
+                    return s;
+                }
+            }
+            return first;
+        }
+        for (TaskStep s : steps) {
             if (stepId != null && stepId.equals(s.getId())) {
                 return s;
             }

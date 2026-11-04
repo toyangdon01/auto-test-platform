@@ -86,7 +86,7 @@ public class CatalogTools {
     }
 
     @McpTool(name = "get_script_contract", description = "读取脚本包的执行契约：步骤 DAG、入口脚本、"
-            + "共享参数定义（名称/类型/默认值/可选值/说明）与文件清单。提交任务前必须先读它来填参数。",
+            + "共享参数定义（名称/类型/默认值/可选值/说明）、文件清单与版本列表。提交任务前必须先读它来填参数。",
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false,
                     idempotentHint = true,
                     title = "读取脚本参数契约"))
@@ -128,6 +128,17 @@ public class CatalogTools {
         contract.put("files", files);
         contract.put("sharedParams", sv.getParameters() == null ? List.of() : sv.getParameters());
         contract.put("steps", sv.getSteps() == null ? Map.of() : sv.getSteps());
+
+        List<Map<String, Object>> versions = new ArrayList<>();
+        for (ScriptVersion v : scriptVersionMapper.selectList(new LambdaQueryWrapper<ScriptVersion>()
+                .eq(ScriptVersion::getScriptId, scriptId)
+                .orderByDesc(ScriptVersion::getId))) {
+            versions.add(result("version", v.getVersion(),
+                    "createdAt", v.getCreatedAt(),
+                    "fileCount", v.getFileCount(),
+                    "changeLog", v.getChangeLog()));
+        }
+        contract.put("versions", versions);
         return contract;
     }
 
