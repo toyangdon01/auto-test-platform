@@ -39,6 +39,27 @@
         <el-input v-model="formData.description" type="textarea" :rows="2" placeholder="脚本功能描述" />
       </el-form-item>
 
+      <el-row :gutter="16">
+        <el-col :span="12">
+          <el-form-item>
+            <template #label>
+              默认超时（秒）
+              <el-tooltip :content="SCRIPT_FIELD_TIPS.timeout" placement="top">
+                <el-icon class="field-tip-icon"><QuestionFilled /></el-icon>
+              </el-tooltip>
+            </template>
+            <el-input-number
+              v-model="formData.defaultTimeout"
+              :min="1"
+              :max="86400"
+              :placeholder="isEdit ? '' : '留空取包里的 timeout'"
+              controls-position="right"
+              style="width: 100%"
+            />
+          </el-form-item>
+        </el-col>
+      </el-row>
+
       <el-divider content-position="left">脚本文件</el-divider>
 
       <!-- 文件上传区域 -->
@@ -236,7 +257,7 @@ import { Plus, Delete, UploadFilled, QuestionFilled } from '@element-plus/icons-
 import { scriptApi, type ParamDefinition } from '@/api/script'
 import { scriptResourceApi, type ScriptResource } from '@/api/resource'
 import request from '@/utils/request'
-import { PARAM_FIELD_TIPS } from '@/config/fieldTips'
+import { PARAM_FIELD_TIPS, SCRIPT_FIELD_TIPS } from '@/config/fieldTips'
 import ResourceConfig from './ResourceConfig.vue'
 import StepConfig from './StepConfig.vue'
 import ParamOptionsEditor from '@/components/ParamOptionsEditor.vue'
@@ -270,6 +291,7 @@ const formData = reactive({
   name: '',
   description: '',
   testCategory: '',
+  defaultTimeout: null as number | null,
   runParams: [] as ParamDefinition[],
   tags: [] as { key: string; value: string }[],
   fileList: [] as any[],
@@ -341,6 +363,10 @@ async function handleFileChange(file: any) {
         }
         if (!formData.testCategory && config.category) {
           formData.testCategory = config.category
+        }
+        // 包里声明的超时也要回填，否则库里只剩列默认值 3600，保存一次就把包里的声明反写掉
+        if (formData.defaultTimeout == null && Number.isFinite(config.timeout) && config.timeout > 0) {
+          formData.defaultTimeout = config.timeout
         }
         if (config.tags && config.tags.length > 0 && formData.tags.length === 0) {
           formData.tags = config.tags.map((t: any) => ({ key: t.key || '', value: t.value || '' }))
@@ -479,6 +505,8 @@ async function handleSave(andRun: boolean) {
     name: formData.name,
     description: formData.description,
     testCategory: formData.testCategory,
+    // 留空时不带这个键，让后端按包里 autotest.yaml 的 timeout 落库
+    ...(formData.defaultTimeout ? { defaultTimeout: formData.defaultTimeout } : {}),
     fileList: uploadedFiles.value,
     tempFilePath: tempFilePath.value,
     // 执行参数（参数配置）
@@ -545,6 +573,7 @@ async function loadScript() {
       name: res.data.name,
       description: res.data.description,
       testCategory: res.data.testCategory,
+      defaultTimeout: res.data.defaultTimeout ?? null,
       fileList: res.data.fileList || [],
     })
     

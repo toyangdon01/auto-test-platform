@@ -11,7 +11,8 @@ export const SCRIPT_FIELD_TIPS = {
   description: '脚本的功能描述，帮助其他用户了解脚本用途',
   entryFunction: '脚本的主入口函数名称。执行时会调用此函数开始测试',
   cleanupFunction: '清理函数名称，在测试完成后调用。用于清理临时文件、恢复环境等',
-  timeout: '脚本执行的超时时间（秒）。超时后任务会被强制终止',
+  timeout: '脚本默认超时（秒）。步骤没有单独配超时时用它；留空则取脚本包 autotest.yaml 里声明的 timeout。'
+    + '注意任务级的超时是毫秒，这里是秒',
   skipDeploy: '跳过部署阶段，直接执行测试。适用于已部署好的环境',
   skipCleanup: '跳过清理阶段，保留测试环境。适用于需要后续手动检查的场景',
   files: '上传脚本文件及其依赖。支持 .sh、.py 等格式，会保持目录结构',

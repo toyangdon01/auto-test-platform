@@ -240,8 +240,10 @@ public class ScriptController {
         // 创建版本记录
         createInitialVersion(script);
         
-        // 包文件是原样复制进来的，改名要写回 autotest.yaml 的 name，否则下次从文件重导又变回包名
+        // 包文件是原样复制进来的，改名要写回 autotest.yaml 的 name，否则下次从文件重导又变回包名；
+        // 包里声明的 timeout 也要落到库里，否则库里是列默认值 3600，下次保存会反过来用它盖掉包的声明
         scriptConfigService.alignConfigName(script.getId(), script.getName());
+        scriptConfigService.applyDeclaredTimeout(script);
         
         return ApiResponse.success(ScriptUploadResult.of(script, parseResult));
     }

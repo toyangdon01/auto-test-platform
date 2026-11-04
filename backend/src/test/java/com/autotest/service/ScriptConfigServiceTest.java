@@ -273,6 +273,55 @@ class ScriptConfigServiceTest {
         assertEquals("name: new-name\r\ntimeout: 60\r\n", Files.readString(yamlFile));
     }
 
+    @Test
+    void testApplyDeclaredTimeout_TakesPackageValue_WhenScriptHasNone() throws IOException {
+        setScriptsPath(tempDir.toString());
+
+        Path scriptDir = tempDir.resolve("10");
+        Files.createDirectories(scriptDir);
+        Files.writeString(scriptDir.resolve("autotest.yaml"), "name: pkg\ntimeout: 300\n");
+
+        Script script = new Script();
+        script.setId(10L);
+        script.setName("pkg");
+
+        assertEquals(Integer.valueOf(300), scriptConfigService.applyDeclaredTimeout(script));
+        assertEquals(Integer.valueOf(300), script.getDefaultTimeout());
+        verify(scriptMapper).updateById(script);
+    }
+
+    @Test
+    void testApplyDeclaredTimeout_KeepsExplicitValueAndIgnoresBadInput() throws IOException {
+        setScriptsPath(tempDir.toString());
+
+        Path scriptDir = tempDir.resolve("11");
+        Files.createDirectories(scriptDir);
+        Files.writeString(scriptDir.resolve("autotest.yaml"), "name: pkg\ntimeout: 300\n");
+
+        // 调用方显式给了值就不越权
+        Script explicit = new Script();
+        explicit.setId(11L);
+        explicit.setDefaultTimeout(600);
+        assertNull(scriptConfigService.applyDeclaredTimeout(explicit));
+        assertEquals(Integer.valueOf(600), explicit.getDefaultTimeout());
+        verify(scriptMapper, never()).updateById(any(Script.class));
+
+        // 包里没声明 timeout
+        Script undeclared = new Script();
+        undeclared.setId(12L);
+        assertNull(scriptConfigService.applyDeclaredTimeout(undeclared));
+
+        // timeout 不是正数
+        Path zeroDir = tempDir.resolve("13");
+        Files.createDirectories(zeroDir);
+        Files.writeString(zeroDir.resolve("autotest.yaml"), "name: pkg\ntimeout: 0\n");
+        Script zero = new Script();
+        zero.setId(13L);
+        assertNull(scriptConfigService.applyDeclaredTimeout(zero));
+        assertNull(zero.getDefaultTimeout());
+        verify(scriptMapper, never()).updateById(any(Script.class));
+    }
+
     /**
      * 设置 scriptsPath（使用反射）
      */

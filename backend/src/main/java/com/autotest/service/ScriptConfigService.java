@@ -484,6 +484,30 @@ public class ScriptConfigService {
     }
     
     /**
+     * 把包里 autotest.yaml 声明的 timeout 落到 scripts.default_timeout（单位是秒）。
+     * 只在调用方没给值时生效：不补这一步，库里就是列默认值 3600，之后任意一次保存都会由
+     * syncConfig 用 3600 反写掉包里的声明；步骤没有单独配超时时执行读的就是这个字段。
+     * 
+     * @param script 刚创建的脚本，字段会被就地更新
+     * @return 实际写入的秒数，没写入时返回 null
+     */
+    public Integer applyDeclaredTimeout(Script script) {
+        if (script == null || script.getId() == null || script.getDefaultTimeout() != null) {
+            return null;
+        }
+        
+        ScriptConfig config = parseConfig(script.getId());
+        if (config == null || config.getTimeout() == null || config.getTimeout() <= 0) {
+            return null;
+        }
+        
+        script.setDefaultTimeout(config.getTimeout());
+        scriptMapper.updateById(script);
+        log.info("已按包内声明设置默认超时：scriptId={}, timeout={}s", script.getId(), config.getTimeout());
+        return config.getTimeout();
+    }
+    
+    /**
      * 从数据库生成配置对象
      * 
      * @param scriptId 脚本 ID
