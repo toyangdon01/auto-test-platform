@@ -91,6 +91,13 @@
           </el-tag>
         </template>
       </el-table-column>
+      <el-table-column prop="osVersion" label="操作系统" min-width="180">
+        <template #default="{ row }">
+          <span v-if="row.osVersion" :title="row.osVersion">{{ row.osVersion }}</span>
+          <span v-else-if="row.osType">{{ row.osType }}</span>
+          <span v-else class="text-secondary">-</span>
+        </template>
+      </el-table-column>
       <el-table-column prop="cpuCores" label="CPU" width="100">
         <template #default="{ row }">
           <span v-if="row.cpuCores">{{ row.cpuCores }} 核</span>
