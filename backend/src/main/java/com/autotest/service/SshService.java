@@ -596,9 +596,13 @@ public class SshService {
             String cpuArch = executeCommand(server, "uname -m");
             info.setCpuArch(cpuArch.trim());
             
-            // 获取 CPU 信息
-            String cpuModel = executeCommand(server, "cat /proc/cpuinfo 2>/dev/null | grep 'model name' | head -1 | cut -d':' -f2");
-            info.setCpuModel(cpuModel.trim());
+            // 获取 CPU 信息：dmidecode 读 SMBIOS，多路 CPU 输出多行重复，取第一行；
+            // 没有 dmidecode 或拿不到（容器里就没有）才退回 /proc/cpuinfo 的 model name
+            String cpuModel = executeCommand(server, "dmidecode -s processor-version 2>/dev/null | head -1").trim();
+            if (cpuModel.isEmpty()) {
+                cpuModel = executeCommand(server, "cat /proc/cpuinfo 2>/dev/null | grep 'model name' | head -1 | cut -d':' -f2").trim();
+            }
+            info.setCpuModel(cpuModel);
             
             String cpuCores = executeCommand(server, "nproc");
             info.setCpuCores(Integer.parseInt(cpuCores.trim()));
