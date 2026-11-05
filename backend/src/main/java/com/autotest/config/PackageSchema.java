@@ -61,7 +61,11 @@ public final class PackageSchema {
             "script 优先按包内相对路径解析（支持 steps/step1.sh 这样的子目录）；既不是包内文件也不像命令时会被当成 shell 命令执行，报 exit 127。",
             "脚本文件必须是 LF 换行。Windows 上写出的 CRLF 在 Linux 上会以 $'\\r': command not found 失败，平台不做转换。",
             "覆盖导入（strategy=OVERWRITE）用包里的声明整体替换参数定义，界面上手填的参数不保留；它只重写当前版本记录，不新增版本。",
-            "resources 用 resourceMd5 或 resourceId 关联平台资源库里的二进制；内联创建（create_script）带不进二进制资源，只能先把包落到平台主机目录再 import_package。"
+            "resources 用 resourceMd5 或 resourceId 关联平台资源库里的二进制；内联创建（create_script）带不进二进制资源，只能先把包落到平台主机目录再 import_package。",
+            "一个脚本只允许一个步骤开结果收集：resultParser/resultCollector 为 true 的步骤多于一个时，每台服务器会插入多行 test_results，而这张表没有步骤归属列，事后分不清哪行来自哪步（严格校验按 RESULT_COLLECTOR_MULTIPLE 拒）。",
+            "startupProbe、parseRule、fileCollects 三件都只在 SSH 远程步骤执行；在平台本机跑（serverId=-1）时整段跳过 —— 步骤退出码为 0 就直接落库，不探测、不解析、不收文件。",
+            "probe 的内层键不校验：type=tcp 却没写 port、或命令模式没写 command 时，探测按「通过」处理，既不失败也不真的探测。",
+            "解析失败不改变步骤状态：步骤仍是 success，原因只写进 test_results.result_reason 和步骤日志的 [WARN] 行；解析产物同时落 test_results.parsed_data 与 task_steps.parsed_result。"
     );
 
     /** 顶层键的用途说明，供 describe_package_spec 返回 */
@@ -100,11 +104,52 @@ public final class PackageSchema {
         docs.put("resultParser", "布尔值，是否解析结果指标");
         docs.put("resultCollector", "布尔值，是否收集结果；缺省时跟随 resultParser");
         docs.put("params", "步骤参数：参数定义数组（形状同共享参数）或直接的键值对");
-        docs.put("startupProbe", "启动探测配置，自由结构");
-        docs.put("parseRule", "结果解析规则，自由结构");
-        docs.put("resources", "步骤级资源，自由结构");
-        docs.put("fileCollectEnabled", "布尔值，是否收集文件");
-        docs.put("fileCollects", "文件收集配置数组，自由结构");
+        docs.put("startupProbe", "启动探测配置，键见 probeKeys；只在 SSH 远程步骤生效");
+        docs.put("parseRule", "结果解析规则，键见 parseRuleKeys；只在 resultParser/resultCollector 为 true 时执行");
+        docs.put("resources", "步骤级资源，形状同 resources[]（见 resourceKeys）");
+        docs.put("fileCollectEnabled", "布尔值，是否收集文件；false 时 fileCollects 整段不跑");
+        docs.put("fileCollects", "文件收集配置数组，键见 fileCollectKeys；只在 SSH 远程步骤生效");
+        return docs;
+    }
+
+    /** steps.<步骤名>.startupProbe 的每一项；内层键过去无人校验，也不做校验，只把真实形状讲清楚 */
+    public static final Set<String> PROBE = ordered("type", "port", "url", "command", "timeoutSeconds");
+
+    public static Map<String, String> probeDocs() {
+        Map<String, String> docs = new LinkedHashMap<>();
+        docs.put("type", "tcp（缺省）/ http / 其它值走命令模式");
+        docs.put("port", "tcp 与 http 模式探测的端口。注意探测固定在目标机的 127.0.0.1 上，"
+                + "没有 host 键可改 —— 语义是「这台机器上的服务起来没」");
+        docs.put("url", "http 模式的路径或完整 URL；给了 port 且不以 http 开头时拼成 http://127.0.0.1:<port><url>");
+        docs.put("command", "非 tcp/http 模式下在目标机执行的命令，退出码 0 视为就绪");
+        docs.put("timeoutSeconds", "轮询总时长（秒），默认 60；超时后步骤判失败，错误信息是「启动探测失败」");
+        return docs;
+    }
+
+    /** steps.<步骤名>.parseRule 的每一项 */
+    public static final Set<String> PARSE_RULE = ordered("parserType", "builtinFormat", "inputSource",
+            "filePattern", "scriptSource", "scriptContent", "scriptLanguage");
+
+    public static Map<String, String> parseRuleDocs() {
+        Map<String, String> docs = new LinkedHashMap<>();
+        docs.put("parserType", "builtin 走内置解析；其它取值走脚本解析");
+        docs.put("builtinFormat", "只认 key_value（逐行 k=v 或 k: v）和 json；写成别的值报「未知的内置格式」");
+        docs.put("inputSource", "stdout 用步骤输出；file 用 filePattern 指向的文件（在目标机 cat 读取，读不到只记日志）");
+        docs.put("filePattern", "inputSource=file 时必填，支持内置参数占位（与脚本参数同名可替换）");
+        docs.put("scriptSource", "脚本解析模式：inline 用 scriptContent / package 从脚本包读");
+        docs.put("scriptContent", "inline 模式的解析脚本，其标准输出必须是 JSON");
+        docs.put("scriptLanguage", "解析脚本语言，缺省按 python 处理");
+        return docs;
+    }
+
+    /** steps.<步骤名>.fileCollects[] 的每一项 */
+    public static final Set<String> FILE_COLLECT = ordered("name", "path", "type");
+
+    public static Map<String, String> fileCollectDocs() {
+        Map<String, String> docs = new LinkedHashMap<>();
+        docs.put("name", "产物名，落到 task_steps.output_files，最终在 get_task_result 的 artifacts[] 里可见");
+        docs.put("path", "目标机上的文件或目录路径");
+        docs.put("type", "file / directory / pattern");
         return docs;
     }
 
@@ -127,6 +172,7 @@ public final class PackageSchema {
         codes.put("STEPS_EMPTY", "steps 里只有 _meta");
         codes.put("STEP_NOT_OBJECT", "某个步骤的配置不是映射");
         codes.put("STEP_SCRIPT_NOT_FOUND", "script 既不是包内文件也不像命令，执行时 exit 127");
+        codes.put("RESULT_COLLECTOR_MULTIPLE", "两个及以上步骤开了结果收集，一台机器出多行结果且无法区分来自哪一步");
         codes.put("DEPENDS_ON_NOT_ARRAY", "dependsOn 不是数组");
         codes.put("DEPENDS_ON_SELF", "步骤依赖自己");
         codes.put("DEPENDS_ON_UNKNOWN", "dependsOn 指向不存在的步骤，任务一直等");
@@ -198,6 +244,14 @@ public final class PackageSchema {
                 "保存为 LF；严格校验会在导入时就拒掉"));
         list.add(mistake("UI 上传带 <包名>/ 目录的 zip", "配置回填不了、name 也对不上",
                 "把 autotest.yaml 放到压缩包根目录；import_package 走目录时没这个限制"));
+        list.add(mistake("两个步骤都写 resultParser: true", "每台服务器插入多行 test_results，表里没有步骤归属列，分不清哪行来自哪步",
+                "只让产出测试结果的那一步开收集；严格校验按 RESULT_COLLECTOR_MULTIPLE 直接拒"));
+        list.add(mistake("在平台本机（serverIds:[-1]）跑还配 startupProbe/parseRule/fileCollects",
+                "三个都不执行，步骤退出码 0 就算完，既不探测也不产解析结果，而且没有任何提示",
+                "要这三件就选远程主机；否则把「等就绪」写进步骤自己的脚本里"));
+        list.add(mistake("parseRule.builtinFormat 写成 metrics / csv / text",
+                "解析阶段抛「未知的内置格式」，步骤仍是 success，只有日志里一行 [WARN]",
+                "只有 key_value 和 json 两种；要更复杂的解析就走脚本解析（scriptSource: inline）"));
         return list;
     }
 

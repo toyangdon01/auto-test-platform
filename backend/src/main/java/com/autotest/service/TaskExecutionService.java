@@ -1527,6 +1527,9 @@ public class TaskExecutionService {
                 context.log("开始解析，parserType=" + rule.getParserType() + ", format=" + rule.getBuiltinFormat());
                 Map<String, Object> parsedData = resultParseService.parse(fileContent, rule);
                 testResult.setParsedData(parsedData);
+                // 同一份产物也写进步骤行：get_task_result 读的是 task_steps.parsed_result，
+                // 不写的话智能体只能看到恒为 null 的字段
+                taskStep.setParsedResult(parsedData);
                 context.log("解析成功：" + parsedData.size() + " 个字段");
             } catch (Exception e) {
                 context.log("[WARN] 解析失败：" + e.getMessage());

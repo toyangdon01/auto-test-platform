@@ -400,7 +400,7 @@ stepServerMapping:
 | `list_pipeline_runs` | 列执行记录 | `runId`、`status` |
 | `cancel_pipeline_run` | 取消执行 | `status`、`taskSummary` |
 | `export_pipeline` | 导出 YAML（改编排的起点） | `yaml`、`topLevelKeys`、`taskKeys` |
-| `describe_pipeline_spec` | 库里没有可抄的编排时，自述这份 YAML 契约 | `topLevelKeys`/`taskKeys`/`serverKeys`（带每个键的用途）、`rules`（12 条）、`exampleYaml`、`commonMistakes`、`howToAuthor` |
+| `describe_pipeline_spec` | 库里没有可抄的编排时，自述这份 YAML 契约 | `topLevelKeys`/`taskKeys`/`serverKeys`（带每个键的用途）、`rules`（硬规则清单）、`exampleYaml`、`commonMistakes`、`howToAuthor` |
 
 典型链路：`list_pipelines` → `get_pipeline`（读 `problems`）→ `run_pipeline` →
 `wait_for_pipeline_run` → `get_pipeline_run` 拿子任务 `taskId` → `get_task_result` / `get_step_log`。
@@ -421,6 +421,10 @@ stepServerMapping:
 - `servers` 段的 `authType` 只认 `password` / `key`。曾经各处注释与示例写的 `ssh_key` 是错的（已改正）：
   `SshService` 的两个分支只匹配 `password` 和 `key`，写别的值既不设密码也不加载私钥，一路带到连接失败才知道原因。
   YAML 导入留空按 `password`（`ServerYamlConfig.toCreateRequest`），MCP 的 `create_server` 则必填且不猜。
+- `servers` 段的 `tags` 是**字符串数组**（`[test, perf]`），与脚本包 `autotest.yaml` 里 `tags` 的 `{key,value}` 形状不同；
+  两个自述工具里都有 `tags` 键，照抄另一边会得到 `YAML_TYPE_INVALID`。
+- 主机给成平台本机（`-1`）时，步骤级的 `startupProbe` / `parseRule` / `fileCollects` 整段不执行 ——
+  编排建得成、任务也成功，只是这三件静默不发生。详见 `docs/autotest-yaml.md` 的「三个嵌套结构键」。
 
 写坏的键不会被静默丢掉：未知键 → `UNKNOWN_KEY` 并列出该层合法键 + 拼写候选；类型不对（如 `timeout: abc`）
 → `YAML_TYPE_INVALID` 并带上 Jackson 的原文。校验用的是独立的 `YAML_READER`，不共用 Spring 那个
@@ -450,7 +454,9 @@ stepServerMapping:
 
 `run_pipeline` 的守卫按顺序：`PIPELINE_NOT_FOUND` → `PIPELINE_DISABLED` → `NO_TASKS` →
 `ALREADY_RUNNING`（独立 reason_code，不和校验混在一坨 errors 里，避免智能体把「上一条还在跑」当成
-「YAML 写错了」去改配置）→ 校验 → `BUSY`（同一批主机上已有 pending/running 任务，SSH 池只有 2 条连接）。
+「YAML 写错了」去改配置）→ 形状与依赖校验（`PIPELINE_INVALID`）→ **参数契约预检（`PARAM_INVALID`，
+逐条 `problems` 里带 `where`=任务名、`param`、`allowedValues`，问题项来自脚本契约，`next` 指向
+`get_script_contract`）** → `BUSY`（同一批主机上已有 pending/running 任务，SSH 池只有 2 条连接）。
 
 ### 服务层的坑，以及 MCP 侧怎么挡
 
@@ -459,6 +465,7 @@ stepServerMapping:
 | 情形 | 服务层原本的行为 | MCP 侧 |
 |------|------------------|--------|
 | 任务没有可用主机 | `continue` 静默跳过，不建子任务；依赖它的任务永远等 | `NO_SERVERS` / `SERVER_NOT_FOUND`，提交前拒 |
+| 参数不符合脚本契约（required 缺值、取值不在 `options`） | 校验在 `createTask` 里抛异常，而 `executePipeline` **没有事务**、run 行已先落库 → 留下一个永远 `running` 的孤儿执行，后续触发全被 `ALREADY_RUNNING` 挡死 | 触发前逐任务调 `TaskService.checkParams` 预检，返回 `PARAM_INVALID`；万一还是失败，`sweepOrphanRuns` 把本次新建的 run 置 failed 并取消其 pending 子任务，返回 `orphanRunsFinalized` |
 | `dependsOn` 成环 | `executeTasksDAG` 无 sleep 忙等，CPU 打满 | `DEPENDS_ON_CYCLE`，DFS 三色标记并给出环路径 |
 | `dependsOn` 指向不存在的任务 | 该依赖被直接丢弃，**顺序不生效**且无提示 | `DEPENDS_ON_UNKNOWN`（`get_pipeline.problems` 同样报） |
 | 任务重名 | `Collectors.toMap` 抛 `IllegalStateException`，整条编排点不动 | `TASK_NAME_DUPLICATE` |

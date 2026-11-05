@@ -102,22 +102,9 @@ public class ResultParseService {
             if (matcher.matches()) {
                 String key = matcher.group(1).trim();
                 String value = matcher.group(2).trim();
-                
-                // 尝试转换为数值
-                try {
-                    // 提取数字部分
-                    String numStr = value.replaceAll("[^\\d.]", "");
-                    if (!numStr.isEmpty()) {
-                        if (numStr.contains(".")) {
-                            value = numStr;
-                        } else {
-                            value = numStr;
-                        }
-                    }
-                } catch (Exception ignored) {
-                    // 保持原值
-                }
-                
+
+                // 一行只取一组键值：值一路取到行尾。以前会把整段尾部的数字抠出来当值，
+                // 于是 "mode=fast rounds=1" 变成 mode=1、rounds 丢失
                 result.put(key, value);
             }
         }

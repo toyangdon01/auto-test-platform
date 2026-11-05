@@ -194,6 +194,11 @@ public class ScriptTools {
             out.put("resourceKeys", new ArrayList<>(PackageSchema.RESOURCE));
             out.put("tagKeys", new ArrayList<>(PackageSchema.TAG));
             out.put("optionKeys", new ArrayList<>(PackageSchema.OPTION));
+            out.put("probeKeys", PackageSchema.probeDocs());
+            out.put("parseRuleKeys", PackageSchema.parseRuleDocs());
+            out.put("fileCollectKeys", PackageSchema.fileCollectDocs());
+            out.put("nestedKeysNote", "startupProbe/parseRule/fileCollects 的内层键**不参与校验**：写错的键不报错也不生效，"
+                    + "上面三张表就是执行层实际读取的全部键名（TaskExecutionService 逐个 get）");
         }
         if (matches(wanted, "rules")) {
             out.put("rules", PackageSchema.RULES);
@@ -210,6 +215,11 @@ public class ScriptTools {
         out.put("howToSubmit", "纯文本包用 create_script(name, files)；带二进制的包先把目录放到平台主机，"
                 + "再 import_package(sourceDir)。UI 上传则要求 autotest.yaml 在 zip 根目录。");
         out.put("howToVerify", "导入后用 get_script_contract 回读步骤和参数，确认没被裁剪");
+        out.put("timeoutUnits", "三处单位不同，别混：包顶层 timeout=秒（落 scripts.default_timeout）；"
+                + "run_test 的 timeout=毫秒；编排 YAML 里任务的 timeout=秒（入库时 ×1000）。");
+        out.put("relatedSpecs", "要把多个脚本、多台主机串成一次执行，用 describe_pipeline_spec 拿编排 YAML 的契约；"
+                + "单任务直接 run_test。步骤的产物解析与主机探测（parseRule/startupProbe/fileCollects）"
+                + "只在远程主机执行，平台本机（serverIds:[-1]）会整段跳过。");
         return out;
     }
 

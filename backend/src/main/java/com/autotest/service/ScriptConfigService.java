@@ -493,6 +493,7 @@ public class ScriptConfigService {
         // 数组写法里 name 就是步骤名，转成映射时平台会把它从配置体里摘掉，这里不能算非法键
         Set<String> stepKeys = stepsNode.isArray() ? withStepName() : PackageSchema.STEP;
         Map<String, List<String>> deps = new LinkedHashMap<>();
+        List<String> collectors = new ArrayList<>();
         int executable = 0;
         for (Map.Entry<String, JsonNode> entry : stepMap.entrySet()) {
             String stepName = entry.getKey();
@@ -507,6 +508,9 @@ public class ScriptConfigService {
                 continue;
             }
             checkUnknownKeys(step, stepKeys, "steps." + stepName, result);
+            if (isCollector(step)) {
+                collectors.add(stepName);
+            }
             checkStepScript(step, stepName, packageFiles, result);
             deps.put(stepName, collectDependencies(step, stepName, stepMap.keySet(), result));
         }
@@ -516,7 +520,23 @@ public class ScriptConfigService {
                     "steps 里只有 _meta，没有任何会执行的步骤", "去掉 _meta 后至少还要有一个步骤"));
             return;
         }
+        // 界面是单选，写不出这种形状；手搓 YAML 能，而后果是结果行无法归因
+        if (collectors.size() > 1) {
+            result.addValidationError(new ConfigIssue("RESULT_COLLECTOR_MULTIPLE", "steps",
+                    "有 " + collectors.size() + " 个步骤开了结果收集: " + String.join(", ", collectors)
+                            + "；每台服务器会插入多行 test_results，而这张表没有步骤归属列，事后分不清哪行来自哪步",
+                    "只让真正产出测试结果的那一步 resultParser: true，其余步骤删掉 resultParser/resultCollector"));
+        }
         reportDependencyCycle(deps, result);
+    }
+    
+    /** resultParser 或 resultCollector 任一为 true 就算开了收集（执行时二者是或的关系） */
+    private boolean isCollector(JsonNode step) {
+        return truthy(step.get("resultParser")) || truthy(step.get("resultCollector"));
+    }
+    
+    private boolean truthy(JsonNode node) {
+        return node != null && node.isBoolean() && node.asBoolean();
     }
     
     private Set<String> withStepName() {

@@ -22,6 +22,7 @@ import com.autotest.mapper.TaskMapper;
 import com.autotest.mapper.TaskServerMapper;
 import com.autotest.service.PipelineImportService;
 import com.autotest.service.PipelineService;
+import com.autotest.service.TaskService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -33,6 +34,7 @@ import org.springaicommunity.mcp.annotation.McpTool;
 import org.springaicommunity.mcp.annotation.McpToolParam;
 import org.springframework.stereotype.Component;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -97,7 +99,7 @@ public class PipelineTools {
             "authType", "可选，只能是 password 或 key；留空按 password",
             "authSecret", "必填，密码或私钥文本",
             "groupId", "可选，分组 id",
-            "tags", "可选，标签列表",
+            "tags", "可选，标签列表 —— 字符串数组（如 [test, perf]），不是脚本 tags 那种 {key,value}",
             "remark", "可选，备注");
 
     private static final Set<String> YAML_TOP = TOP_DOCS.keySet();
@@ -114,8 +116,13 @@ public class PipelineTools {
             "没有 dependsOn 的任务彼此并行，受 maxParallel 限制；要串行就显式写 dependsOn，"
                     + "YAML 里的先后顺序不产生执行顺序。",
             "timeout 在 YAML 里是秒，入库是毫秒（get_pipeline 返回 timeoutMs）；任务没填时执行时回落到脚本包声明的默认超时。",
-            "参数键是脚本包声明的参数名。必填（required）缺值、或值不在 options 白名单里，run_pipeline 会被拦下；"
-                    + "stepParams 覆盖同名 sharedParams。",
+            "参数键是脚本包声明的参数名。run_pipeline 在触发前按契约逐任务预检（required 缺值、取值不在 options 白名单），"
+                    + "不合格返回 PARAM_INVALID 与逐条 problems（where 是任务名），不留任何执行记录；"
+                    + "stepParams 覆盖同名 sharedParams。契约本身用 get_script_contract 读，包规范见 describe_package_spec。",
+            "上游任务失败时，依赖它的任务不会被发出：一直留在 pending、startedAt 为空，run 判 failed。"
+                    + "想知道「这条为什么没跑」看的是 dependsOn 链，不是编排里的先后顺序。",
+            "步骤级的 startupProbe / parseRule / fileCollects 只在远程主机上执行；把主机设成平台本机（serverId=-1）时"
+                    + "这三件整段跳过，既不探测也不产解析结果，且没有提示。",
             "update_pipeline 是全量覆盖：YAML 里没写的任务会被删除，pipelineTaskId 全部重建（先删后插），"
                     + "历史执行记录不受影响。改之前先 export_pipeline 拿完整文本。",
             "同一时刻只允许一条未结束的执行：已有 pending/running 的 run 时 run_pipeline 返回 ALREADY_RUNNING，"
@@ -166,6 +173,7 @@ public class PipelineTools {
     private final ServerMapper serverMapper;
     private final PipelineService pipelineService;
     private final PipelineImportService pipelineImportService;
+    private final TaskService taskService;
     private final ObjectMapper objectMapper;
 
     @McpTool(name = "list_pipelines", description = "列出任务编排（流水线）：id、名称、任务数、最大并行数、是否启用、"
@@ -361,8 +369,10 @@ public class PipelineTools {
     @McpTool(name = "run_pipeline", description = "触发编排执行：为每个编排任务建一个真实任务，再按 dependsOn 组成的 DAG "
             + "异步调度（受 maxParallel 限制）。返回 runId 和每个子任务的 taskId，用 wait_for_pipeline_run 等待、"
             + "get_task_result / get_step_log 看细节。执行前会先做一遍体检：任务没有主机、脚本查不到、依赖成环或指向"
-            + "不存在的任务、同一台主机上已有 pending/running 任务，都会被挡住并返回具体原因 —— 服务层对没主机的任务是"
-            + "静默跳过、对成环是死循环，这里提前拦。编排 enabled=false 时不执行。",
+            + "不存在的任务、参数不符合脚本契约（required/options，返回 PARAM_INVALID 与 problems）、"
+            + "同一台主机上已有 pending/running 任务，都会被挡住并返回具体原因 —— 服务层对没主机的任务是"
+            + "静默跳过、对成环是死循环、对坏参数会留下一个永远不结束的 running 执行记录，这里全部提前拦。"
+            + "编排 enabled=false 时不执行。",
             annotations = @McpTool.McpAnnotations(readOnlyHint = false, destructiveHint = false,
                     idempotentHint = false, title = "执行任务编排"))
     public Map<String, Object> runPipeline(
@@ -400,6 +410,10 @@ public class PipelineTools {
         if (!problems.isEmpty()) {
             return invalid(problems);
         }
+        List<Map<String, Object>> paramProblems = checkParamContract(specs);
+        if (!paramProblems.isEmpty()) {
+            return paramsInvalid(paramProblems);
+        }
 
         List<Long> servers = new ArrayList<>();
         for (Spec s : specs) {
@@ -421,11 +435,19 @@ public class PipelineTools {
             }
         }
 
+        List<Long> runsBefore = runIds(activeRunsOf(pipelineId));
         PipelineRun run;
         try {
             run = pipelineService.executePipeline(pipelineId, overrides);
         } catch (Exception e) {
-            return error("INTERNAL", "触发执行失败: " + e.getMessage());
+            List<Long> swept = sweepOrphanRuns(pipelineId, runsBefore);
+            Map<String, Object> failed = error("INTERNAL", "触发执行失败: " + e.getMessage());
+            if (!swept.isEmpty()) {
+                failed.put("orphanRunsFinalized", swept);
+                failed.put("note", "刚才那次失败留下了这些永远不会结束的 run（调度线程没起来），"
+                        + "已置为 failed 并取消其已建出的 pending 任务，不用再手动取消");
+            }
+            return failed;
         }
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("ok", true);
@@ -595,6 +617,7 @@ public class PipelineTools {
     @McpTool(name = "describe_pipeline_spec", description = "返回编排 YAML 的字段契约、硬性规则、一份带注释的最小示例和常见错法。"
             + "第一次建编排、或手上没有可抄的现成编排时先读它：create_pipeline / update_pipeline 就按这份契约校验，"
             + "不合格返回 PIPELINE_INVALID 与逐条 errors。库里已有相近的编排时，export_pipeline 抄一份改更省事。"
+            + "步骤与参数本身的规范在 describe_package_spec。"
             + "只需要一部分时传 section=schema|rules|example|mistakes。",
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false,
                     idempotentHint = true, title = "编排规范"))
@@ -654,7 +677,11 @@ public class PipelineTools {
                             "名字必须与同编排内某条任务的 name 完全一致"),
                     mistake("上一轮还在跑就再次触发",
                             "ALREADY_RUNNING（不是 PIPELINE_INVALID，别去改 YAML）",
-                            "先 wait_for_pipeline_run 等完，或 cancel_pipeline_run 取消")));
+                            "先 wait_for_pipeline_run 等完，或 cancel_pipeline_run 取消"),
+                    mistake("任务里漏了脚本包的必填参数、或取值不在 options 白名单里",
+                            "PARAM_INVALID + problems（where 是任务名），不产生任何执行记录 —— 不是 PIPELINE_INVALID，"
+                                    + "键名和形状都没错",
+                            "按 problems 里的 param 补值；参数定义与可选值见 get_script_contract")));
         }
         out.put("howToAuthor", List.of(
                 "1. list_scripts 选脚本包（库里没有合适的包，先 describe_package_spec 再 create_script）",
@@ -666,7 +693,9 @@ public class PipelineTools {
         out.put("howToVerify", "create_pipeline / update_pipeline 的返回体就是 get_pipeline 的视图，看 problems 是否为空；"
                 + "提交后 run_pipeline -> wait_for_pipeline_run -> get_pipeline_run 拿子任务 taskId，"
                 + "再用 get_task_result / get_step_log 看单任务细节");
-        out.put("codesNote", "错误码的改法直接写在每条 error 的 message 里，不需要另查对照表");
+        out.put("codesNote", "PIPELINE_INVALID 与 PARAM_INVALID 的每条问题项都在 message/problems 里直接给了改法，不需要对照表；"
+                + "PARAM_INVALID 的问题项来自脚本契约，回 get_script_contract 核对参数定义；"
+                + "INTERNAL 是服务层抛出来的原文，没有码表可查");
         return out;
     }
 
@@ -835,6 +864,9 @@ public class PipelineTools {
         /** YAML 的 servers 段里声明了、但库里还没有的主机名 —— 导入时会被创建，不算错误 */
         boolean pendingDeclaredServer;
         Long timeoutMs;
+        /** 只有库里读出来的 spec 才带这两项，用于触发前按脚本契约预检 */
+        Map<String, Object> sharedParams;
+        Map<String, Map<String, Object>> stepParams;
     }
 
     private List<Spec> specsFromYaml(PipelineYamlConfig cfg) {
@@ -917,6 +949,8 @@ public class PipelineTools {
                 }
             }
             s.dependsOn.addAll(parseStringList(pt.getDependsOn()));
+            s.sharedParams = parseObject(pt.getSharedParams());
+            s.stepParams = parseStepParams(pt.getStepParams());
             specs.add(s);
         }
         return specs;
@@ -1252,6 +1286,71 @@ public class PipelineTools {
                 .orderByAsc(PipelineRun::getId));
     }
 
+    /**
+     * 服务层要等到 createTask 才校验参数契约，可 executePipeline 没有事务、run 行在那之前已经落库，
+     * 于是校验一失败就留下一个永远不会结束的 run，后续触发全被 ALREADY_RUNNING 挡死。提前查一遍。
+     */
+    private List<Map<String, Object>> checkParamContract(List<Spec> specs) {
+        List<Map<String, Object>> problems = new ArrayList<>();
+        for (Spec s : specs) {
+            if (s.scriptId == null) {
+                continue;
+            }
+            Script script = scriptMapper.selectById(s.scriptId);
+            if (script == null) {
+                continue;
+            }
+            String version = script.getCurrentVersion() == null ? "v1.0.0" : script.getCurrentVersion();
+            for (Map<String, Object> item : taskService.checkParams(
+                    s.scriptId, version, s.sharedParams, s.stepParams)) {
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("where", s.name);
+                row.putAll(item);
+                problems.add(row);
+            }
+        }
+        return problems;
+    }
+
+    private Map<String, Object> paramsInvalid(List<Map<String, Object>> problems) {
+        Map<String, Object> out = error("PARAM_INVALID", "有任务的参数不符合脚本契约，未提交: " + problems.size()
+                + " 处；按 where 定位任务，problems 里是具体参数");
+        out.put("problems", problems);
+        out.put("next", "get_script_contract");
+        return out;
+    }
+
+    private List<Long> runIds(List<PipelineRun> runs) {
+        List<Long> ids = new ArrayList<>();
+        for (PipelineRun r : runs) {
+            ids.add(r.getId());
+        }
+        return ids;
+    }
+
+    /** executePipeline 抛异常时，本次新建的 run 没有任何线程会去收尾；不扫就只能靠人手动取消解锁 */
+    private List<Long> sweepOrphanRuns(Long pipelineId, List<Long> before) {
+        List<Long> swept = new ArrayList<>();
+        for (PipelineRun r : activeRunsOf(pipelineId)) {
+            if (before.contains(r.getId())) {
+                continue;
+            }
+            r.setStatus("failed");
+            r.setFinishedAt(LocalDateTime.now());
+            pipelineRunMapper.updateById(r);
+            for (PipelineRunTask rt : pipelineRunTaskMapper.selectList(new LambdaQueryWrapper<PipelineRunTask>()
+                    .eq(PipelineRunTask::getPipelineRunId, r.getId()))) {
+                try {
+                    taskService.cancelTask(rt.getTaskId());
+                } catch (Exception e) {
+                    log.warn("清理孤儿 run {} 的子任务 {} 失败: {}", r.getId(), rt.getTaskId(), e.getMessage());
+                }
+            }
+            swept.add(r.getId());
+        }
+        return swept;
+    }
+
     private List<Long> findTasksUsingServers(List<Long> serverIds) {
         List<Long> conflicts = new ArrayList<>();
         for (Task task : taskMapper.selectList(new LambdaQueryWrapper<Task>().in(Task::getStatus, List.of("pending", "running")))) {
@@ -1294,6 +1393,20 @@ public class PipelineTools {
         } catch (Exception e) {
             log.warn("编排里的 JSON 列解析失败: {}", json);
             return result("raw", json);
+        }
+    }
+
+    /** stepParams 的形状是 {步骤名: {参数名: 值}}，契约校验要的是强类型嵌套 Map */
+    private Map<String, Map<String, Object>> parseStepParams(String json) {
+        if (json == null || json.isBlank()) {
+            return null;
+        }
+        try {
+            return objectMapper.readValue(json, new TypeReference<Map<String, Map<String, Object>>>() {
+            });
+        } catch (Exception e) {
+            log.warn("stepParams 解析失败，跳过参数预检: {}", json);
+            return null;
         }
     }
 

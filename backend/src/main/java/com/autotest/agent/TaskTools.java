@@ -5,10 +5,12 @@ import com.autotest.entity.Script;
 import com.autotest.entity.Task;
 import com.autotest.entity.TaskServer;
 import com.autotest.entity.TaskStep;
+import com.autotest.entity.TestResult;
 import com.autotest.mapper.ScriptMapper;
 import com.autotest.mapper.TaskMapper;
 import com.autotest.mapper.TaskServerMapper;
 import com.autotest.mapper.TaskStepMapper;
+import com.autotest.mapper.TestResultMapper;
 import com.autotest.service.TaskService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
@@ -43,6 +45,7 @@ public class TaskTools {
     private final TaskStepMapper taskStepMapper;
     private final TaskServerMapper taskServerMapper;
     private final ScriptMapper scriptMapper;
+    private final TestResultMapper testResultMapper;
 
     @McpTool(name = "run_test", description = "创建并立即执行一个测试任务（等价于先 POST /tasks 再 POST /tasks/{id}/execute）。"
             + "返回 taskId，执行是异步的，用 wait_for_task 等待、get_task_result 取结果。"
@@ -298,6 +301,86 @@ public class TaskTools {
         } catch (Exception e) {
             return error("INTERNAL", "重试步骤失败: " + e.getMessage());
         }
+    }
+
+    @McpTool(name = "get_test_results", description = "读测试结果（test_results 表）：一台主机一次执行产出的那份结果 —— "
+            + "pass/fail、总分、耗时、按 parseRule 解析出的指标 parsedData、产物 artifacts。"
+            + "get_task_result 给的是任务与步骤的执行状态，这一份才是「这次测试量出了什么数」。"
+            + "按 taskId 取该任务的全部结果行（每台主机一行），或用 testResultId 取单行。"
+            + "注意 test_results 没有步骤归属列：同一台主机出现多行，说明有多个步骤开了结果收集，"
+            + "事后分不清哪行来自哪一步（新导入的包会被 RESULT_COLLECTOR_MULTIPLE 拒）。"
+            + "overallScore 与 metrics 两列目前没有任何写手、全库为空（指标子系统待重做），"
+            + "真正有内容的是 parsedData、exitCode、durationMs 与 artifacts。",
+            annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false,
+                    idempotentHint = true, title = "读测试结果"))
+    public Map<String, Object> getTestResults(
+            @McpToolParam(required = false, description = "任务 id，来自 run_test 或 get_pipeline_run") Long taskId,
+            @McpToolParam(required = false, description = "单条结果 id；给了它就只返回这一条") Long testResultId,
+            @McpToolParam(required = false, description = "最多返回多少行，默认 50") Integer limit,
+            @McpToolParam(required = false, description = "是否带原始输出 rawOutput/rawError，默认只给字符数") Boolean includeRaw) {
+
+        boolean withRaw = Boolean.TRUE.equals(includeRaw);
+        int max = limit == null || limit <= 0 ? 50 : Math.min(limit, 200);
+
+        if (testResultId != null) {
+            TestResult one = testResultMapper.selectById(testResultId);
+            if (one == null) {
+                return error("TEST_RESULT_NOT_FOUND", "测试结果不存在: " + testResultId);
+            }
+            return result("ok", true, "testResult", toResultView(one, withRaw),
+                    "next", "get_task_result");
+        }
+        if (taskId == null) {
+            return error("PARAM_INVALID", "需要 taskId 或 testResultId 之一；"
+                    + "taskId 来自 run_test / get_pipeline_run 的子任务，testResultId 来自本工具上一次返回的行 id");
+        }
+        if (taskMapper.selectById(taskId) == null) {
+            return error("TASK_NOT_FOUND", "任务不存在: " + taskId);
+        }
+        List<TestResult> rows = testResultMapper.selectList(new LambdaQueryWrapper<TestResult>()
+                .eq(TestResult::getTaskId, taskId).orderByAsc(TestResult::getId));
+        List<Map<String, Object>> views = new ArrayList<>();
+        for (TestResult row : rows) {
+            if (views.size() >= max) {
+                break;
+            }
+            views.add(toResultView(row, withRaw));
+        }
+        Map<String, Object> out = result("ok", true, "taskId", taskId, "testResults", views,
+                "count", views.size(), "next", "get_task_result");
+        if (rows.size() > max) {
+            out.put("truncated", rows.size() - max);
+        }
+        if (views.isEmpty()) {
+            out.put("note", "这个任务还没有测试结果行：步骤可能都没开 resultParser/resultCollector，"
+                    + "或者还没执行完（先 wait_for_task）");
+        }
+        return out;
+    }
+
+    private Map<String, Object> toResultView(TestResult row, boolean withRaw) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("testResultId", row.getId());
+        m.put("taskId", row.getTaskId());
+        m.put("scriptName", row.getScriptName());
+        m.put("serverId", row.getServerId());
+        m.put("serverName", row.getServerName());
+        m.put("result", row.getResult());
+        m.put("resultReason", row.getResultReason());
+        m.put("overallScore", row.getOverallScore());
+        m.put("exitCode", row.getExitCode());
+        m.put("durationMs", row.getDurationMs());
+        m.put("startedAt", row.getStartedAt());
+        m.put("finishedAt", row.getFinishedAt());
+        m.put("metrics", row.getMetrics());
+        m.put("parsedData", row.getParsedData());
+        m.put("artifacts", row.getOutputFiles() == null ? List.of() : new ArrayList<>(row.getOutputFiles().keySet()));
+        m.put("rawOutputChars", row.getRawOutput() == null ? 0 : row.getRawOutput().length());
+        if (withRaw) {
+            m.put("rawOutput", row.getRawOutput());
+            m.put("rawError", row.getRawError());
+        }
+        return m;
     }
 
     // ==================== 内部方法 ====================

@@ -475,8 +475,8 @@ steps:
 所以 `ScriptConfigService.collectSchemaIssues` 拿 `JsonNode` 原始树 + 包目录里的真实文件清单一起比。
 每条问题项是 `{code, path, message, hint}`：`path` 指到具体位置（如 `steps.step_1.script`），
 `hint` 列出该层的合法键，拼错的键还会给候选（前缀命中或编辑距离 ≤ 2，
-例如 `paramaters` → "你是不是想写 'parameters'"）。共 26 个错误码，逐条触发条件见
-`PackageSchema.validationCodes()`。
+例如 `paramaters` → "你是不是想写 'parameters'"）。错误码清单以
+`PackageSchema.validationCodes()` 为唯一真源，逐条触发条件看那里。
 
 `script` 的判定：先当包内相对路径查（支持 `steps/step1.sh` 这种子目录）；
 既不是包内文件、也不像一段命令（含空格/制表符，或既无 `.` 又无 `/`）时会被当成 shell 命令执行，
@@ -489,12 +489,33 @@ MCP 服务端只开 tools 能力（`resource:false / prompt:false`），写包�
 
 | 参数 `section` | 返回 |
 |----------------|------|
-| `schema` | `topLevelKeys` / `parameterKeys` / `stepKeys` / `resourceKeys` / `tagKeys` / `optionKeys`，每个键带用途说明 |
-| `rules` | 11 条硬规则（超时单位与回落顺序、共享参数 `default` 不注入、步骤参数 `defaultValue` 注入并覆盖同名共享参数、`options` 严格匹配、LF 换行、覆盖导入整体替换参数定义等） |
+| `schema` | `topLevelKeys` / `parameterKeys` / `stepKeys` / `resourceKeys` / `tagKeys` / `optionKeys`，每个键带用途说明；外加三张嵌套表 `probeKeys` / `parseRuleKeys` / `fileCollectKeys`（这三层**不参与校验**，表里就是执行层实际读取的全部键名） |
+| `rules` | 硬规则清单：超时单位与回落顺序、共享参数 `default` 不注入、步骤参数 `defaultValue` 注入并覆盖同名共享参数、`options` 严格匹配、LF 换行、覆盖导入整体替换参数定义、**一个脚本只允许一个步骤开结果收集**、**probe/parseRule/fileCollects 只在远程主机执行**、probe 缺 port 静默通过、解析失败不改步骤状态 |
 | `example` | `exampleYaml`：一份能通过校验的包声明（配套的 `main.sh` 由提交方一起带上） |
-| `mistakes` | 8 条常见错法 → 症状 → 改法 |
-| `codes` | 26 个错误码及各自触发条件 |
-| `all`（缺省） | 以上全部，外加 `strictValidation`、`howToSubmit`、`howToVerify` |
+| `mistakes` | 常见错法 → 症状 → 改法 |
+| `codes` | 全部错误码及各自触发条件 |
+| `all`（缺省） | 以上全部，外加 `strictValidation`、`howToSubmit`、`howToVerify`、`timeoutUnits`（包秒/任务毫秒/编排秒三处口径）、`relatedSpecs`（指向 `describe_pipeline_spec`） |
+
+### 三个「嵌套结构」键，以及它们只在远程主机生效
+
+`startupProbe`、`parseRule`、`fileCollects` 内层是自由 Map，**平台一个键都不校验**，写错的后果是不生效而不是报错：
+
+| 键 | 执行层实际读的东西 |
+|----|--------------------|
+| `startupProbe` | `type`（缺省 `tcp`，或 `http`，其它值走命令模式）、`port`、`url`、`command`、`timeoutSeconds`（默认 60）。探测固定在目标机的 `127.0.0.1` 上，没有 `host` 可改。`type=tcp` 却不给 `port`、命令模式不给 `command` → **按通过处理**，既不失败也不探测 |
+| `parseRule` | `parserType`（`builtin` 或走脚本）、`builtinFormat`（**只认 `key_value` 与 `json`**）、`inputSource`（`stdout`/`file`）、`filePattern`、`scriptSource`（`inline`/`package`）、`scriptContent`、`scriptLanguage`。解析失败不改步骤状态：步骤仍是 success，原因只进 `test_results.result_reason` 与步骤日志的 `[WARN]` 行 |
+| `fileCollects` | 每项 `name` / `path` / `type`（`file`/`directory`/`pattern`），需要 `fileCollectEnabled: true` 才跑；产物落 `task_steps.output_files`，在 `get_task_result` 的 `artifacts[]` 可见 |
+
+三件都只在 **SSH 远程步骤**执行：`serverIds:[-1]`（平台本机）走的是另一条分支，步骤退出码 0 就直接落库，
+不探测、不解析、不收文件，而且没有任何提示（`TaskExecutionService.executeStepOnServer` 开头即转入本地执行）。
+
+还有一条跨步骤规则：**一个脚本只允许一个步骤开结果收集**（`resultParser` 或 `resultCollector` 为 true）。
+界面是单选所以产不出违规形状，但手写 YAML 可以；后果是每台服务器插入多行 `test_results`，
+而这张表没有步骤归属列，事后分不清哪行来自哪步 —— 严格校验按 `RESULT_COLLECTOR_MULTIPLE` 直接拒。
+解析产物同时写 `test_results.parsed_data` 与 `task_steps.parsed_result`：前者属于结果行（MCP 用
+`get_test_results` 读，含 `metrics`/`overallScore`/`artifacts`），后者是 `get_task_result` 里那一步的 `parsed_result`。
+`key_value` 格式**一行只取一组键值**，值取到行尾（`mode=fast rounds=1` 会得到 `mode: "fast rounds=1"`），
+要多个指标就一行一个，指标值一律按字符串返回。
 
 不合格时返回的是结构化报错，不是泛泛的"解析失败"：
 

@@ -472,6 +472,32 @@ class ScriptConfigServiceTest {
         assertTrue(codes.contains("CRLF_SCRIPT"), codes.toString());
     }
 
+    @Test
+    void testSchemaIssues_MultipleCollectorStepsRejected() throws IOException {
+        Path dir = tempDir.resolve("28");
+        writePackage(dir, "name: demo\ntype: shell\nsteps:\n"
+                + "  a:\n    script: main.sh\n    resultParser: true\n"
+                + "  b:\n    script: main.sh\n    resultCollector: true\n", "main.sh", "#!/bin/sh\n");
+
+        List<ConfigIssue> issues = parsePackage(dir).getValidationErrors();
+        List<ConfigIssue> hits = issues.stream()
+                .filter(i -> "RESULT_COLLECTOR_MULTIPLE".equals(i.code()))
+                .toList();
+        assertEquals(1, hits.size(), issues.toString());
+        assertTrue(hits.get(0).message().contains("a, b"), hits.get(0).message());
+    }
+
+    @Test
+    void testSchemaIssues_SingleCollectorStepAccepted() throws IOException {
+        Path dir = tempDir.resolve("29");
+        writePackage(dir, "name: demo\ntype: shell\nsteps:\n"
+                + "  a:\n    script: main.sh\n    resultParser: false\n    resultCollector: false\n"
+                + "  b:\n    script: main.sh\n    resultParser: true\n", "main.sh", "#!/bin/sh\n");
+
+        List<String> codes = codes(parsePackage(dir));
+        assertFalse(codes.contains("RESULT_COLLECTOR_MULTIPLE"), codes.toString());
+    }
+
     /**
      * 写一个包目录：yaml + 若干文件
      */
