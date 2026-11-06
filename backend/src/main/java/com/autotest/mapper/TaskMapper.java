@@ -36,13 +36,17 @@ public interface TaskMapper extends BaseMapper<Task> {
             "  <if test='scriptId != null'>" +
             "    AND t.script_id = #{scriptId}" +
             "  </if>" +
+            "  <if test='serverId != null'>" +
+            "    AND EXISTS (SELECT 1 FROM task_servers ts WHERE ts.task_id = t.id AND ts.server_id = #{serverId})" +
+            "  </if>" +
             "</where>" +
             "ORDER BY t.id DESC" +
             "</script>")
     IPage<Task> selectPageWithScriptName(Page<Task> page, 
                                           @Param("name") String name, 
                                           @Param("status") String status,
-                                          @Param("scriptId") Long scriptId);
+                                          @Param("scriptId") Long scriptId,
+                                          @Param("serverId") Long serverId);
     
     /**
      * 禁用外键检查（SQLite）

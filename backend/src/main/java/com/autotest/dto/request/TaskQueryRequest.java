@@ -29,4 +29,9 @@ public class TaskQueryRequest extends PageRequest {
      * 脚本ID
      */
     private Long scriptId;
+
+    /**
+     * 只查关联了这台服务器的任务
+     */
+    private Long serverId;
 }

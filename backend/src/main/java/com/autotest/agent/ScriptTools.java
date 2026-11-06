@@ -17,6 +17,7 @@ import com.autotest.mapper.TaskMapper;
 import com.autotest.service.ScriptConfigService;
 import com.autotest.service.ScriptFileService;
 import com.autotest.service.ScriptPackageService;
+import com.autotest.service.ScriptResourceService;
 import com.autotest.service.TaskService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
@@ -60,6 +61,7 @@ public class ScriptTools {
     private final ScriptConfigService scriptConfigService;
     private final ScriptPackageService scriptPackageService;
     private final ScriptFileService scriptFileService;
+    private final ScriptResourceService scriptResourceService;
 
     @Value("${autotest.storage.scripts-path}")
     private String scriptsPath;
@@ -191,7 +193,7 @@ public class ScriptTools {
             out.put("topLevelKeys", PackageSchema.topLevelDocs());
             out.put("parameterKeys", PackageSchema.parameterDocs());
             out.put("stepKeys", PackageSchema.stepDocs());
-            out.put("resourceKeys", new ArrayList<>(PackageSchema.RESOURCE));
+            out.put("resourceKeys", PackageSchema.resourceDocs());
             out.put("tagKeys", new ArrayList<>(PackageSchema.TAG));
             out.put("optionKeys", new ArrayList<>(PackageSchema.OPTION));
             out.put("probeKeys", PackageSchema.probeDocs());
@@ -414,8 +416,17 @@ public class ScriptTools {
         if (ScriptPackageService.ConflictStrategy.OVERWRITE == useStrategy) {
             notes.add("覆盖导入只重写当前版本记录，未新增版本");
         }
+        // 声明数与真正绑上的数不等，说明有 resourceMd5 在库里查不到，导入只跳不报错
+        int declaredResources = config.getResources() == null ? 0 : config.getResources().size();
+        int boundResources = scriptResourceService.getByScriptId(saved.getId()).size();
+        if (boundResources < declaredResources) {
+            notes.add("有 " + (declaredResources - boundResources) + " 条资源没绑上：autotest.yaml 的 resourceMd5 "
+                    + "在平台资源库里查不到，导入会跳过而不是报错，任务执行时才表现为「拿不到二进制」。"
+                    + "用 list_resources 核对 checksum，或 upload_resource 登记文件后重新导入");
+        }
         out.put("notes", notes);
-        out.put("resources", config.getResources() == null ? List.of() : config.getResources().size());
+        out.put("resourcesDeclared", declaredResources);
+        out.put("resourcesBound", boundResources);
         out.put("next", "get_script_contract");
         return out;
     }

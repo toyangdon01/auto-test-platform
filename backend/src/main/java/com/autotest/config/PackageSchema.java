@@ -61,7 +61,11 @@ public final class PackageSchema {
             "script 优先按包内相对路径解析（支持 steps/step1.sh 这样的子目录）；既不是包内文件也不像命令时会被当成 shell 命令执行，报 exit 127。",
             "脚本文件必须是 LF 换行。Windows 上写出的 CRLF 在 Linux 上会以 $'\\r': command not found 失败，平台不做转换。",
             "覆盖导入（strategy=OVERWRITE）用包里的声明整体替换参数定义，界面上手填的参数不保留；它只重写当前版本记录，不新增版本。",
-            "resources 用 resourceMd5 或 resourceId 关联平台资源库里的二进制；内联创建（create_script）带不进二进制资源，只能先把包落到平台主机目录再 import_package。",
+            "resources 用 resourceMd5 或 resourceId 关联平台资源库里的二进制，MD5 从 list_resources 的 checksum 拿、"
+            + "库里没有就先 upload_resource 把平台主机上的文件登记进去（别凭记忆写 MD5，绑错要等任务执行才炸）；"
+            + "内联创建（create_script）带不进二进制资源，只能先把包落到平台主机目录再 import_package。",
+            "resourceMd5 在平台库里查不到时，导入只打一条 WARN 并**跳过这条资源关联**，包照样导入成功；"
+            + "等任务跑起来脚本才发现拿不到二进制。导入后用 get_script_contract 的 resources[] 复核（resolved=false 就是没绑上）。",
             "一个脚本只允许一个步骤开结果收集：resultParser/resultCollector 为 true 的步骤多于一个时，每台服务器会插入多行 test_results，而这张表没有步骤归属列，事后分不清哪行来自哪步（严格校验按 RESULT_COLLECTOR_MULTIPLE 拒）。",
             "startupProbe、parseRule、fileCollects 三件都只在 SSH 远程步骤执行；在平台本机跑（serverId=-1）时整段跳过 —— 步骤退出码为 0 就直接落库，不探测、不解析、不收文件。",
             "probe 的内层键不校验：type=tcp 却没写 port、或命令模式没写 command 时，探测按「通过」处理，既不失败也不真的探测。",
@@ -78,8 +82,26 @@ public final class PackageSchema {
         docs.put("timeout", "整数秒。创建时写进 scripts.default_timeout，任务没配超时时用它");
         docs.put("parameters", "共享参数定义数组，形状见 parameterKeys");
         docs.put("steps", "步骤映射：步骤名 -> 步骤配置，顺序无关，执行顺序由 dependsOn 决定");
-        docs.put("resources", "包级资源关联数组，靠 resourceMd5/resourceId 指向平台资源库");
+        docs.put("resources", "包级资源关联数组，靠 resourceMd5/resourceId 指向平台资源库（每项键见 resourceKeys）");
         docs.put("tags", "标签数组 [{key,value}]，落到 scripts.tags");
+        return docs;
+    }
+
+    /** 资源项（包级 resources[] 与步骤级 steps.<步骤名>.resources[] 同形）的每一项 */
+    public static Map<String, String> resourceDocs() {
+        Map<String, String> docs = new LinkedHashMap<>();
+        docs.put("resourceId", "平台资源库的文件 id。**别在 autotest.yaml 里只写它**：校验认这个键，"
+                + "但导入只按 resourceMd5 去库里找文件，只给 resourceId 会被当成查不到而跳过关联。包级资源一律写 resourceMd5");
+        docs.put("resourceMd5", "资源文件的 MD5，取值就是 list_resources 返回的 checksum；库里没有先 upload_resource 登记。"
+                + "这个 MD5 查不到时导入只打 WARN 并跳过关联，不会失败");
+        docs.put("targetPath", "目标机上的落点。以 / 开头是绝对路径：像目录（结尾没有 .扩展名）就先 mkdir -p 再追加文件名，"
+                + "像文件则保证父目录存在；上传前会比对远端文件大小，一致就跳过传输 —— "
+                + "GB 级资源做重复测试要靠绝对路径省重传。不以 / 开头是相对路径：拼到 /tmp/test_platform/task_<id>/ 下，"
+                + "任务目录每次新建，所以每个任务都会重传一遍");
+        docs.put("permissions", "上传后执行的 chmod 参数，如 \"644\"/\"755\"。步骤级资源留空会兜底成 644，"
+                + "**包级资源没有这个兜底**：留空会拼成 `chmod null`，命令失败但平台不看返回码，"
+                + "文件保持传输时的默认权限。包级资源请显式写");
+        docs.put("order", "多份资源的上传顺序，小的先传");
         return docs;
     }
 

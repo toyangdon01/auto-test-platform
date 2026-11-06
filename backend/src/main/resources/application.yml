@@ -81,6 +81,14 @@ spring:
           get_task_result 取步骤状态 -> get_test_results 取量出来的指标（parsedData/产物）->
           需要时 get_step_log 看日志。
           失败结果带 reason_code 与 is_retryable，据此决定重试还是改参数。
+          找回历史任务用 list_tasks（可按 scriptId/serverId/status 过滤），不用别人递 taskId；
+          list_servers 已带 osVersion/cpuArch/cpuCores/memorySize，按系统或架构选机不用再逐台 get_server。
+          只想在机器上查个事实（rpm -q、看文件、探端口这类）用 run_adhoc，别为一条命令建一个包；
+          它同步返回退出码与输出、不建任务也不留历史，超过 80 秒的活请走 run_test。
+          资源绑定：list_resources 取 checksum（就是 autotest.yaml 里 resources[].resourceMd5 的值），
+          库里没有就用 upload_resource 登记平台主机上的现有文件；
+          import_package 返回的 resourcesBound 小于 resourcesDeclared 说明有 resourceMd5 查不到、被跳过了，
+          用 get_script_contract 的 resources[] 复核。
           写新包或改包先调 describe_package_spec 拿 autotest.yaml 的字段契约与最小示例；
           create_script/import_package 默认严格校验，不合格返回 PACKAGE_INVALID 与逐条 errors。
           多机/多脚本的批量场景走编排：list_pipelines -> get_pipeline（problems 字段是体检结果）->

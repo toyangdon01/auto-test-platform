@@ -1,7 +1,9 @@
 package com.autotest.agent;
 
 import com.autotest.config.PackageSchema;
+import com.autotest.common.PageResult;
 import com.autotest.dto.request.TaskCreateRequest;
+import com.autotest.dto.request.TaskQueryRequest;
 import com.autotest.entity.Script;
 import com.autotest.entity.ScriptVersion;
 import com.autotest.entity.Task;
@@ -41,6 +43,8 @@ public class TaskTools {
 
     private static final Set<String> TERMINAL_TASK = Set.of(
             "completed", "completed_with_errors", "failed", "cancelled");
+    private static final Set<String> KNOWN_TASK_STATUS = Set.of(
+            "pending", "running", "completed", "completed_with_errors", "failed", "cancelled");
     private static final int DEFAULT_LOG_CHARS = 8000;
 
     private final TaskService taskService;
@@ -50,6 +54,67 @@ public class TaskTools {
     private final ScriptMapper scriptMapper;
     private final ScriptVersionMapper scriptVersionMapper;
     private final TestResultMapper testResultMapper;
+
+    @McpTool(name = "list_tasks", description = "按条件查历史任务，id 倒序。想找回「这个脚本包上次在哪台机器跑得怎么样」用它，"
+            + "不需要有人把 taskId 递过来。可按 scriptId、serverId、status、名称关键字过滤，limit 默认 20、上限 100。"
+            + "返回 id、名称、scriptId/scriptName/scriptVersion、status、执行模式、timeout（毫秒）、"
+            + "serverIds、serverCount/successCount/failCount/runningCount 与 createdAt/startedAt/finishedAt。"
+            + "拿到 id 后走 get_task_result 与 get_step_log。它与界面列表同源：发现 status=completed 但有失败主机时"
+            + "会顺手改成 completed_with_errors 并写库，所以标成非只读。",
+            annotations = @McpTool.McpAnnotations(readOnlyHint = false, destructiveHint = false,
+                    idempotentHint = true,
+                    title = "列出历史任务"))
+    public Map<String, Object> listTasks(
+            @McpToolParam(required = false, description = "按脚本包 id 过滤，来自 list_scripts") Long scriptId,
+            @McpToolParam(required = false, description = "只查关联了这台服务器的任务") Long serverId,
+            @McpToolParam(required = false, description = "按状态过滤：pending/running/completed/completed_with_errors/failed/cancelled") String status,
+            @McpToolParam(required = false, description = "按任务名称模糊过滤，不区分大小写") String keyword,
+            @McpToolParam(required = false, description = "最多返回多少条，默认 20，上限 100") Integer limit) {
+
+        if (status != null && !status.isBlank() && !KNOWN_TASK_STATUS.contains(status.trim())) {
+            return error("PARAM_INVALID", "status 取值非法: " + status + "；合法值见 " + KNOWN_TASK_STATUS);
+        }
+        int max = limit == null || limit <= 0 ? 20 : Math.min(limit, 100);
+
+        TaskQueryRequest req = new TaskQueryRequest();
+        req.setScriptId(scriptId);
+        req.setServerId(serverId);
+        req.setStatus(status == null || status.isBlank() ? null : status.trim());
+        req.setName(keyword == null || keyword.isBlank() ? null : keyword.trim());
+        req.setPage(1);
+        req.setSize(max);
+
+        PageResult<Task> page = taskService.listTasks(req);
+        List<Map<String, Object>> items = new ArrayList<>();
+        for (Task t : page.getItems()) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("id", t.getId());
+            item.put("name", t.getName());
+            item.put("scriptId", t.getScriptId());
+            item.put("scriptName", t.getScriptName());
+            item.put("scriptVersion", t.getScriptVersion());
+            item.put("status", t.getStatus());
+            item.put("executionMode", t.getExecutionMode());
+            item.put("timeout", t.getTimeout());
+            item.put("serverIds", findTaskServers(t.getId()));
+            item.put("serverCount", t.getServerCount());
+            item.put("successCount", t.getSuccessCount());
+            item.put("failCount", t.getFailCount());
+            item.put("runningCount", t.getRunningCount());
+            item.put("createdAt", t.getCreatedAt());
+            item.put("startedAt", t.getStartedAt());
+            item.put("finishedAt", t.getFinishedAt());
+            items.add(item);
+        }
+
+        Map<String, Object> out = result("tasks", items, "count", items.size(),
+                "total", page.getTotal(),
+                "next", "get_task_result 取步骤与 parsed_result，get_step_log 读日志");
+        if (items.isEmpty()) {
+            out.put("hint", "没有匹配的任务；确认过滤条件时可以先只传 scriptId");
+        }
+        return out;
+    }
 
     @McpTool(name = "run_test", description = "创建并立即执行一个测试任务（等价于先 POST /tasks 再 POST /tasks/{id}/execute）。"
             + "返回 taskId，执行是异步的，用 wait_for_task 等待、get_task_result 取结果。"

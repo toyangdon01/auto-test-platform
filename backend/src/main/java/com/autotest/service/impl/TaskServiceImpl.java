@@ -73,7 +73,8 @@ public class TaskServiceImpl implements TaskService {
             new Page<>(request.getPage(), request.getSize()),
             request.getName(),
             request.getStatus(),
-            request.getScriptId()
+            request.getScriptId(),
+            request.getServerId()
         );
         
         // 填充服务器统计

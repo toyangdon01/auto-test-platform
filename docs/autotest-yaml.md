@@ -349,47 +349,42 @@ steps:
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `resourceId` | integer | 平台资源文件 ID（可选，与 resourceMd5 二选一） |
-| `resourceMd5` | string | 资源文件 MD5 值（可选，与 resourceId 二选一，**推荐用于跨项目共享**） |
-| `targetPath` | string | 目标路径（默认：/tmp） |
-| `permissions` | string | 文件权限（默认：644） |
-| `order` | integer | 上传顺序（默认：0） |
+| `resourceId` | integer | 平台资源文件 ID。**校验认它，导入不认它**：`ScriptPackageServiceImpl` 只按 `resourceMd5` 查库，只写 `resourceId` 的项会被当成查不到而跳过 |
+| `resourceMd5` | string | 资源文件 MD5，**包级资源只能靠它**。取值来自「资源文件」列表，MCP 侧用 `list_resources` 的 `checksum`，库里没有用 `upload_resource` 登记平台主机上的现有文件 |
+| `targetPath` | string | 目标机上的落点。以 `/` 开头是绝对路径（结尾没有 `.扩展名` 视为目录，会先 `mkdir -p`）；不以 `/` 开头是相对路径，拼到 `/tmp/test_platform/task_<id>/` 下 |
+| `permissions` | string | 上传后执行的 `chmod` 参数。步骤级资源留空兜底 `644`，**包级资源没有兜底**：留空会执行 `chmod null`，失败也不影响步骤，文件保持传输时的默认权限 |
+| `order` | integer | 上传顺序（默认：0），小的先传 |
 
-**跨项目共享说明**：
-
-- **`resourceId`**：适用于同一项目内的资源引用
-- **`resourceMd5`**：推荐使用，通过 MD5 值匹配资源文件，支持跨项目共享脚本
+**绝对路径能省掉重复上传**：`SshService.uploadFile` 上传前会 `stat` 远端路径，**大小一致就跳过传输**（日志
+`文件已存在且大小一致，跳过上传`）。相对路径落在每次任务新建的 `task_<id>` 目录里，永远比不中，所以 GB 级资源
+每个任务都会重传一遍。判重**只比大小、不比 MD5**，所以同名但内容换过包时，脚本自己要负责校验。
 
 **示例**：
 ```yaml
 resources:
-  # 方式一：使用 resourceId（适用于同一项目）
-  - resourceId: 100
-    targetPath: /etc/config.conf
-    permissions: "644"
-    
-  # 方式二：使用 resourceMd5（推荐，支持跨项目）
+  # 指向资源库里的文件，落到固定绝对路径：第二次起就不会重传
   - resourceMd5: e142c2058313b4646c36fa9bb1b38493
-    targetPath: /opt/package.tar.gz
-    permissions: "755"
-    
-  # 方式三：同时提供（导入时优先使用 resourceMd5 匹配）
-  - resourceId: 101
-    resourceMd5: abc123def456
-    targetPath: /tmp/data.dat
+    targetPath: /opt/toolchain/tool-1.0.tar.gz
+    permissions: "644"
+    order: 0
+
+  # 相对路径：落在 /tmp/test_platform/task_<id>/ 下，每个任务都重传
+  - resourceMd5: abc123def456
+    targetPath: data.dat
     permissions: "644"
 ```
 
 **导入逻辑**：
-1. 导入脚本时，优先使用 `resourceMd5` 查找匹配的资源文件
-2. 如果 MD5 匹配失败，再尝试使用 `resourceId`
-3. 如果都失败，记录警告并跳过该资源配置
+1. 只按 `resourceMd5` 在 `resource_files` 里查；命中就建 `script_resources` 关联
+2. 查不到 → 记一条 WARN 并**跳过这条资源**，导入本身仍然成功（不报 PACKAGE_INVALID）
+3. 所以导入后要用 `get_script_contract` 的 `resources[]` 复核，或看 `import_package` 返回的
+   `resourcesBound` 是否等于 `resourcesDeclared`
+4. 任务执行时按 `order` 上传到 `targetPath`，随后 `chmod <permissions>`
 
 **工作流程**：
 1. 上传脚本包时，平台解析 `resources` 配置
-2. 验证 `resourceId` 对应的资源文件是否存在
-3. 创建脚本与资源的关联关系
-4. 任务执行时，资源文件自动上传到服务器的指定路径
+2. 按 `resourceMd5` 找到资源文件并建立关联
+3. 任务执行时，资源文件自动上传到服务器的指定路径
 
 #### 启动探测 (startupProbe)
 
