@@ -1,12 +1,15 @@
 package com.autotest.agent;
 
+import com.autotest.config.PackageSchema;
 import com.autotest.dto.request.TaskCreateRequest;
 import com.autotest.entity.Script;
+import com.autotest.entity.ScriptVersion;
 import com.autotest.entity.Task;
 import com.autotest.entity.TaskServer;
 import com.autotest.entity.TaskStep;
 import com.autotest.entity.TestResult;
 import com.autotest.mapper.ScriptMapper;
+import com.autotest.mapper.ScriptVersionMapper;
 import com.autotest.mapper.TaskMapper;
 import com.autotest.mapper.TaskServerMapper;
 import com.autotest.mapper.TaskStepMapper;
@@ -45,6 +48,7 @@ public class TaskTools {
     private final TaskStepMapper taskStepMapper;
     private final TaskServerMapper taskServerMapper;
     private final ScriptMapper scriptMapper;
+    private final ScriptVersionMapper scriptVersionMapper;
     private final TestResultMapper testResultMapper;
 
     @McpTool(name = "run_test", description = "创建并立即执行一个测试任务（等价于先 POST /tasks 再 POST /tasks/{id}/execute）。"
@@ -110,6 +114,7 @@ public class TaskTools {
         req.setServerIds(serverIds);
         req.setSharedParams(sharedParams == null ? new LinkedHashMap<>() : sharedParams);
         req.setStepParams(stepParams == null ? new LinkedHashMap<>() : stepParams);
+        req.setStepServerMapping(expandStepServerMapping(scriptId, script.getCurrentVersion(), serverIds));
         req.setExecutionMode("immediate");
         req.setParallelMode("sequential");
         req.setMaxParallel(1);
@@ -514,6 +519,38 @@ public class TaskTools {
             return "agent-" + scriptId + "-" + idempotencyKey.trim();
         }
         return "agent-" + scriptId + "-" + System.currentTimeMillis();
+    }
+
+    /**
+     * 把任务级 serverIds 展开成每个步骤的服务器映射。
+     * <p>
+     * 界面编辑任务时「步骤-执行服务器」只读 tasks.step_server_mapping 这一列，缺它的任务在编辑页
+     * 显示成没选服务器，还会被完整性校验拦住不让保存。展开成「每个步骤都跑在这些服务器上」，
+     * 与执行器「没有映射就在全部服务器上跑」的兜底等价，不改变执行行为。
+     * 步骤名取脚本版本里声明的顺序，_meta 不参与执行所以跳过；没有步骤的脚本用 "default"，
+     * 与 executeDefaultStep 写 task_steps 的 step_name 以及编辑页的兜底步骤名一致。
+     */
+    private Map<String, List<Object>> expandStepServerMapping(Long scriptId, String version, List<Long> serverIds) {
+        List<String> stepNames = new ArrayList<>();
+        ScriptVersion scriptVersion = scriptVersionMapper.selectOne(new LambdaQueryWrapper<ScriptVersion>()
+                .eq(ScriptVersion::getScriptId, scriptId)
+                .eq(ScriptVersion::getVersion, version));
+        if (scriptVersion != null && scriptVersion.getSteps() != null) {
+            for (String stepName : scriptVersion.getSteps().keySet()) {
+                if (!PackageSchema.META_STEP.equals(stepName)) {
+                    stepNames.add(stepName);
+                }
+            }
+        }
+        if (stepNames.isEmpty()) {
+            stepNames.add("default");
+        }
+
+        Map<String, List<Object>> mapping = new LinkedHashMap<>();
+        for (String stepName : stepNames) {
+            mapping.put(stepName, new ArrayList<>(serverIds));
+        }
+        return mapping;
     }
 
     /** scripts.default_timeout 单位是秒，tasks.timeout 单位是毫秒 */
