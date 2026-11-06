@@ -93,6 +93,13 @@ public class TaskStatusCheckService {
      */
     private boolean checkTask(Task task) {
         boolean updated = false;
+
+        // 0. 本进程正在执行的任务交给执行器自己收尾，定时任务不抢方向盘
+        //    否则资源上传阶段 task_steps 还是空的，会被下面的空步骤判定误杀
+        if (taskExecutionService.isExecuting(task.getId())) {
+            log.debug("[TaskStatusCheck] 任务 {} 正在被本进程执行，跳过检查", task.getId());
+            return false;
+        }
         
         // 1. 检查任务是否超时
         if (task.getStartedAt() != null && task.getTimeout() != null) {

@@ -219,6 +219,16 @@ public class TaskExecutionService {
     }
 
     /**
+     * 本进程是否正在驱动该任务
+     * <p>
+     * 供状态检查定时任务避让用：执行器还没跑完时，步骤记录可能是空的（还在上传资源），
+     * 此时按数据库里的状态判定会误杀正常运行的任务。
+     */
+    public boolean isExecuting(Long taskId) {
+        return runningTasks.containsKey(taskId);
+    }
+
+    /**
      * 取消任务
      */
     public boolean cancelTask(Long taskId) {
