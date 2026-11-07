@@ -10,9 +10,9 @@ export interface ParamOption {
 export interface ParamDefinition {
   name: string
   type?: string
-  /** 共享参数的默认值：只做界面预填，执行时不会注入环境变量 */
+  /** 默认值（规范键）：界面预填，执行时没提交这个键就按它注入环境变量（显式提交的空串优先） */
   default?: string | number | boolean
-  /** 步骤参数的默认值（历史键名）：执行时会注入环境变量 */
+  /** 默认值（历史别名，多见于步骤参数）：与 default 同义，两者都在时以 default 为准 */
   defaultValue?: string | number | boolean
   description?: string
   displayName?: string

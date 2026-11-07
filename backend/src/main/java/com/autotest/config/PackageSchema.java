@@ -43,6 +43,19 @@ public final class PackageSchema {
     /** 会被解析成可执行文件的后缀；用于判断 script 指向的是不是包内文件 */
     public static final Set<String> SCRIPT_SUFFIXES = ordered(".sh", ".bash", ".py", ".exp", ".ps1", ".cmd", ".jar");
 
+    /**
+     * 参数定义里声明的默认值，全平台唯一口径：`default` 是规范键，`defaultValue` 是历史别名，
+     * 只在没写 `default` 时生效。解析、执行注入、任务校验、界面校验都必须走这里，
+     * 各自写一份优先级就会在同一份定义上读出不同的值。
+     */
+    public static Object declaredDefault(Map<String, Object> paramDef) {
+        if (paramDef == null) {
+            return null;
+        }
+        Object value = paramDef.get("default");
+        return value != null ? value : paramDef.get("defaultValue");
+    }
+
     /** 在 Linux 上解释执行、必须是 LF 换行的文件后缀 */
     public static final Set<String> LF_ONLY_SUFFIXES = ordered(".sh", ".bash", ".py", ".exp");
 
@@ -54,10 +67,11 @@ public final class PackageSchema {
             "steps 必须是「步骤名 -> 步骤配置」的映射；写成数组也能导入（平台按 name 或 step_N 转成映射），但推荐写映射。",
             "步骤里没有超时字段：步骤超时来自任务的 timeout（单位毫秒），任务没填时回落到 scripts.default_timeout（单位秒），也就是顶层 timeout。",
             "顶层 timeout 在创建脚本时写进 scripts.default_timeout；界面上留空才按包内声明，填了就以界面值为准。",
-            "共享参数 parameters[].default 只做界面预填，执行时不会注入环境变量；必填项必须在提交任务时显式传值。",
-            "步骤参数 steps.<步骤名>.params 的 defaultValue（也接受 default）会注入环境变量，并且覆盖同名共享参数的取值。",
+            "共享参数 parameters[].default 在提交任务没带这个键时注入环境变量；显式传的空串按空值下发，不会被声明值盖掉。",
+            "步骤参数 steps.<步骤名>.params 声明的默认值同样注入环境变量，并且覆盖同名共享参数的生效值。",
+            "默认值键名只有一个口径：`default` 是规范键，`defaultValue` 是历史别名，两者都写时以 `default` 为准（解析、执行注入、任务校验、界面都按 PackageSchema.declaredDefault）。",
             "options 是取值白名单：界面会渲染成下拉框，提交任务按 value 严格匹配（trim 后区分大小写）。一旦声明，白名单之外的值全部被拒。",
-            "required 必须是 YAML 布尔值（true/false），写成 \"true\" 字符串会被忽略。",
+            "required 必须是 YAML 布尔值（true/false），写成 \"true\" 字符串会被忽略；必填按生效取值判定，提交值和声明的默认值都算有值。",
             "script 优先按包内相对路径解析（支持 steps/step1.sh 这样的子目录）；既不是包内文件也不像命令时会被当成 shell 命令执行，报 exit 127。",
             "脚本文件必须是 LF 换行。Windows 上写出的 CRLF 在 Linux 上会以 $'\\r': command not found 失败，平台不做转换。",
             "覆盖导入（strategy=OVERWRITE）用包里的声明整体替换参数定义，界面上手填的参数不保留；它只重写当前版本记录，不新增版本。",
@@ -109,11 +123,11 @@ public final class PackageSchema {
         Map<String, String> docs = new LinkedHashMap<>();
         docs.put("name", "参数名，脚本里用 $NAME 取；同一作用域内必须唯一");
         docs.put("type", "string/number/boolean/select 等，只影响界面渲染");
-        docs.put("default", "共享参数默认值：只预填界面，不注入环境变量");
-        docs.put("defaultValue", "步骤参数默认值：会注入环境变量（共享参数里等价于 default）");
+        docs.put("default", "参数默认值（规范键）：界面预填，提交任务没带这个键时注入环境变量（显式传的空串优先）");
+        docs.put("defaultValue", "历史别名的默认值，与 default 同义；两者都写时以 default 为准");
         docs.put("description", "说明");
         docs.put("displayName", "界面展示名，不影响取值");
-        docs.put("required", "布尔值。true 时提交任务缺值直接被拒");
+        docs.put("required", "布尔值。true 时按生效取值判缺值：提交值和声明的 default 都算有值，两者都没有才被拒");
         docs.put("options", "取值白名单 [{label,value}]，也接受裸字符串；声明后白名单外的取值全被拒");
         return docs;
     }
@@ -225,7 +239,7 @@ public final class PackageSchema {
                     type: number
                     default: 4
                     required: true
-                    description: 只预填界面，执行时必须显式传值
+                    description: 提交任务没带 THREADS 时注入 THREADS=4
                   - name: MODE
                     type: select
                     options:
@@ -242,7 +256,7 @@ public final class PackageSchema {
                     params:
                       - name: ROUNDS
                         type: number
-                        defaultValue: 3
+                        default: 3
                         description: 会注入 ROUNDS=3，并覆盖同名共享参数
                 """;
     }
@@ -258,8 +272,8 @@ public final class PackageSchema {
                 "严格校验会直接拒；确认包内相对路径存在"));
         list.add(mistake("给步骤配 timeout", "不生效",
                 "超时是任务级：run_test 传 timeout（毫秒），或改顶层 timeout（秒）"));
-        list.add(mistake("指望共享参数的 default 注入环境变量", "脚本里取到空值",
-                "必填项在提交任务时显式传值，或把默认值写进步骤 params"));
+        list.add(mistake("脚本里写的 ${NAME:-兜底} 和 yaml 的 default 不一致", "没传时平台注入声明值、传了时注入提交值，脚本兜底只在显式传空串时才生效，行为和 yaml 对不上",
+                "两处写成同一个值；要改默认值就改 yaml 的 default"));
         list.add(mistake("options 里只填 label 不填 value", "白名单声明了却没有任何合法值，所有取值被拒",
                 "label/value 都填；只填一个时另一个会跟着补，两个都空才算无效"));
         list.add(mistake("Windows 上写的 CRLF 脚本", "$'\\r': command not found",

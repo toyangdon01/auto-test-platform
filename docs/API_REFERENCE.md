@@ -224,7 +224,7 @@ Content-Type: application/json
 |------|------|------|------|
 | name | string | 是 | 参数名称（将作为环境变量名） |
 | type | string | 否 | 参数类型：string / number（默认 string） |
-| default | any | 否 | 默认值 |
+| default | any | 否 | 默认值；提交任务没带这个键时按它注入环境变量，显式传的空串优先 |
 | description | string | 否 | 参数描述 |
 
 ---
@@ -280,7 +280,7 @@ Content-Type: application/json
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | name | string | 是 | 参数名称 |
-| defaultValue | any | 否 | 默认值（覆盖全局 default） |
+| defaultValue | any | 否 | 步骤默认值（历史别名，规范键是 `default`；同名时覆盖共享参数的生效值） |
 | value | any | 否 | 固定值（优先级高于 defaultValue） |
 | description | string | 否 | 参数描述 |
 | required | boolean | 否 | 是否必填 |
@@ -547,12 +547,16 @@ Content-Type: application/json
 
 **参数传递规则**:
 ```
-最终参数 = sharedParams（共享参数） + stepParams[stepName]（步骤级参数覆盖）
+最终参数 = 内置参数（TASK_ID 等）
+         + sharedParams（共享参数，缺的键由脚本包 parameters[].default 兜底）
+         + 步骤声明的默认值（steps.<步骤名>.params[].default，历史别名 defaultValue）
+         + stepParams[stepName]（用户按步骤提交的值，优先级最高）
 ```
 
 #### sharedParams（共享参数）- Map<String, Object>
 
 任务级别的参数，会作为环境变量传递给所有步骤。
+这里没带的键，由脚本包声明的 `parameters[].default` 兜底注入。
 
 **示例**:
 ```json

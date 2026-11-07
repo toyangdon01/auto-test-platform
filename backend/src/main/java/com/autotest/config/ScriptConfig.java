@@ -1,6 +1,5 @@
 package com.autotest.config;
 
-import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
@@ -72,8 +71,17 @@ public class ScriptConfig {
         private String type;
 
         @JsonProperty("default")
-        @JsonAlias("defaultValue")
         private Object defaultValue;  // 可以是字符串、数字等
+
+        /**
+         * defaultValue 是 default 的历史别名，两者都写时以 default 为准（与 PackageSchema.declaredDefault 同一口径）
+         */
+        @JsonProperty(value = "defaultValue", access = JsonProperty.Access.WRITE_ONLY)
+        public void setLegacyDefaultValue(Object legacyValue) {
+            if (this.defaultValue == null) {
+                this.defaultValue = legacyValue;
+            }
+        }
 
         private String description;
 
@@ -83,7 +91,7 @@ public class ScriptConfig {
         private String displayName;
 
         /**
-         * 是否必填；共享参数缺值即拒（其 default 不会注入），步骤参数可由声明的默认值满足
+         * 是否必填；按生效取值判定，提交值和声明的默认值都算有值
          */
         private Boolean required;
 

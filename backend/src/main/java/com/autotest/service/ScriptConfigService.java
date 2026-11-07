@@ -170,9 +170,13 @@ public class ScriptConfigService {
                     ScriptConfig.ParameterConfig pc = new ScriptConfig.ParameterConfig();
                     if (paramNode.has("name")) pc.setName(paramNode.get("name").asText());
                     if (paramNode.has("type")) pc.setType(paramNode.get("type").asText());
-                    JsonNode defaultNode = paramNode.has("default")
-                            ? paramNode.get("default")
-                            : paramNode.get("defaultValue");
+                    JsonNode defaultNode = paramNode.get("default");
+                    if (defaultNode == null || defaultNode.isNull()) {
+                        JsonNode legacyNode = paramNode.get("defaultValue");
+                        if (legacyNode != null && !legacyNode.isNull()) {
+                            defaultNode = legacyNode;
+                        }
+                    }
                     if (defaultNode != null) {
                         if (defaultNode.isTextual()) {
                             pc.setDefaultValue(defaultNode.asText());
@@ -969,7 +973,7 @@ public class ScriptConfigService {
                 ScriptConfig.ParameterConfig pc = new ScriptConfig.ParameterConfig();
                 pc.setName((String) param.get("name"));
                 pc.setType((String) param.get("type"));
-                pc.setDefaultValue(param.get("default"));
+                pc.setDefaultValue(PackageSchema.declaredDefault(param));
                 pc.setDescription((String) param.get("description"));
                 pc.setDisplayName((String) param.get("displayName"));
                 if (param.get("required") instanceof Boolean) {

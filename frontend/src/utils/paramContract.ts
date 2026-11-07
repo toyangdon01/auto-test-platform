@@ -2,12 +2,15 @@ import type { ParamDefinition, ParamOption } from '@/api/script'
 
 /**
  * 参数契约的界面侧读取规则，与后端 TaskServiceImpl.checkParams / TaskExecutionService 保持一致。
- * 共享参数的默认值键是 default 且执行时不会注入；步骤参数是 defaultValue（后端也接受 default），会注入。
+ * 共享参数和步骤参数的默认值都会注入环境变量。
+ * 键名口径：default 是规范键，defaultValue 是历史别名，两者都写时以 default 为准
+ * （对应后端 PackageSchema.declaredDefault）。
+ * 提交任务没带这个键时用声明值兜底，显式提交的空串按空值下发。
  */
 
 export function declaredDefault(param: ParamDefinition): unknown {
-  if (param.defaultValue !== undefined && param.defaultValue !== null) return param.defaultValue
-  return param.default
+  if (param.default !== undefined && param.default !== null) return param.default
+  return param.defaultValue
 }
 
 export function hasDeclaredDefault(param: ParamDefinition): boolean {
@@ -81,12 +84,11 @@ function filled(value: unknown): boolean {
 
 function checkOne(param: ParamDefinition, effective: unknown, hasValue: boolean, where: string, step?: string): ParamProblem | null {
   if (isRequired(param) && !hasValue) {
-    const tail = step === undefined && hasDeclaredDefault(param) ? '（脚本声明的默认值不会自动注入）' : ''
     return {
       code: 'PARAM_REQUIRED',
       param: param.name,
       step,
-      message: `${where} 是必填项但未填写${tail}`,
+      message: `${where} 是必填项但未填写`,
     }
   }
   if (hasValue && hasOptionWhitelist(param) && !allowedOptionValues(param).includes(String(effective).trim())) {
@@ -102,19 +104,21 @@ function checkOne(param: ParamDefinition, effective: unknown, hasValue: boolean,
   return null
 }
 
-/** 共享参数：只看提交上来的取值，声明的 default 不算满足必填 */
+/** 共享参数：生效值 = 提交上来的取值，没提交这个键时用声明的 default 兜底 */
 export function checkSharedParams(params: ParamDefinition[], values: Record<string, unknown>): ParamProblem[] {
   const problems: ParamProblem[] = []
   for (const param of params) {
     if (!param.name || param.name === '_BACKGROUND') continue
     const value = values ? values[param.name] : undefined
-    const problem = checkOne(param, value, filled(value), `参数 ${paramLabel(param)}`)
+    // 与后端 TaskServiceImpl.checkParams 一致：显式提交的空串算「提交了」，不会被声明值盖掉
+    const effective = value === undefined || value === null ? declaredDefault(param) : value
+    const problem = checkOne(param, effective, filled(effective), `参数 ${paramLabel(param)}`)
     if (problem) problems.push(problem)
   }
   return problems
 }
 
-/** 步骤参数：生效值 = 用户填写 > 步骤声明默认值 > 共享参数取值 */
+/** 步骤参数：生效值 = 用户填写 > 步骤声明默认值 > 共享参数取值（shared 传入时已含其声明默认值） */
 export function checkStepParams(
   params: ParamDefinition[],
   values: Record<string, unknown>,

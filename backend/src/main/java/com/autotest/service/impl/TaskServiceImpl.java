@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.autotest.common.PageResult;
+import com.autotest.config.PackageSchema;
 import com.autotest.dto.request.TaskCreateRequest;
 import com.autotest.dto.request.TaskQueryRequest;
 import com.autotest.dto.response.TaskDetailResponse;
@@ -358,15 +359,24 @@ public class TaskServiceImpl implements TaskService {
             return problems;
         }
 
-        Map<String, Object> shared = sharedParams == null ? Map.of() : sharedParams;
         Map<String, Map<String, Object>> sharedDefs = indexByName(paramDefs(sv.getParameters()));
 
-        // 共享参数：执行时不会注入 default（TaskExecutionService 只读任务的 sharedParams），
-        // 所以必填项必须由调用方给出取值
-        for (Map<String, Object> def : sharedDefs.values()) {
-            String name = (String) def.get("name");
-            Object value = shared.get(name);
-            checkAgainstDef(def, name, null, value, isPresent(value), problems);
+        // 执行时共享参数的生效值：提交上来的取值优先，没提交的键回落到 parameters[].default
+        // （TaskExecutionService.applySharedParamDefaults）；显式提交的空串按空值下发，不算回落
+        Map<String, Object> shared = new LinkedHashMap<>(sharedParams == null ? Map.of() : sharedParams);
+        for (Map.Entry<String, Map<String, Object>> entry : sharedDefs.entrySet()) {
+            if (shared.get(entry.getKey()) == null) {
+                Object declared = PackageSchema.declaredDefault(entry.getValue());
+                if (declared != null) {
+                    shared.put(entry.getKey(), declared);
+                }
+            }
+        }
+
+        for (Map.Entry<String, Map<String, Object>> entry : sharedDefs.entrySet()) {
+            String name = entry.getKey();
+            Object effective = shared.get(name);
+            checkAgainstDef(entry.getValue(), name, null, effective, isPresent(effective), problems);
         }
 
         Map<String, Object> steps = sv.getSteps();
@@ -396,7 +406,8 @@ public class TaskServiceImpl implements TaskService {
                 }
                 Map<String, Object> def = sharedDefs.get(name);
                 if (def != null) {
-                    checkAgainstDef(def, name, stepName, kv.getValue(), isPresent(kv.getValue()), problems);
+                    Object effective = kv.getValue() != null ? kv.getValue() : shared.get(name);
+                    checkAgainstDef(def, name, stepName, effective, isPresent(effective), problems);
                 }
             }
         }
@@ -404,13 +415,13 @@ public class TaskServiceImpl implements TaskService {
     }
 
     /**
-     * 步骤参数的生效取值：用户填写压过步骤默认值，步骤默认值压过共享参数
+     * 步骤参数的生效取值：用户填写压过步骤默认值，步骤默认值压过共享参数的生效值
      */
     private Object effectiveStepValue(Map<String, Object> def, String name, Object supplied, Object sharedValue) {
         if (supplied != null) {
             return supplied;
         }
-        Object declared = def.containsKey("defaultValue") ? def.get("defaultValue") : def.get("default");
+        Object declared = PackageSchema.declaredDefault(def);
         return declared != null ? declared : sharedValue;
     }
 
@@ -419,10 +430,8 @@ public class TaskServiceImpl implements TaskService {
         List<?> options = def.get("options") instanceof List ? (List<?>) def.get("options") : List.of();
         String where = stepName == null ? "参数 " + name : "步骤 " + stepName + " 的参数 " + name;
         if (Boolean.TRUE.equals(def.get("required")) && !hasValue) {
-            String tail = stepName == null && isPresent(def.get("default"))
-                    ? "（脚本声明的 default 不会自动注入，请显式传值）" : "";
             problems.add(paramProblem("PARAM_REQUIRED", name, stepName,
-                    where + " 是必填项但未提供取值" + tail, List.of()));
+                    where + " 是必填项但未提供取值", List.of()));
             return;
         }
         if (hasValue && !options.isEmpty() && !matchesOption(options, value)) {

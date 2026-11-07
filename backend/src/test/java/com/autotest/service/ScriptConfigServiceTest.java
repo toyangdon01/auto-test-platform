@@ -498,6 +498,38 @@ class ScriptConfigServiceTest {
         assertFalse(codes.contains("RESULT_COLLECTOR_MULTIPLE"), codes.toString());
     }
 
+    @Test
+    void testDefaultKey_CanonicalWinsOverLegacyAlias_RegardlessOfOrder() throws IOException {
+        Path dir = tempDir.resolve("29");
+        writePackage(dir, "name: demo\ntype: shell\n"
+                + "parameters:\n"
+                + "  - name: ALIAS_FIRST\n"
+                + "    defaultValue: fromAlias\n    default: fromCanonical\n"
+                + "  - name: CANONICAL_FIRST\n"
+                + "    default: fromCanonical\n    defaultValue: fromAlias\n"
+                + "  - name: ONLY_ALIAS\n"
+                + "    defaultValue: fromAlias\n"
+                + "steps:\n"
+                + "  step_1:\n    script: main.sh\n", "main.sh", "#!/bin/sh\n");
+
+        ConfigParseResult result = parsePackage(dir);
+        assertTrue(result.isSuccess(), result.validationErrorTexts().toString());
+        Map<String, Object> parsed = new LinkedHashMap<>();
+        for (ScriptConfig.ParameterConfig param : result.getConfig().getParameters()) {
+            parsed.put(param.getName(), param.getDefaultValue());
+        }
+        assertEquals("fromCanonical", parsed.get("ALIAS_FIRST"), "两个键都写时 default 为准，与出现顺序无关");
+        assertEquals("fromCanonical", parsed.get("CANONICAL_FIRST"));
+        assertEquals("fromAlias", parsed.get("ONLY_ALIAS"), "只写历史别名时仍然生效");
+
+        Map<String, Object> both = new LinkedHashMap<>();
+        both.put("defaultValue", "fromAlias");
+        both.put("default", "fromCanonical");
+        assertEquals("fromCanonical", com.autotest.config.PackageSchema.declaredDefault(both));
+        assertEquals("fromAlias", com.autotest.config.PackageSchema.declaredDefault(Map.of("defaultValue", "fromAlias")));
+        assertNull(com.autotest.config.PackageSchema.declaredDefault(Map.of("name", "NONE")));
+    }
+
     /**
      * 写一个包目录：yaml + 若干文件
      */

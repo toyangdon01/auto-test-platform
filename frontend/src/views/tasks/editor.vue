@@ -160,7 +160,7 @@
         <span class="section-index">3</span>
         <div class="section-heading">
           <h4 class="section-title">共享参数</h4>
-          <p class="section-sub">所有步骤共用的参数，默认值已预填；清空后不会自动注入，脚本会读到空值</p>
+          <p class="section-sub">所有步骤共用的参数，默认值已预填；清空后按空值下发，脚本会读到空值</p>
         </div>
         <span class="section-state">{{ sectionBadge('params') }}</span>
       </header>

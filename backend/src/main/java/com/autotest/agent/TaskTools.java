@@ -119,15 +119,17 @@ public class TaskTools {
     @McpTool(name = "run_test", description = "创建并立即执行一个测试任务（等价于先 POST /tasks 再 POST /tasks/{id}/execute）。"
             + "返回 taskId，执行是异步的，用 wait_for_task 等待、get_task_result 取结果。"
             + "参数必须先经 get_script_contract 获取：sharedParams 是所有步骤共享的参数，stepParams 按步骤名覆盖同名共享参数。"
-            + "共享参数和步骤参数都受契约校验：required=true 没传值返回 PARAM_REQUIRED（共享参数声明的 default 不会自动注入，"
-            + "步骤声明的 defaultValue/default 会注入），取值不在 options 内返回 PARAM_NOT_IN_OPTIONS，"
-            + "步骤维度的问题项带 step 字段，两种都带 problems 明细，不会创建任务。",
+            + "共享参数和步骤参数都受契约校验：required=true 且生效取值仍为空时返回 PARAM_REQUIRED，"
+            + "取值不在 options 内返回 PARAM_NOT_IN_OPTIONS，"
+            + "步骤维度的问题项带 step 字段，两种都带 problems 明细，不会创建任务。"
+            + "生效优先级是 步骤提交值 > 步骤声明的默认值（规范键 default，历史别名 defaultValue） > 共享参数提交值 > 共享参数声明的 default；"
+            + "没提交的键由脚本包声明的默认值兜底注入，显式传空串则按空值下发。",
             annotations = @McpTool.McpAnnotations(readOnlyHint = false, destructiveHint = false,
                     idempotentHint = false, title = "提交并执行测试任务"))
     public Map<String, Object> runTest(
             @McpToolParam(description = "脚本包 id") Long scriptId,
             @McpToolParam(description = "目标服务器 id 列表；-1 表示在平台本机执行") List<Long> serverIds,
-            @McpToolParam(required = false, description = "共享参数，键为参数名") Map<String, Object> sharedParams,
+            @McpToolParam(required = false, description = "共享参数，键为参数名；没带的键回落到脚本包 parameters[].default") Map<String, Object> sharedParams,
             @McpToolParam(required = false, description = "步骤参数，形如 {\"step_1\": {\"MODE\": \"server\"}}，优先级高于共享参数与步骤默认值；按 steps.<步骤名>.params 的 required/options 校验，_BACKGROUND 除外")
             Map<String, Map<String, Object>> stepParams,
             @McpToolParam(required = false, description = "任务名称，默认 agent-<scriptId>-<时间戳>") String name,

@@ -3,6 +3,7 @@ package com.autotest.service;
 import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import com.autotest.config.PackageSchema;
 import com.autotest.dto.StepStatusCheckResult;
 import com.autotest.entity.*;
 import com.autotest.mapper.*;
@@ -709,11 +710,13 @@ public class TaskExecutionService {
             if (task.getSharedParams() != null) {
                 params.putAll(task.getSharedParams());
             }
+            // 没提交的共享参数回落到 autotest.yaml 声明的 default
+            applySharedParamDefaults(params, task, scriptVersion);
             
             // 添加步骤专属参数（步骤参数会覆盖共享参数）
             // 注意：stepConfig.getParams() 返回的是参数定义数组，格式如：
-            // [{"name": "MODE", "defaultValue": "server"}, ...]
-            // 需要从中提取 name 和 defaultValue
+            // [{"name": "MODE", "default": "server"}, ...]
+            // 需要从中提取 name 和声明的默认值（default 优先，defaultValue 为历史别名）
             if (stepConfig.getParams() != null) {
                 Object paramsObj = stepConfig.getParams();
                 log.info("Step {} params object type: {}, value: {}", stepName, paramsObj.getClass().getName(), paramsObj);
@@ -722,11 +725,7 @@ public class TaskExecutionService {
                     List<Map<String, Object>> paramDefs = (List<Map<String, Object>>) paramsObj;
                     for (Map<String, Object> paramDef : paramDefs) {
                         String paramName = (String) paramDef.get("name");
-                        // 步骤参数历史上写 defaultValue，与共享参数的 default 同义，两个键都认
-                        Object paramValue = paramDef.get("defaultValue");
-                        if (paramValue == null) {
-                            paramValue = paramDef.get("default");
-                        }
+                        Object paramValue = PackageSchema.declaredDefault(paramDef);
                         log.info("Step param: {} = {}", paramName, paramValue);
                         if (paramName != null && paramValue != null) {
                             params.put(paramName, paramValue);
@@ -1591,6 +1590,34 @@ public class TaskExecutionService {
     }
 
     /**
+     * 补齐共享参数里没提交的取值，回落到 autotest.yaml 的 parameters[].default
+     * 只补「压根没这个键」或「值为 null」的项；显式提交的空串按空值下发，
+     * 脚本靠留空表达「不启用」（如 iso_md5 留空表示不校验），不能用声明值盖掉
+     */
+    private void applySharedParamDefaults(Map<String, Object> params, Task task, ScriptVersion scriptVersion) {
+        if (scriptVersion == null || scriptVersion.getParameters() == null) {
+            return;
+        }
+        Map<String, Object> shared = task.getSharedParams();
+        for (Map<String, Object> paramDef : scriptVersion.getParameters()) {
+            if (paramDef == null || !(paramDef.get("name") instanceof String)) {
+                continue;
+            }
+            String paramName = (String) paramDef.get("name");
+            if (paramName.isEmpty() || "_BACKGROUND".equals(paramName)) {
+                continue;
+            }
+            if (shared != null && shared.get(paramName) != null) {
+                continue;
+            }
+            Object declared = PackageSchema.declaredDefault(paramDef);
+            if (declared != null) {
+                params.put(paramName, declared);
+            }
+        }
+    }
+
+    /**
      * 在本地执行步骤（通过 LocalExecutor）
      */
     @SuppressWarnings("unchecked")
@@ -1623,6 +1650,8 @@ public class TaskExecutionService {
             if (task.getSharedParams() != null) {
                 params.putAll(task.getSharedParams());
             }
+            // 没提交的共享参数回落到 autotest.yaml 声明的 default
+            applySharedParamDefaults(params, task, scriptVersion);
             
             // 添加步骤专属参数
             if (stepConfig.getParams() != null) {
@@ -1631,11 +1660,7 @@ public class TaskExecutionService {
                     List<Map<String, Object>> paramDefs = (List<Map<String, Object>>) paramsObj;
                     for (Map<String, Object> paramDef : paramDefs) {
                         String paramName = (String) paramDef.get("name");
-                        // 步骤参数历史上写 defaultValue，与共享参数的 default 同义，两个键都认
-                        Object paramValue = paramDef.get("defaultValue");
-                        if (paramValue == null) {
-                            paramValue = paramDef.get("default");
-                        }
+                        Object paramValue = PackageSchema.declaredDefault(paramDef);
                         if (paramName != null && paramValue != null) {
                             params.put(paramName, paramValue);
                         }

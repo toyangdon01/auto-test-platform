@@ -151,7 +151,8 @@ steps:
 |------|------|------|------|
 | `name` | string | ✅ | 参数名称（环境变量名） |
 | `type` | string | ❌ | 参数类型：string / number |
-| `default` | any | ❌ | 默认值 |
+| `default` | any | ❌ | 默认值（规范键）：没提交这个键时按它注入环境变量 |
+| `defaultValue` | any | ❌ | `default` 的历史别名，只在没写 `default` 时生效；新包建议写 `default` |
 | `description` | string | ❌ | 参数描述 |
 | `displayName` | string | ❌ | 界面展示名，任务创建页按 `displayName` → `name` 取标签 |
 | `required` | boolean | ❌ | 必填项。提交任务时没给出取值就被拒绝 |
@@ -179,9 +180,13 @@ parameters:
 的问题项多带一个 `step` 字段。只对显式声明了 `required: true` 或 `options` 的参数生效，
 历史脚本包行为不变。
 
-注意 `default` 的当前语义：它只用于界面展示与任务编辑页预填，**执行时不会注入环境变量**
-（`TaskExecutionService` 只读任务提交的 `sharedParams`）。所以 `required: true` 的参数即使写了
-`default`，也必须由提交方显式传值；智能体走 MCP 时不会替你填默认值。
+`default` 的语义：界面展示与任务编辑页预填之外，**提交任务没带这个键时按声明值注入环境变量**
+（`TaskExecutionService.applySharedParamDefaults`）。所以 `required: true` 配 `default` 是自洽的，
+智能体走 MCP 时不传值也能拿到默认配置。但显式提交的空串按空值下发，不会被声明值盖掉 ——
+脚本用「留空表示不启用」的参数，调用方要传空串而不是省略。
+
+写完 `default` 要回头核对脚本里的 `${NAME:-兜底}`：两处不一致时，调用方省略键的情况下生效的是
+yaml 声明值，不是脚本兜底。
 
 注意：覆盖导入（`import_package(strategy=OVERWRITE)` 与 UI 的 ZIP 覆盖）会用 yaml 的声明
 **整体替换** `script_versions.parameters`，在界面上手填的参数定义不会被保留。
@@ -250,8 +255,8 @@ steps:
 #### 步骤参数 (steps.<步骤名>.params)
 
 步骤参数的定义形状与共享参数一致，支持 `name` / `type` / `displayName` / `description`
-/ `required` / `options`，默认值写 `defaultValue` 或 `default` 都可以（同义，`defaultValue`
-是历史写法，两者同时存在时以 `defaultValue` 为准）。
+/ `required` / `options`，默认值统一写规范键 `default`；`defaultValue` 是历史别名，只在没写
+`default` 时生效，两者同时存在时以 `default` 为准（全平台唯一口径是 `PackageSchema.declaredDefault`）。
 
 ```yaml
 steps:
@@ -263,7 +268,7 @@ steps:
         type: string
         displayName: 级别
         required: true
-        defaultValue: fast          # 会注入环境变量
+        default: fast                # 会注入环境变量
         options:
           - { label: 快速, value: fast }
           - { label: 慢速, value: slow }
@@ -273,11 +278,13 @@ steps:
         required: true              # 没有默认值，提交任务时必须给出（共享参数里给也算）
 ```
 
-与共享参数的两处差别，是既有行为，不是笔误：
+与共享参数的差别只有一处，是既有行为，不是笔误：
 
-- **步骤声明的默认值会注入环境变量**，共享参数声明的 `default` 不会；
-- 生效优先级是 用户按步骤填写的取值 > 步骤声明的默认值 > 共享参数取值。
+- 生效优先级是 用户按步骤填写的取值 > 步骤声明的默认值 > 共享参数的生效值（提交值，没提交时才是共享参数声明的 `default`）。
   所以步骤里声明了某个名字的同名默认值时，任务提交方在 `sharedParams` 里传的值会被盖掉。
+
+两类默认值都会注入环境变量，键名口径也统一了：规范键是 `default`，`defaultValue` 只在没写 `default`
+时作为历史别名生效（现网步骤参数大量写 `defaultValue`，继续可用；新包建议写 `default`）。
 
 校验规则：`steps.<步骤名>.params` 里 `required: true` 且按上面的优先级仍取不到值 → `PARAM_REQUIRED`；
 提交的取值不在该步骤的 `options` 里 → `PARAM_NOT_IN_OPTIONS`（问题项带 `step`）。
@@ -485,7 +492,7 @@ MCP 服务端只开 tools 能力（`resource:false / prompt:false`），写包�
 | 参数 `section` | 返回 |
 |----------------|------|
 | `schema` | `topLevelKeys` / `parameterKeys` / `stepKeys` / `resourceKeys` / `tagKeys` / `optionKeys`，每个键带用途说明；外加三张嵌套表 `probeKeys` / `parseRuleKeys` / `fileCollectKeys`（这三层**不参与校验**，表里就是执行层实际读取的全部键名） |
-| `rules` | 硬规则清单：超时单位与回落顺序、共享参数 `default` 不注入、步骤参数 `defaultValue` 注入并覆盖同名共享参数、`options` 严格匹配、LF 换行、覆盖导入整体替换参数定义、**一个脚本只允许一个步骤开结果收集**、**probe/parseRule/fileCollects 只在远程主机执行**、probe 缺 port 静默通过、解析失败不改步骤状态 |
+| `rules` | 硬规则清单：超时单位与回落顺序、共享参数 `default` 在没提交该键时注入（显式空串优先）、步骤参数声明的默认值注入并覆盖同名共享参数、默认值键名只有一个口径（规范键 `default`，`defaultValue` 是历史别名）、`options` 严格匹配、LF 换行、覆盖导入整体替换参数定义、**一个脚本只允许一个步骤开结果收集**、**probe/parseRule/fileCollects 只在远程主机执行**、probe 缺 port 静默通过、解析失败不改步骤状态 |
 | `example` | `exampleYaml`：一份能通过校验的包声明（配套的 `main.sh` 由提交方一起带上） |
 | `mistakes` | 常见错法 → 症状 → 改法 |
 | `codes` | 全部错误码及各自触发条件 |
