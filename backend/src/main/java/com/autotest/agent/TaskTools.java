@@ -16,6 +16,7 @@ import com.autotest.mapper.TaskMapper;
 import com.autotest.mapper.TaskServerMapper;
 import com.autotest.mapper.TaskStepMapper;
 import com.autotest.mapper.TestResultMapper;
+import com.autotest.service.LogCacheService;
 import com.autotest.service.TaskService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
@@ -54,6 +55,7 @@ public class TaskTools {
     private final ScriptMapper scriptMapper;
     private final ScriptVersionMapper scriptVersionMapper;
     private final TestResultMapper testResultMapper;
+    private final LogCacheService logCacheService;
 
     @McpTool(name = "list_tasks", description = "按条件查历史任务，id 倒序。想找回「这个脚本包上次在哪台机器跑得怎么样」用它，"
             + "不需要有人把 taskId 递过来。可按 scriptId、serverId、status、名称关键字过滤，limit 默认 20、上限 100。"
@@ -260,7 +262,11 @@ public class TaskTools {
             + "不传 fromChar 时返回结尾 maxChars 个字符；传了则从该位置往后读。返回 nextFromChar 用于续读。"
             + "只传 stepId 就够了（步骤 id 全局唯一，不需要 taskId 限定范围）；"
             + "按步骤名定位才需要 taskId，多机同名步骤再加 serverId。"
-            + "只给 taskId 时，优先取第一个失败步骤，否则取第一步。",
+            + "只给 taskId 时，优先取第一个失败步骤，否则取第一步。"
+            + "步骤还在跑时日志读的是内存实时缓冲（source=cache）：那份缓冲按 taskId 聚合，"
+            + "切不出本步骤，也不切服务器；返回的 scope=task 与 note 会说明这点。"
+            + "步骤进入终态后一律读数据库（source=database），task_step.output 是步骤结束才落库的，"
+            + "跑中读不到本步骤独有的历史属于预期。",
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false,
                     idempotentHint = true,
                     title = "读取步骤日志"))
@@ -284,7 +290,15 @@ public class TaskTools {
             return error("STEP_NOT_FOUND", "未找到步骤: taskId=" + taskId + ", stepId=" + stepId
                     + ", stepName=" + stepName + ", serverId=" + serverId);
         }
-        String output = step.getOutput() == null ? "" : step.getOutput();
+        // 步骤没跑完时 task_step.output 还是空的（执行器在步骤结束才一次性落库，见
+        // TaskExecutionService 的 setOutput 调用点），唯一有实时的地方是 LogCacheService 那份缓冲
+        Long ownerTaskId = step.getTaskId() != null ? step.getTaskId() : taskId;
+        String status = nz(step.getStatus());
+        String cached = ownerTaskId != null && ("running".equals(status) || "pending".equals(status))
+                ? logCacheService.getLog(ownerTaskId) : null;
+        boolean fromCache = cached != null && !cached.isEmpty();
+        // PTY 回显带 \r，落库那份是按行去掉的，这里对齐，免得跑中和跑完读到两种文本
+        String output = fromCache ? cached.replace("\r", "") : (step.getOutput() == null ? "" : step.getOutput());
         int cap = maxChars == null || maxChars <= 0 ? DEFAULT_LOG_CHARS : Math.min(maxChars, 40000);
 
         int start;
@@ -302,6 +316,12 @@ public class TaskTools {
         out.put("status", step.getStatus());
         out.put("exitCode", step.getExitCode());
         out.put("errorMessage", step.getErrorMessage());
+        out.put("source", fromCache ? "cache" : "database");
+        if (fromCache) {
+            out.put("scope", "task");
+            out.put("note", "任务还在跑，日志取自内存缓存：那份缓冲按 taskId 聚合，"
+                    + "含已完成步骤的输出，切不出本步骤独有内容；步骤结束后请以 source=database 为准");
+        }
         out.put("totalChars", output.length());
         out.put("fromChar", start);
         out.put("nextFromChar", end < output.length() ? end : null);
