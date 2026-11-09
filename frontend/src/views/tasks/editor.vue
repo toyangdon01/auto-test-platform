@@ -114,24 +114,26 @@
                 </div>
 
                 <div v-if="step.params?.length" class="step-params">
-                  <div class="field-label">步骤参数</div>
+                  <div class="field-label">步骤参数<span class="field-label-note">默认值已预填，清空即按空值下发</span></div>
                   <div class="params-grid">
                     <div v-for="param in step.params" :key="param.name" class="param-item">
-                      <div class="param-header">
-                        <span class="param-label">
-                          {{ paramLabel(param) }}
-                          <span v-if="isRequired(param)" class="required-star" title="必填">*</span>
-                        </span>
-                        <span v-if="param.description" class="param-desc">{{ param.description }}</span>
+                      <div class="param-label">
+                        {{ paramLabel(param) }}
+                        <span v-if="isRequired(param)" class="required-star" title="必填">*</span>
+                        <el-tooltip
+                          v-if="param.description"
+                          :content="param.description"
+                          placement="top"
+                          :popper-style="PARAM_TIP_STYLE"
+                        >
+                          <el-icon class="field-tip-icon"><QuestionFilled /></el-icon>
+                        </el-tooltip>
                       </div>
                       <ParamValueInput
                         :param="param"
                         :model-value="stepServerConfigs[index].stepParams[param.name]"
                         @update:model-value="(v: any) => (stepServerConfigs[index].stepParams[param.name] = v)"
                       />
-                      <div v-if="defaultRaw(param)" class="param-default-hint">
-                        默认值 {{ defaultRaw(param) }}，留空则注入该默认值
-                      </div>
                     </div>
                   </div>
                 </div>
@@ -194,7 +196,12 @@
                   <template #label>
                     {{ paramLabel(param) }}
                     <span v-if="isRequired(param)" class="required-star" title="必填">*</span>
-                    <el-tooltip v-if="param.description" :content="param.description" placement="top">
+                    <el-tooltip
+                      v-if="param.description"
+                      :content="param.description"
+                      placement="top"
+                      :popper-style="PARAM_TIP_STYLE"
+                    >
                       <el-icon class="field-tip-icon"><QuestionFilled /></el-icon>
                     </el-tooltip>
                   </template>
@@ -379,6 +386,8 @@ import request from '@/utils/request'
 
 const router = useRouter()
 const route = useRoute()
+// 参数描述普遍七八十字，el-tooltip 默认不换行会被视口裁掉，这里限宽并让它折行
+const PARAM_TIP_STYLE = { maxWidth: '520px', whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: '1.6' }
 const loading = ref(false)
 const submitting = ref(false)
 const submitAttempted = ref(false)
@@ -1106,42 +1115,34 @@ function restoreStepServerConfigs(stepServerMapping: Record<string, number[]>, s
           color: var(--el-text-color-regular);
           font-size: 14px;
           margin-bottom: 8px;
+
+          .field-label-note {
+            margin-left: 8px;
+            font-size: 12px;
+            color: var(--el-text-color-placeholder);
+          }
         }
 
         .params-grid {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 12px;
+          display: grid;
+          // 轨道宽度有界，长描述与长取值都关在自己格子里，不再压到隔壁参数
+          grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+          gap: 12px 16px;
         }
 
         .param-item {
           display: flex;
           flex-direction: column;
-          align-items: flex-start;
+          align-items: stretch;
           gap: 4px;
-          // 参数控件可能是 el-select，它没有内容宽度可撑开，这里给个固定宽度
-          width: 240px;
-          max-width: 100%;
-
-          .param-header {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-          }
+          min-width: 0;
 
           .param-label {
+            display: flex;
+            align-items: center;
+            gap: 4px;
             font-size: 13px;
             color: var(--el-text-color-secondary);
-          }
-
-          .param-desc {
-            font-size: 12px;
-            color: var(--el-text-color-placeholder);
-          }
-
-          .param-default-hint {
-            font-size: 12px;
-            color: var(--el-text-color-placeholder);
           }
 
           :deep(.el-input),
